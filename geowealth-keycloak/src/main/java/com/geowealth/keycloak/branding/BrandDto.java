@@ -31,6 +31,8 @@ public final class BrandDto {
      * Brand.java sanitizes the value before it reaches the template.
      */
     public String loginLogoDataUri;
+    /** Same POC shortcut as loginLogoDataUri — see field above. */
+    public String faviconDataUri;
 
     public BrandDto() {}
 
@@ -44,6 +46,6 @@ public final class BrandDto {
         if (code == null || code.isEmpty()) return null;
         if (cssVariables == null || cssVariables.isEmpty()) return null;
         return new Brand(code, displayName != null ? displayName : code, cssVariables,
-            loginLogoDataUri);
+            loginLogoDataUri, faviconDataUri);
     }
 }

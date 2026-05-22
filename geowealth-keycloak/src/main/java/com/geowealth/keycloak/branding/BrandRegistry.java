@@ -63,6 +63,10 @@ public final class BrandRegistry {
         "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgNjAiPjxyZWN0IHdpZHRoPSIyMjAiIGhlaWdodD0iNjAiIHJ4PSI2IiBmaWxsPSIjMTU1ZThmIi8+PHRleHQgeD0iMTEwIiB5PSIzOCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmYiPkNoYW5nZVBhdGg8L3RleHQ+PC9zdmc+";
     private static final String LOGO_CCA =
         "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgNjAiPjxyZWN0IHdpZHRoPSIyMjAiIGhlaWdodD0iNjAiIHJ4PSI2IiBmaWxsPSIjYzg0ODJhIi8+PHRleHQgeD0iMTEwIiB5PSIzOCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmYiPkdlb1dlYWx0aDwvdGV4dD48L3N2Zz4=";
+    private static final String FAVICON_CHANGEPATH =
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzE1NWU4ZiIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTgiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmYiPkM8L3RleHQ+PC9zdmc+";
+    private static final String FAVICON_CCA =
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iI2M4NDgyYSIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTgiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmYiPkc8L3RleHQ+PC9zdmc+";
 
     private void seed() {
         // ChangePath — real palette from etc/whitelabel/changepath in the
@@ -79,7 +83,7 @@ public final class BrandRegistry {
         changepath.put("--pf-v5-global--link--Color--hover",    "#0e4e79");
         changepath.put("--pf-v5-global--active-color--100",     "#155e8f");
         brandsByCode.put("changepath",
-            new Brand("changepath", "ChangePath", changepath, LOGO_CHANGEPATH));
+            new Brand("changepath", "ChangePath", changepath, LOGO_CHANGEPATH, FAVICON_CHANGEPATH));
 
         // GeoWealth default — distinctive orange/teal so the difference vs
         // ChangePath is unmistakable in a side-by-side demo.
@@ -95,6 +99,6 @@ public final class BrandRegistry {
         geowealth.put("--pf-v5-global--link--Color--hover",     "#a83a20");
         geowealth.put("--pf-v5-global--active-color--100",      "#c8482a");
         brandsByCode.put(DEFAULT_CODE,
-            new Brand(DEFAULT_CODE, "GeoWealth", geowealth, LOGO_CCA));
+            new Brand(DEFAULT_CODE, "GeoWealth", geowealth, LOGO_CCA, FAVICON_CCA));
     }
 }

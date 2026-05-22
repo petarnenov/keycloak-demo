@@ -45,13 +45,19 @@ public final class Brand {
     private final String displayName;
     private final Map<String, String> cssVariables;
     private final String loginLogoDataUri; // nullable
+    private final String faviconDataUri;   // nullable
 
     public Brand(String code, String displayName, Map<String, String> cssVariables) {
-        this(code, displayName, cssVariables, null);
+        this(code, displayName, cssVariables, null, null);
     }
 
     public Brand(String code, String displayName, Map<String, String> cssVariables,
                  String loginLogoDataUri) {
+        this(code, displayName, cssVariables, loginLogoDataUri, null);
+    }
+
+    public Brand(String code, String displayName, Map<String, String> cssVariables,
+                 String loginLogoDataUri, String faviconDataUri) {
         if (code == null || code.isEmpty()) {
             throw new IllegalArgumentException("brand code must be non-empty");
         }
@@ -59,16 +65,17 @@ public final class Brand {
         this.displayName = displayName == null ? code : displayName;
         this.cssVariables = Collections.unmodifiableMap(
             filterUnsafe(code, cssVariables == null ? Map.of() : cssVariables));
-        this.loginLogoDataUri = sanitizeLogo(code, loginLogoDataUri);
+        this.loginLogoDataUri = sanitizeImageUri(code, loginLogoDataUri, "login-logo");
+        this.faviconDataUri = sanitizeImageUri(code, faviconDataUri, "favicon");
     }
 
-    private static String sanitizeLogo(String code, String value) {
+    private static String sanitizeImageUri(String code, String value, String kind) {
         if (value == null || value.isEmpty()) return null;
         if (SAFE_LOGO_DATA_URI.matcher(value).matches()) return value;
         // Log a prefix only — payload may be a base64 megablob, and we
         // never want a poisoned value to fill the log file.
-        LOG.warnf("Brand[%s]: dropping unsafe login-logo data URI (prefix: '%s')",
-            code, truncate(value));
+        LOG.warnf("Brand[%s]: dropping unsafe %s data URI (prefix: '%s')",
+            code, kind, truncate(value));
         return null;
     }
 
@@ -104,4 +111,5 @@ public final class Brand {
     public String getDisplayName() { return displayName; }
     public Map<String, String> getCssVariables() { return cssVariables; }
     public String getLoginLogoDataUri() { return loginLogoDataUri; }
+    public String getFaviconDataUri() { return faviconDataUri; }
 }

@@ -55,7 +55,14 @@
     <#else>
     <title>${msg("loginTitle",(realm.displayName!''))}</title>
     </#if>
+    <#-- Per-firm favicon when brand provides one; theme default otherwise.
+         Data URI is server-validated in Brand.java (same allowlist as the
+         login logo). -->
+    <#if brand?? && brand.faviconDataUri??>
+    <link rel="icon" href="${brand.faviconDataUri}" />
+    <#else>
     <link rel="icon" href="${url.resourcesPath}/img/favicon.ico" />
+    </#if>
     <#if properties.stylesCommon?has_content>
         <#list properties.stylesCommon?split(' ') as style>
             <link href="${url.resourcesCommonPath}/${style}" rel="stylesheet" />

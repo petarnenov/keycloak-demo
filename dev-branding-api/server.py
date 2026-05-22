@@ -362,10 +362,15 @@ class Handler(BaseHTTPRequestHandler):
                     # Real Tomcat servlet is expected to follow the contract; the
                     # SPI tolerates either shape (assets.* takes precedence later).
                     response = dict(brand)
-                    logo_bytes = ASSETS.get(code, {}).get("logo-login")
+                    code_assets = ASSETS.get(code, {})
+                    logo_bytes = code_assets.get("logo-login")
                     if logo_bytes:
                         b64 = base64.b64encode(logo_bytes).decode("ascii")
                         response["loginLogoDataUri"] = f"data:image/svg+xml;base64,{b64}"
+                    favicon_bytes = code_assets.get("favicon")
+                    if favicon_bytes:
+                        b64 = base64.b64encode(favicon_bytes).decode("ascii")
+                        response["faviconDataUri"] = f"data:image/svg+xml;base64,{b64}"
                     poison_suffix = ""
                     if self.inject_poison:
                         # Don't mutate BRANDS — that would compound across
