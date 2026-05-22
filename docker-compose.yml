@@ -75,7 +75,7 @@ services:
       # the geowealth Tomcat isn't running yet. host.docker.internal resolves
       # to the dev machine's loopback on Docker Desktop / Podman (macOS).
       # On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]`.
-      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_URL: "http://host.docker.internal:8080"
+      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_URL: "${POC_BRANDING_API_URL:-http://host.docker.internal:8080}"
       KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_TOKEN: "${POC_BRANDING_API_TOKEN}"
       KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_CACHE_TTL_SECONDS: "60"
     volumes:
