@@ -42,7 +42,7 @@ Demonstrate that the Keycloak login page can render with firm-specific branding 
   ┌─────────────────────┐                     ┌──────────────────────────────────┐
   │ Browser              │                     │                                  │
   │  ↓                   │                     │  ┌────────────────────────────┐  │
-  │ changepath.localhost │ ──────8888───────►  │  │ Keycloak (start-dev)        │  │
+  │ changepath.localhost │ ──────8898───────►  │  │ Keycloak (start-dev)        │  │
   │ default.localhost    │                     │  │  realm: geowealth-realm     │  │
   │ (5174)               │                     │  │  theme: geowealth-wl        │  │
   │  ↓                   │                     │  │  + ThemeSelectorProvider    │  │
@@ -67,7 +67,7 @@ Demonstrate that the Keycloak login page can render with firm-specific branding 
 ```
 
 **Host boundaries that matter:**
-- **Browser → Keycloak:** `http://changepath.localhost:8888` or `http://default.localhost:8888`. Browser sends the Host header; Keycloak's `ThemeSelectorProvider` reads it.
+- **Browser → Keycloak:** `http://changepath.localhost:8898` or `http://default.localhost:8898`. Browser sends the Host header; Keycloak's `ThemeSelectorProvider` reads it.
 - **Browser → POC app:** `http://changepath.localhost:5174` or `http://default.localhost:5174`. The POC app derives the firm code from its own Host and uses it when constructing the OIDC `auth` URL.
 - **Keycloak → GeoWealth:** `http://host.docker.internal:8080/branding-api/keycloak/...` (Docker Desktop / Podman macOS). Linux fallback: `--add-host=host.docker.internal:host-gateway` in compose. Podman: `host.containers.internal` (per `dev-bff.sh` precedent in this repo).
 - **GeoWealth → Keycloak:** **none in this POC.** Branding sync is one-way pull. Full SSO (separate track) would need this.
@@ -91,7 +91,7 @@ Two branches, one per repo. Both off the agreed parents.
 | Repo | Branch | Parent | Purpose |
 |---|---|---|---|
 | `keycloak-demo` | `petarnenov/geowealth-whitelabel-poc` | `petarnenov/onboarding-mfe-monorepo` (current) | Theme, ThemeSelectorProvider, branding client, POC demo app, new realm export |
-| `geowealth` | `petarnenov/keycloak-whitelabel-poc` | `master` | Branding API endpoint, service-token plumbing, code-analysis-driven decisions |
+| `geowealth` | `team/petarnenov/keycloak-whitelabel-poc` | `master` | Branding API endpoint, service-token plumbing, code-analysis-driven decisions |
 
 **Conventions:**
 - One commit per logical step in the phase plan below; matches existing commit style (plain prose, no emoji, `Co-Authored-By: Claude` trailer).
@@ -135,7 +135,7 @@ Total: **~5–6 working days** on the Keycloak side, **~3–4 working days** on 
   Modern macOS resolves `*.localhost` to 127.0.0.1 automatically, but explicit entries avoid surprises and match what other devs will need.
 - [ ] **Validate Keycloak host header tolerance.** In dev mode (`start-dev`, already in `docker-compose.yml:56`), Keycloak accepts arbitrary `Host` and uses the browser-visible host for redirects. Confirm with:
   ```bash
-  curl -sI -H 'Host: changepath.localhost:8888' http://localhost:8888/realms/master/protocol/openid-connect/auth | head -5
+  curl -sI -H 'Host: changepath.localhost:8898' http://localhost:8898/realms/master/protocol/openid-connect/auth | head -5
   ```
   Expect 200/302. If 400 (hostname strict), add `KC_HOSTNAME_STRICT: "false"` to the keycloak service env in docker-compose.
 - [ ] **Add a new compose service `geowealth-poc`** at port `5174`, mirroring the existing `shell` service pattern (bind-mount `./frontend`, `npm install`, `npm run -w geowealth-poc dev`). Do **not** modify existing services.
@@ -143,7 +143,7 @@ Total: **~5–6 working days** on the Keycloak side, **~3–4 working days** on 
 
 ### 4.2 geowealth side
 
-- [ ] **Create branch:** `git checkout -b petarnenov/keycloak-whitelabel-poc` from `master`.
+- [ ] **Create branch:** `git checkout -b team/petarnenov/keycloak-whitelabel-poc` from `master`.
 - [ ] **Confirm local Tomcat 8080 access.** `curl http://localhost:8080/` (or wherever GeoWealth root is). Verify the existing branded portal renders for at least the default firm.
 - [ ] **Confirm Keycloak container can reach the host.** From the host:
   ```bash
@@ -158,7 +158,7 @@ Total: **~5–6 working days** on the Keycloak side, **~3–4 working days** on 
 - [ ] **Agree on a service-token value** for POC (e.g., `POC_BRANDING_API_TOKEN=<random-32-bytes-base64>`). Distribute via `.envrc` on both sides (gitignored). Bake into Keycloak as an env var on the keycloak service; bake into GeoWealth as a `geowealth.json` / `geowealth.yaml` override.
 - [ ] **Pin the JSON contract** in a single committed file: `keycloak-demo/contracts/branding-api.openapi.yaml`. Both sides regenerate / reference this. Mirrors how the user-service ↔ Keycloak SPI contract works in this repo (`user-api/openapi.yaml`, see `CLAUDE.md`).
 
-**Phase 0 exit criteria:** branches exist; both apps run independently; browser can reach `changepath.localhost:8888` and see (un-branded) Keycloak; Keycloak container can reach `host.docker.internal:8080`.
+**Phase 0 exit criteria:** branches exist; both apps run independently; browser can reach `changepath.localhost:8898` and see (un-branded) Keycloak; Keycloak container can reach `host.docker.internal:8080`.
 
 ---
 
@@ -201,17 +201,17 @@ Goal: prove the theme + realm wiring with hard-coded values. Eliminates "is it t
   --theme-body-background: #f5f5f5;
   ```
   (These are the real values from `etc/whitelabel/changepath/changepath_color_theme.json` in geowealth.)
-- [ ] **Build & smoke test.** `podman compose build keycloak && podman compose up -d --force-recreate keycloak`. Open `http://changepath.localhost:8888/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http://changepath.localhost:5174/&scope=openid` and visually verify the ChangePath colors appear.
+- [ ] **Build & smoke test.** `podman compose build keycloak && podman compose up -d --force-recreate keycloak`. Open `http://changepath.localhost:8898/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http://changepath.localhost:5174/&scope=openid` and visually verify the ChangePath colors appear.
 
 ### 5.2 POC demo app (still keycloak-demo side)
 
 - [ ] **Implement `apps/geowealth-poc/src/App.tsx`** (~30 lines):
   - Reads `window.location.hostname`, parses subdomain → derives firm code (`changepath`, `default`).
   - Displays "You are signing in to ChangePath" (or "GeoWealth").
-  - "Sign in" button → triggers keycloak-js `login()` against `http://${hostname}:8888/realms/geowealth-realm`. The Keycloak base URL uses **the same hostname as the browser** so the Host header propagates.
+  - "Sign in" button → triggers keycloak-js `login()` against `http://${hostname}:8898/realms/geowealth-realm`. The Keycloak base URL uses **the same hostname as the browser** so the Host header propagates.
   - On login success → display username + roles, plus a "Logout" button. Nothing else.
 - [ ] **Auth provider**: a stripped-down version of `apps/shell/src/auth/AuthProvider.tsx` — same singleton pattern, no MFE federation, no TanStack Query.
-- [ ] **Smoke test.** `curl -I http://changepath.localhost:5174/` returns 200 from Vite dev server. Click through full login → return → confirm `iss` on the access token = `http://changepath.localhost:8888/realms/geowealth-realm`.
+- [ ] **Smoke test.** `curl -I http://changepath.localhost:5174/` returns 200 from Vite dev server. Click through full login → return → confirm `iss` on the access token = `http://changepath.localhost:8898/realms/geowealth-realm`.
 
 ### 5.3 geowealth side
 
@@ -283,7 +283,7 @@ This is the phase that demonstrates the actual sync. Both repos contribute in pa
   KC_SPI_THEME_SELECTOR_GEOWEALTH_BASE_URL: http://host.docker.internal:8080
   KC_SPI_THEME_SELECTOR_GEOWEALTH_TOKEN: ${POC_BRANDING_API_TOKEN}
   ```
-- [ ] **CSP**: keep Keycloak's default CSP. If the logo `<img>` URL is on a different origin from Keycloak (e.g., `http://host.docker.internal:8080/...` vs the browser-side `http://changepath.localhost:8888/...`), proxy the asset URL through Keycloak. Either:
+- [ ] **CSP**: keep Keycloak's default CSP. If the logo `<img>` URL is on a different origin from Keycloak (e.g., `http://host.docker.internal:8080/...` vs the browser-side `http://changepath.localhost:8898/...`), proxy the asset URL through Keycloak. Either:
   - Use Keycloak's `theme-resources` mechanism (heavy — defeats dynamism), **OR**
   - Add a tiny `RealmResourceProvider` at `/realms/geowealth-realm/branding-assets/{code}/{kind}` that proxies the upstream BLOB. **Recommended** — preserves dev-mode CSP defaults.
 
@@ -300,7 +300,7 @@ This is the phase that demonstrates the actual sync. Both repos contribute in pa
 
 ## 7. GeoWealth-side code-analysis tasks
 
-> **Update (2026-05-22):** All six investigations are complete. Findings, evidence, and per-question decisions live in [`~/geowealth/keycloak-poc-findings.md`](file://~/geowealth/keycloak-poc-findings.md) on the `petarnenov/keycloak-whitelabel-poc` branch. Summary of resolved direction:
+> **Update (2026-05-22):** All six investigations are complete. Findings, evidence, and per-question decisions live in [`~/geowealth/keycloak-poc-findings.md`](file://~/geowealth/keycloak-poc-findings.md) on the `team/petarnenov/keycloak-whitelabel-poc` branch. Summary of resolved direction:
 >
 > | Q | Decision | Source |
 > |---|---|---|
@@ -495,7 +495,7 @@ A POC by definition cuts scope. This section lists what's deliberately deferred 
 
 These are non-blocking for starting Phase 0 but should be answered before Phase 2 lands.
 
-1. **Issuer URL stability** — do we let Keycloak issue tokens with `iss` matching the browser hostname (`http://changepath.localhost:8888/...`), or do we pin `KC_HOSTNAME_URL` to a canonical value? Affects token validation in the POC app. Recommendation: pin to `http://localhost:8888` and let the SPI read the original Host from `X-Forwarded-Host` / `Host` for theme selection only.
+1. **Issuer URL stability** — do we let Keycloak issue tokens with `iss` matching the browser hostname (`http://changepath.localhost:8898/...`), or do we pin `KC_HOSTNAME_URL` to a canonical value? Affects token validation in the POC app. Recommendation: pin to `http://localhost:8898` and let the SPI read the original Host from `X-Forwarded-Host` / `Host` for theme selection only.
 2. **Webhook invalidation** — defer to Phase 2 of the architecture doc, or include lightweight invalidation in this POC? Recommendation: defer.
 3. **Email theme** — out of scope for this POC, confirmed. Tracked for future phase.
 4. **GeoWealth admin UI** — does the POC need any change to the admin UI ("Login preview" button)? Recommendation: no — out of scope.
@@ -506,7 +506,7 @@ These are non-blocking for starting Phase 0 but should be answered before Phase 
 
 A single demo run that satisfies all of:
 
-- ✅ Visiting `http://changepath.localhost:5174/` renders a ChangePath-themed Keycloak login at `changepath.localhost:8888` with the actual ChangePath colors and logo from the live GeoWealth DB.
+- ✅ Visiting `http://changepath.localhost:5174/` renders a ChangePath-themed Keycloak login at `changepath.localhost:8898` with the actual ChangePath colors and logo from the live GeoWealth DB.
 - ✅ Visiting `http://default.localhost:5174/` renders the default GeoWealth-themed login.
 - ✅ The first login per firm per minute triggers exactly one `GET /branding-api/keycloak/whitelabel/...` call in GeoWealth's access log. Subsequent logins in the same minute trigger zero calls.
 - ✅ Stopping the GeoWealth Tomcat does not break the login flow — cached or default brand is served instead.

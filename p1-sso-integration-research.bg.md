@@ -31,7 +31,7 @@
 |---|---|
 | FE | React shell на `localhost:5173` + 3 MFE federation remotes (`5181/5182/5183`) |
 | Auth механизъм | Authorization Code + PKCE към Keycloak |
-| Keycloak URL | `localhost:8888`, realm = `demo-realm` |
+| Keycloak URL | `localhost:8898`, realm = `demo-realm` |
 | OIDC client | `mfe-shell-client` |
 | 2FA | Email OTP authenticator + HMAC trust cookie (60 мин) |
 | User store | Standalone Micronaut REST service (`user-service/`) + Keycloak User Storage SPI |
@@ -326,7 +326,7 @@ Solution 2 е **единственото решение** което удовл�
 
 ```
                     ┌─────────────────────────────────────────────┐
-                    │  Keycloak container (localhost:8888)         │
+                    │  Keycloak container (localhost:8898)         │
                     │   demo-realm                                 │
                     │     ├─ mfe-shell-client (existing)           │
                     │     └─ Identity Provider: "p1-saml" ← NEW    │

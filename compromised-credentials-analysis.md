@@ -14,7 +14,7 @@ Every `/api/...` request to a BFF goes through:
    (`KEYCLOAK_AUTH_SERVER_URL`). Tampered / signed with a different key
    → 401.
 3. **Issuer + `exp`** — `iss` has to match
-   `http://localhost:8888/realms/demo-realm`; expired → 401.
+   `http://localhost:8898/realms/demo-realm`; expired → 401.
 4. **Role gate** — `APP_ALLOWED_ROLES` (per-BFF env) is checked against
    the roles in the JWT. Mismatch → 403.
 5. **Endpoint logic** — only now does `UserController` run.

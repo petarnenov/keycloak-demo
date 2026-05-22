@@ -197,7 +197,7 @@ Server-side theme selection doesn't help here — the toggle must be client-side
 ### 6.9 Reverse proxy
 - For header-based theme selection: set `--proxy-headers xforwarded` (or `forwarded` for RFC7239) in Keycloak 26.
 - The reverse proxy **must** re-set `X-Forwarded-Host` (not just append), otherwise it will forward client-supplied values.
-- Locally: `localhost:8888` won't trigger subdomain logic — you need `*.localhost` or `/etc/hosts` entries to test.
+- Locally: `localhost:8898` won't trigger subdomain logic — you need `*.localhost` or `/etc/hosts` entries to test.
 
 ### 6.10 Hot reload across a cluster
 - It doesn't exist painlessly. Rolling restart with a health-checked drain is the standard.

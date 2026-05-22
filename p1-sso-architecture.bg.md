@@ -43,7 +43,7 @@
          ▼                     ▼                         ▼
 ┌────────────────┐    ┌─────────────────┐    ┌──────────────────────────┐
 │  P1 (Tomcat)   │    │  Keycloak       │    │  BFFs (3x Micronaut)     │
-│   :8080        │◄──►│   :8888         │    │   bff-client :8081       │
+│   :8080        │◄──►│   :8898         │    │   bff-client :8081       │
 │                │    │   demo-realm    │    │   bff-ops    :8082       │
 │  SAML IdP      │    │                 │    │   bff-admin  :8083       │
 │  endpoints:    │    │  IdPs:          │    │                          │
@@ -87,7 +87,7 @@
 1. **Page load** `GET http://localhost:5173/`
    - Shell bundle loads.
    - `AuthProvider.tsx` стартира `keycloak.init({ onLoad: 'check-sso', pkceMethod: 'S256' })`.
-   - Silent SSO iframe: `GET http://localhost:8888/realms/demo-realm/protocol/openid-connect/auth?...&prompt=none`.
+   - Silent SSO iframe: `GET http://localhost:8898/realms/demo-realm/protocol/openid-connect/auth?...&prompt=none`.
    - No realm cookie → iframe returns with `?error=login_required`. `authenticated = false`.
 
 2. **User clicks "Sign in"**
@@ -204,7 +204,7 @@ Browser              Shell              Keycloak           user-service
 4. P1 `IdpSsoAction` checks active session, builds signed `<samlp:Response>` (assertion includes NameID + attributes: `email`, `firstName`, `lastName`, `firmCd`, `roles`).
 5. P1 returns HTTP POST form auto-submit:
    ```html
-   <form action="http://localhost:8888/realms/demo-realm/broker/p1/endpoint" method="POST">
+   <form action="http://localhost:8898/realms/demo-realm/broker/p1/endpoint" method="POST">
      <input name="SAMLResponse" value="<base64>"/>
      <input name="RelayState" value="keycloak-demo"/>
    </form>

@@ -14,7 +14,7 @@
 #      its env, using docker-compose.dev.yml so the variable is honoured.
 #   4. exec `./gradlew run -t --no-daemon` with all the env vars the BFF
 #      would normally get from compose — KEYCLOAK_AUTH_SERVER_URL points at
-#      the *browser*-facing Keycloak URL (http://localhost:8888) so the
+#      the *browser*-facing Keycloak URL (http://localhost:8898) so the
 #      issuer claim in browser-minted tokens matches.
 #
 # Prereqs:
@@ -115,7 +115,7 @@ exec env \
   APP_SOURCE="$name" \
   MICRONAUT_APPLICATION_NAME="$name" \
   CORS_ORIGIN="http://localhost:5173" \
-  KEYCLOAK_AUTH_SERVER_URL="http://localhost:8888/realms/demo-realm" \
+  KEYCLOAK_AUTH_SERVER_URL="http://localhost:8898/realms/demo-realm" \
   APP_ALLOWED_ROLES="$roles" \
   MICRONAUT_SERVER_PORT="$port" \
   ./gradlew run -t --no-daemon

@@ -89,7 +89,7 @@ services:
     networks:
       - keycloak-network
     ports:
-      - "8888:8080"
+      - "8898:8080"
     healthcheck:
       test:
         [
@@ -136,7 +136,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_KEYCLOAK_URL: http://localhost:8888
+      VITE_KEYCLOAK_URL: http://localhost:8898
       VITE_KEYCLOAK_CLIENT_ID: mfe-shell-client
       VITE_APP_NAME: "Demo Shell"
       VITE_APP_TITLE: "Microfrontend SSO Demo"

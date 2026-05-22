@@ -46,7 +46,7 @@ Always (the minimum for login + the shell to mount):
 |---|---|
 | `postgres` | Keycloak's realm + session store |
 | `user-service` | Demo user store the Keycloak SPI calls over REST |
-| `keycloak` | OIDC IdP on `:8888` |
+| `keycloak` | OIDC IdP on `:8898` |
 | `shell` | The React host on `:5173` that loads MFE remotes |
 | `bff-client` | Serves `/api/whoami` for the shell (also serves `mfe-client`) |
 

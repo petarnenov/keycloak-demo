@@ -31,7 +31,7 @@ Research and architectural decision for adding a "Demo MFE-BFF" entry to the P1 
 |---|---|
 | FE | React shell at `localhost:5173` + 3 MFE federation remotes (`5181/5182/5183`) |
 | Auth mechanism | Authorization Code + PKCE against Keycloak |
-| Keycloak URL | `localhost:8888`, realm = `demo-realm` |
+| Keycloak URL | `localhost:8898`, realm = `demo-realm` |
 | OIDC client | `mfe-shell-client` |
 | 2FA | Email OTP authenticator + HMAC trust cookie (60 min) |
 | User store | Standalone Micronaut REST service (`user-service/`) + Keycloak User Storage SPI |
@@ -326,7 +326,7 @@ Solution 2 is the **only solution** that satisfies all four constraints simultan
 
 ```
                     ┌─────────────────────────────────────────────┐
-                    │  Keycloak container (localhost:8888)         │
+                    │  Keycloak container (localhost:8898)         │
                     │   demo-realm                                 │
                     │     ├─ mfe-shell-client (existing)           │
                     │     └─ Identity Provider: "p1-saml" ← NEW    │

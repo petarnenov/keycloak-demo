@@ -74,7 +74,7 @@ keycloak.init({
 ```
 
 `check-sso` mounts a hidden iframe that loads
-`http://localhost:8888/realms/demo-realm/protocol/openid-connect/auth?...&prompt=none`.
+`http://localhost:8898/realms/demo-realm/protocol/openid-connect/auth?...&prompt=none`.
 Keycloak inspects the realm cookie (`KEYCLOAK_IDENTITY` / `AUTH_SESSION_ID`)
 inside the iframe:
 
@@ -92,7 +92,7 @@ which delegates to `keycloak.login({ redirectUri: window.location.origin + '/' }
 The browser navigates to:
 
 ```
-GET http://localhost:8888/realms/demo-realm/protocol/openid-connect/auth
+GET http://localhost:8898/realms/demo-realm/protocol/openid-connect/auth
     ?client_id=mfe-shell-client
     &response_type=code
     &scope=openid
@@ -175,7 +175,7 @@ code in the URL). `keycloak-js` notices the params, performs the PKCE token
 exchange:
 
 ```
-POST http://localhost:8888/realms/demo-realm/protocol/openid-connect/token
+POST http://localhost:8898/realms/demo-realm/protocol/openid-connect/token
    grant_type=authorization_code
    client_id=mfe-shell-client
    code=...
@@ -258,7 +258,7 @@ User clicks "Sign out" in the Nav. The shell calls
 `useAuth().logout()` → `keycloak.logout()`. The browser is redirected to:
 
 ```
-GET http://localhost:8888/realms/demo-realm/protocol/openid-connect/logout
+GET http://localhost:8898/realms/demo-realm/protocol/openid-connect/logout
     ?post_logout_redirect_uri=http://localhost:5173/
     &id_token_hint=<id_token>
 ```
@@ -429,7 +429,7 @@ These are deliberate trade-offs for a runnable demo. Each is acceptable
     works against `bff-client` and `bff-ops` too.
 14. **`KEYCLOAK_AUTH_SERVER_URL` mismatch tolerance.** The compose BFFs are
     configured with `http://keycloak:8080/realms/demo-realm` (in-network),
-    but tokens minted by the browser carry `http://localhost:8888/...` as
+    but tokens minted by the browser carry `http://localhost:8898/...` as
     `iss`. Micronaut's JWT validator currently tolerates this; a stricter
     validator would reject. Make them match in prod (which means a real
     public Keycloak URL).

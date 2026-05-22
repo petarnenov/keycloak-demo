@@ -40,7 +40,7 @@ shell at :5173 proxies …
 
 Identity & second factor:
 
-  Keycloak            :8888    realm "demo-realm" — single client `mfe-shell-client`
+  Keycloak            :8898    realm "demo-realm" — single client `mfe-shell-client`
     ├─ User Storage SPI         (keycloak-provider/)
     │     │  HTTP (generated from user-api/openapi.yaml)
     │     ▼
@@ -100,7 +100,7 @@ Enforcement is **two-layered**:
 |---------|-----------|------|
 | PostgreSQL | (internal) | Keycloak metadata + sessions — **not** end users |
 | user-service | 8090 | Standalone Micronaut store of the demo users; the Keycloak SPI's REST backend |
-| Keycloak | 8888 | Auth server; realm `demo-realm`; single client `mfe-shell-client` |
+| Keycloak | 8898 | Auth server; realm `demo-realm`; single client `mfe-shell-client` |
 | shell | 5173 | Vite dev server. React shell with the singleton `keycloak-js`, federation host, `/api/*` proxy |
 | mfe-client | 5181 | Vite **preview** (`build && preview`). Federation remote `mfeClient`, exposes `./Mfe`. Multi-page (`/`, `/profile`, `/protected`). |
 | mfe-ops | 5182 | Vite **preview**. Federation remote `mfeOps`, exposes `./Mfe`. Single page. |
@@ -144,7 +144,7 @@ Three modes, each one command.
 | **2 — MFE rebuild-on-save** | Actively writing MFE source | `./start.sh --dev` | Save → ~1-2s incremental rebuild inside the container → hard-refresh the browser. No `--force-recreate`. |
 | **3 — BFF on the host** | Actively writing BFF source | `./start.sh --dev` then `./dev-bff.sh client\|ops\|admin` | Save → ~3s Gradle incremental → Micronaut restart in place |
 
-`./start.sh --dev` adds `docker-compose.dev.yml` and switches the MFE containers to `vite build --watch + vite preview`. `./dev-bff.sh` detects docker vs podman, stops the compose BFF for the chosen role, recreates the shell with the right host-gateway URL (`host.docker.internal` for Docker, `host.containers.internal` for Podman), and then execs `./gradlew run -t --no-daemon` in the foreground. Tokens minted in the browser use `http://localhost:8888/realms/demo-realm` as the issuer — the script sets `KEYCLOAK_AUTH_SERVER_URL` to match.
+`./start.sh --dev` adds `docker-compose.dev.yml` and switches the MFE containers to `vite build --watch + vite preview`. `./dev-bff.sh` detects docker vs podman, stops the compose BFF for the chosen role, recreates the shell with the right host-gateway URL (`host.docker.internal` for Docker, `host.containers.internal` for Podman), and then execs `./gradlew run -t --no-daemon` in the foreground. Tokens minted in the browser use `http://localhost:8898/realms/demo-realm` as the issuer — the script sets `KEYCLOAK_AUTH_SERVER_URL` to match.
 
 **Iterating on one MFE only?** Use `./dev-mfe-client.sh`, `./dev-mfe-ops.sh`, or `./dev-mfe-admin.sh` (all three wrap `./dev-mfe.sh <which>`). Each brings up just `postgres + user-service + keycloak + shell + bff-client + mfe-<which> + bff-<which>` in Level 2 mode and skips the other two MFE pairs. Full walkthrough in [DEV-MFE.md](./DEV-MFE.md).
 
@@ -215,7 +215,7 @@ Browser → shell origin only; the shell's Vite proxy fans out to the right BFF 
 These are exactly the operations declared in `user-api/openapi.yaml`. Password only ever travels in the `verify-credentials` request body.
 
 ### Keycloak Admin
-- URL: http://localhost:8888
+- URL: http://localhost:8898
 - Credentials: `admin` / `admin`
 
 ## Verifying the role matrix from a shell
@@ -224,7 +224,7 @@ The script uses direct-grant (no OTP) so it's fast — and that's exactly why it
 
 ```bash
 for u in democlient demouser demoadmin; do
-  T=$(curl -s -X POST "http://localhost:8888/realms/demo-realm/protocol/openid-connect/token" \
+  T=$(curl -s -X POST "http://localhost:8898/realms/demo-realm/protocol/openid-connect/token" \
     -d "client_id=mfe-shell-client&grant_type=password&username=$u&password=123" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
   curl -s -H "Authorization: Bearer $T" "http://localhost:8081/api/whoami" \
@@ -244,7 +244,7 @@ Then check the per-BFF gating (200 vs 403 — same Bearer token, three BFF ports
 
 ```bash
 for u in democlient demouser demoadmin; do
-  T=$(curl -s -X POST "http://localhost:8888/realms/demo-realm/protocol/openid-connect/token" \
+  T=$(curl -s -X POST "http://localhost:8898/realms/demo-realm/protocol/openid-connect/token" \
     -d "client_id=mfe-shell-client&grant_type=password&username=$u&password=123" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
   line="$(printf '%-11s' $u)"
