@@ -189,8 +189,17 @@ button.pf-v5-c-button.pf-m-primary:hover {
 <div class="${properties.kcLogin!}">
   <div class="${properties.kcLoginContainer!}">
     <header id="kc-header" class="pf-v5-c-login__header">
+      <#-- Brand displayName wins over realm displayName when the
+           GeoWealthLoginFormsProvider injected the brand attribute for
+           this render. Plain ${...} interpolation auto-escapes under
+           Keycloak's FreeMarker output_format, so a Brand.displayName
+           with unexpected HTML can't break out of the text context. -->
+      <#if brand??>
+      <div id="kc-header-wrapper" class="pf-v5-c-brand">${brand.displayName}</div>
+      <#else>
       <div id="kc-header-wrapper"
               class="pf-v5-c-brand">${kcSanitize(msg("loginTitleHtml",(realm.displayNameHtml!'')))?no_esc}</div>
+      </#if>
     </header>
     <main class="${properties.kcLoginMain!}">
       <div class="${properties.kcLoginMainHeader!}">
