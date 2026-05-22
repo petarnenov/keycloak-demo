@@ -31,7 +31,7 @@ public final class BrandingService {
 
     private final BrandingApiClient apiClient;   // may be null = disabled
     private final BrandingCache<String> hostCache;
-    private final BrandingCache<Brand> brandCache;
+    private final BrandingCache<CachedBrand> brandCache;
     private final BrandRegistry fallback;
 
     public BrandingService(BrandingApiClient apiClient, Duration ttl, BrandRegistry fallback) {
@@ -42,6 +42,24 @@ public final class BrandingService {
     }
 
     public Brand lookupByHost(String host) {
+        return lookupByHostResolved(host).brand();
+    }
+
+    /**
+     * Same fail-open chain as {@link #lookupByHost(String)}, but also
+     * surfaces whether the brand came from the registry-fallback path so
+     * the template / caller can render a "fallback active" indicator.
+     *
+     * <p>"Fallback" is defined as <em>any</em> {@code brand_src} that
+     * starts with {@code registry_fallback} — covers both
+     * {@code registry_fallback} (API attempted, returned 4xx/5xx/parse
+     * error) and {@code registry_fallback_skip} (API skipped because the
+     * lookup leg already failed). The cache_hit path is not flagged: a
+     * cached brand is the same brand the API or registry produced
+     * earlier, so re-tagging it would just flicker as the cache fills /
+     * expires.</p>
+     */
+    public BrandResolution lookupByHostResolved(String host) {
         long started = System.nanoTime();
         Resolved<String> code = resolveCode(host);
         // If the lookup call just failed (host_derived after an API
@@ -50,7 +68,7 @@ public final class BrandingService {
         // double the login latency for no chance of success. Skip
         // straight to the registry fallback.
         boolean skipBrandApi = "host_derived".equals(code.source()) && apiClient != null;
-        Resolved<Brand> brand = resolveBrand(code.value(), skipBrandApi);
+        Resolved<CachedBrand> resolved = resolveBrand(code.value(), skipBrandApi);
         long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
         // One line per template render with everything an operator needs to
         // grep for: did the cache help, did the API succeed, did we fall
@@ -59,13 +77,30 @@ public final class BrandingService {
         LOG.infof(
             "Branding: host=%s code=%s code_src=%s brand_src=%s latency_ms=%d",
             host == null ? "-" : host,
-            brand.value().getCode(),
+            resolved.value().brand().getCode(),
             code.source(),
-            brand.source(),
+            resolved.source(),
             elapsedMs
         );
-        return brand.value();
+        return new BrandResolution(resolved.value().brand(), resolved.value().fallback());
     }
+
+    /**
+     * Brand plus a "this came from the in-process fallback" flag. The flag
+     * lets the FreeMarker template render a discreet "fallback active"
+     * banner without hardcoding the source-string contract into the
+     * template.
+     */
+    public record BrandResolution(Brand brand, boolean fallback) {}
+
+    /**
+     * Cache value: the resolved Brand plus a sticky "this came from
+     * registry fallback" flag. Keeping the flag in the cache means a
+     * subsequent {@code cache_hit} for the same code still surfaces the
+     * fallback state — the alternative (recomputing fallback from the
+     * resolution source string) loses the bit on every cached render.
+     */
+    private record CachedBrand(Brand brand, boolean fallback) {}
 
     private Resolved<String> resolveCode(String host) {
         if (host == null || host.isEmpty()) {
@@ -96,11 +131,13 @@ public final class BrandingService {
         return new Resolved<>(derived, "host_derived");
     }
 
-    private Resolved<Brand> resolveBrand(String code, boolean skipApi) {
+    private Resolved<CachedBrand> resolveBrand(String code, boolean skipApi) {
         if (code == null) code = BrandRegistry.DEFAULT_CODE;
 
-        // 1) Cache hit.
-        Optional<Brand> cached = brandCache.get(code);
+        // 1) Cache hit. The cached CachedBrand carries the fallback flag
+        //    from whenever it was first resolved, so a fallback brand that
+        //    sits in cache for the TTL keeps reporting fallback=true.
+        Optional<CachedBrand> cached = brandCache.get(code);
         if (cached.isPresent()) {
             return new Resolved<>(cached.get(), "cache_hit");
         }
@@ -110,18 +147,21 @@ public final class BrandingService {
         if (apiClient != null && !skipApi) {
             Optional<Brand> fromApi = apiClient.fetchBrand(code);
             if (fromApi.isPresent()) {
-                brandCache.put(code, fromApi.get());
-                return new Resolved<>(fromApi.get(), "api_hit");
+                CachedBrand cb = new CachedBrand(fromApi.get(), false);
+                brandCache.put(code, cb);
+                return new Resolved<>(cb, "api_hit");
             }
         }
 
         // 3) Hardcoded fallback. BrandRegistry has the demo default plus
         //    ChangePath so the visual continues to differentiate even
         //    without GeoWealth. Cache the fallback too so we don't hammer
-        //    the API every request while it's down.
+        //    the API every request while it's down — and tag it so a
+        //    subsequent cache_hit still surfaces fallback=true.
         Brand fb = fallback.lookupByCode(code);
-        brandCache.put(code, fb);
-        return new Resolved<>(fb, skipApi ? "registry_fallback_skip" : "registry_fallback");
+        CachedBrand cb = new CachedBrand(fb, true);
+        brandCache.put(code, cb);
+        return new Resolved<>(cb, skipApi ? "registry_fallback_skip" : "registry_fallback");
     }
 
     /**

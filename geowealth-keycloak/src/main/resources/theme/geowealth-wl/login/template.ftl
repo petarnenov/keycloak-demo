@@ -104,6 +104,28 @@ button.pf-v5-c-button.pf-m-primary:hover {
     background-color: var(--pf-v5-global--link--Color--hover, #0e4e79) !important;
     border-color: var(--pf-v5-global--link--Color--hover, #0e4e79) !important;
 }
+<#-- Fallback banner styling. Rendered only when brandFallback is true
+     (set by GeoWealthLoginFormsProvider when BrandingService returned a
+     registry_fallback path). Amber so it's visible against either the
+     light or dark brand gradient; non-blocking (pointer-events:none) so
+     it never interferes with the login form. -->
+<#if brandFallback?? && brandFallback>
+#geowealth-fallback-banner {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #f59f00;
+    color: #1d1f21;
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 4px 14px;
+    border-radius: 0 0 6px 6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    z-index: 9999;
+    letter-spacing: 0.02em;
+}
+</#if>
     </style>
     </#if>
     <#-- END GEOWEALTH BRAND OVERRIDE -->
@@ -151,6 +173,18 @@ button.pf-v5-c-button.pf-m-primary:hover {
 </head>
 
 <body id="keycloak-bg" class="${properties.kcBodyClass!}">
+
+<#if brandFallback?? && brandFallback>
+<#-- Discreet operator-facing indicator. The text is intentionally short
+     and unlocalized (operators see logs in English); it only renders
+     when BrandingService returned a registry_fallback* source, i.e. the
+     GeoWealth API was unreachable, returned a non-200 / 404 for the
+     code, served malformed JSON, or timed out. A normal cache_hit /
+     api_hit render shows nothing. -->
+<div id="geowealth-fallback-banner" role="status" aria-live="polite">
+    Branding fallback active
+</div>
+</#if>
 
 <div class="${properties.kcLogin!}">
   <div class="${properties.kcLoginContainer!}">

@@ -2,6 +2,7 @@ package com.geowealth.keycloak.forms;
 
 import com.geowealth.keycloak.branding.Brand;
 import com.geowealth.keycloak.branding.BrandingService;
+import com.geowealth.keycloak.branding.BrandingService.BrandResolution;
 
 import org.jboss.logging.Logger;
 import org.keycloak.forms.login.freemarker.FreeMarkerLoginFormsProvider;
@@ -40,6 +41,7 @@ public class GeoWealthLoginFormsProvider extends FreeMarkerLoginFormsProvider {
 
     private static final String GEOWEALTH_REALM = "geowealth-realm";
     private static final String ATTR_NAME = "brand";
+    private static final String ATTR_FALLBACK = "brandFallback";
 
     private final BrandingService brandingService;
 
@@ -51,11 +53,13 @@ public class GeoWealthLoginFormsProvider extends FreeMarkerLoginFormsProvider {
     @Override
     protected Response processTemplate(Theme theme, String templateName, Locale locale) {
         if (realm != null && GEOWEALTH_REALM.equals(realm.getName())) {
-            Brand brand = brandingService.lookupByHost(currentRequestHost());
+            BrandResolution resolved = brandingService.lookupByHostResolved(currentRequestHost());
+            Brand brand = resolved.brand();
             setAttribute(ATTR_NAME, brand);
+            setAttribute(ATTR_FALLBACK, resolved.fallback());
             if (LOG.isDebugEnabled()) {
-                LOG.debugf("Resolved brand for %s template: code=%s",
-                    templateName, brand.getCode());
+                LOG.debugf("Resolved brand for %s template: code=%s fallback=%s",
+                    templateName, brand.getCode(), resolved.fallback());
             }
         }
         return super.processTemplate(theme, templateName, locale);
