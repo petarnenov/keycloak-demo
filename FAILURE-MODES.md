@@ -2,7 +2,9 @@
 
 Records the four failure-mode probes from `geowealth-keycloak-poc-migration-plan.md` §9.1 against the running POC stack. Each section captures the result on a known-good run plus the exact command to re-run if anything looks off.
 
-All probes were run on the `petarnenov/geowealth-whitelabel-poc` branch with the fake branding API (`dev-branding-api/server.py`) standing in for the GeoWealth Tomcat. The fake was pinned to port `18080` for these runs so the real GeoWealth Tomcat on `:8080` could keep running undisturbed; Keycloak was pointed at it with `POC_BRANDING_API_URL=http://host.docker.internal:18080`. The default demo flow (URL unset → fall back to `:8080`) is unchanged.
+Probes 1-4 were run on the `petarnenov/geowealth-whitelabel-poc` branch with the fake branding API (`dev-branding-api/server.py`) standing in for the GeoWealth Tomcat. The fake was pinned to port `18080` for these runs so the real GeoWealth Tomcat on `:8080` could keep running undisturbed; Keycloak was pointed at it with `POC_BRANDING_API_URL=http://host.docker.internal:18080`. The default demo flow (URL unset → fall back to `:8080`) is unchanged.
+
+Probe 5 was run against the **real GeoWealth Tomcat** on `:8080` after syncing the bearer token (`POC_BRANDING_API_TOKEN` in `keycloak-demo/.envrc` matches the value `BrandingApiAuthFilter.init()` reads from the env on the geowealth side — kept in `~/tools/tomcat9/bin/setenv.sh` so it survives Tomcat restarts).
 
 The exit goal of §9.1 is **fail-open**: login must continue to render the correct firm's brand on every failure path, and worst-case latency must stay under 5 s. All four probes pass.
 
@@ -213,15 +215,79 @@ INFO  BrandingService:   Branding: host=slo.localhost:8898 code=cca code_src=cac
 
 ---
 
+## 5. Real BE reachable, brand data missing — registry fallback (observed 2026-05-22)
+
+Not from the original §9.1 list, but discovered the first time we pointed Keycloak at the *real* GeoWealth Tomcat instead of the fake. The Tomcat servlet is up, the auth filter accepts the synced token, `/lookup` returns 200 — but `/whitelabel/{code}` returns HTTP 404 with `{"error":"code-not-found"}` for every code we tried (`cca`, `changepath`, `semmax`, `demo`, `geowealth`). The real dev Oracle does not currently hold any seeded `BRAND` rows. This is exactly the production-ish "DB row was deleted / firm decommissioned / migration in progress" state — and the SPI handles it the same way it handles a downed backend: log WARN, fall back to the in-process `BrandRegistry`.
+
+Reproduce:
+
+```bash
+source .envrc   # POC_BRANDING_API_TOKEN must match the value Tomcat is using
+                # (we keep it in ~/tools/tomcat9/bin/setenv.sh so it survives
+                # Tomcat restarts).
+
+# (1) confirm the real backend is reachable and auth is synced.
+curl -s -o /dev/null -w '/lookup HTTP %{http_code}\n' \
+  -H "Authorization: Bearer $POC_BRANDING_API_TOKEN" \
+  "http://127.0.0.1:8080/branding-api/keycloak/whitelabel/lookup?host=changepath.localhost"
+# expected: /lookup HTTP 200
+
+# (2) confirm the brand fetch is missing.
+curl -s -w '\n--whitelabel/cca HTTP %{http_code}\n' \
+  -H "Authorization: Bearer $POC_BRANDING_API_TOKEN" \
+  "http://127.0.0.1:8080/branding-api/keycloak/whitelabel/cca"
+# expected: {"error":"code-not-found"}  --whitelabel/cca HTTP 404
+
+# (3) make sure Keycloak's compose env points at :8080 (the real Tomcat,
+#     not the fake on :18080). Default behavior when POC_BRANDING_API_URL
+#     is unset.
+docker inspect keycloak-demo-keycloak-1 \
+  --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  | grep BRANDING_API_URL
+# expected: KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_URL=http://host.docker.internal:8080
+
+# (4) drive a fresh login from changepath.localhost.
+curl -s -L -o /tmp/loginReal.html -w 'HTTP %{http_code} total=%{time_total}s\n' \
+  -H "Host: changepath.localhost:8898" \
+  "http://localhost:8898/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http%3A%2F%2Fchangepath.localhost%3A5174%2F&scope=openid&state=real"
+
+# (5) Keycloak log: WARN HTTP 404 from the brand fetch, INFO decision
+#     with code_src=api_hit (lookup worked) and brand_src=registry_fallback.
+docker logs --since 10s keycloak-demo-keycloak-1 \
+  | grep -E "Branding(:|Api)"
+```
+
+Expected log shape:
+
+```
+WARN  BrandingApiClient: BrandingApi http://host.docker.internal:8080/branding-api/keycloak/whitelabel/cca -> HTTP 404 after 5 ms
+INFO  BrandingService:   Branding: host=changepath.localhost:8898 code=cca code_src=api_hit brand_src=registry_fallback latency_ms=115
+```
+
+Two things differ from the fake-API scenarios above:
+
+1. **`brand_src=registry_fallback`, *not* `registry_fallback_skip`.** The "_skip" suffix only fires when the *lookup* call failed and `BrandingService` therefore declined to make the brand-fetch call at all. Here the lookup succeeded — the brand fetch is what 404'd — so the SPI fully exercises both API calls and falls back only on the second.
+2. **`code_src=api_hit` with rendered code = `cca`.** The real BE's `/lookup` returns `cca` for every host we probed, not just unknown ones. The Tomcat-side `identifyFirmByUrl()` either has not been wired up to a host→firm map in dev, or it has but the dev DB only ships the default firm. Either way, this is the real BE's current behavior, not a misconfiguration on the Keycloak side.
+
+**Cold-start gotcha.** The very first request to the real Tomcat after a fresh start took **11.2 s** (servlet warming up the auth filter + Spring/Akka context). Once warm, the same endpoint is ~5 ms. The SPI's 3 s request timeout would have tripped on the cold call — meaning the first POC login after a Tomcat restart could fail open via timeout, *not* 404. Worth noting in `OPERATIONS.md`: an apparent `BrandingApi timeout` spike at Tomcat startup is benign and self-clears within one warm request.
+
+**Latency budget.** Total login was 840 ms (warm Tomcat), well under the 5 s ceiling. With cold Tomcat (11 s) the first login would hit the 3 s timeout twice (once per call) → ~6 s before fallback completes. That exceeds the 5 s budget. If this becomes a real demo concern, options are: (a) warm Tomcat with a synthetic curl before showing the demo, (b) lower the Tomcat-side cold-start cost, or (c) tighten the SPI's per-call timeout (would cost availability on slow-but-healthy backends).
+
+**Why this isn't `§9.1.A — GeoWealth down`.** Both end in `registry_fallback`, but the SPI log shape is meaningfully different: Down emits `WARN ConnectException` (transport) + `host_derived` + `registry_fallback_skip`; this scenario emits `WARN HTTP 404` (server response) + `api_hit` + `registry_fallback`. Production alerts based on `host_derived` would *not* trip in this scenario — and that's correct: this is a data-shape problem upstream of the SPI, not a connectivity outage.
+
+---
+
 ## What the geowealth-side audit must add
 
 These items aren't reproducible here — they need the real Tomcat servlet — and should be recorded in `~/geowealth/keycloak-poc-findings.md` on `team/petarnenov/keycloak-whitelabel-poc`:
 
 | Item | What to verify |
 |---|---|
-| Same fail-open shape against real Tomcat | Stop the real Tomcat → fresh Keycloak login → expect the same `WARN ConnectException` / `host_derived` / `registry_fallback_skip` shape. The SPI is backend-agnostic; this is mostly a "no surprises" check. |
+| Same fail-open shape against real Tomcat (Tomcat *down*) | Stop the real Tomcat → fresh Keycloak login → expect the same `WARN ConnectException` / `host_derived` / `registry_fallback_skip` shape as scenario 1. The SPI is backend-agnostic; this is mostly a "no surprises" check. Not yet exercised — scenario 5 covered the "Tomcat *up* but data missing" case instead. |
+| Seed real brand data in dev Oracle | At least one row (preferably both `cca` and `changepath`) so a real-BE login renders `brand_src=api_hit` end-to-end. Until this is done, real-BE logins look identical to scenario 5 — registry fallback. |
+| Host → firm mapping in `identifyFirmByUrl` | `/lookup?host=changepath.localhost` returns `cca` against the real BE — every host probed returned `cca`. Either dev lacks the firm-host map, or the servlet has not been wired through to it yet. Driving Keycloak from `changepath.localhost` will keep returning `cca` brand until this is sorted. |
 | INFO-level GeoWealth-side request logs | The Tomcat servlet should emit one INFO line per `/branding-api/keycloak/whitelabel/*` request with firm code, source IP, decision, and latency — symmetric to the SPI's INFO line. §9.2 of the migration plan calls this out. |
-| Tomcat-side timeout behavior | Verify the servlet itself has a sane upstream-DB timeout (so a slow DB doesn't burn the SPI's full 3 s waiting on a backend the servlet won't return from). |
+| Tomcat-side timeout behavior | Verify the servlet itself has a sane upstream-DB timeout (so a slow DB doesn't burn the SPI's full 3 s waiting on a backend the servlet won't return from). Cold-start latency observed at 11.2 s on the first request after a Tomcat boot — see scenario 5 latency note. |
 | Malformed-response source | If a row in the GeoWealth branding DB has a NULL `cssVariables` or a non-JSON-encodable column, the servlet should drop it or substitute an empty map at the API edge — not stream invalid JSON. Same defense-in-depth argument as the §9.3 color injection check (servlet first, SPI second). |
 | Banner in the POC app | Surface "branding fallback active" in the POC frontend when the SPI is operating from `registry_fallback*`. Requires a debug endpoint on the SPI or a header on the brand block; either is a small follow-up, kept out of scope for §9.1. |
 
