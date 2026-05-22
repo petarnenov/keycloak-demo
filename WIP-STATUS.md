@@ -1,184 +1,199 @@
 # Work-in-progress — GeoWealth white-labeling POC
 
 Self-handoff doc for resuming on a second machine. Records branch names,
-what's committed vs. dirty, what local state has to be re-created (env
-vars, hosts entries, secrets that don't live in git), and what the next
-two or three actions are.
+what's committed, what local state has to be re-created (env vars,
+hosts entries, secrets that don't live in git), and what's actually
+left to do.
 
 Living doc — overwrite it on the next checkpoint, don't append.
 
-Last touched: 2026-05-22.
+Last touched: 2026-05-23.
+
+---
+
+## TL;DR
+
+POC is **functionally complete**: Phase 4 (failure modes / telemetry / security / docs) closed in code, Phase 5 (production-readiness graduation across the 9 hardening gaps from `PRODUCTION-RISK.md`) closed 7 of 9 in code with the remaining two reduced to documented design / partial implementation. **43/43 JUnit integration tests passing** against the running stack. Both repo branches up to date with their remotes.
+
+Start with [`HANDOFF.md`](HANDOFF.md) for the stakeholder view; this doc is the operator-side resume guide.
 
 ---
 
 ## Branches in flight
 
-| Repo | Branch | Base | Status |
+| Repo | Branch | Tip | Status |
 |---|---|---|---|
-| `keycloak-demo` (this repo) | `petarnenov/geowealth-whitelabel-poc` | `petarnenov/onboarding-mfe-monorepo` | Phase 4 in progress; tip = `2bdbe8d` "Phase 4 part 2". 3 uncommitted files (see below). |
-| `geowealth` | `team/petarnenov/keycloak-whitelabel-poc` | `master` | Findings doc at `~/geowealth/keycloak-poc-findings.md` is on this branch. Branding-api endpoint + token plumbing live here. |
+| `keycloak-demo` (this repo) | `petarnenov/geowealth-whitelabel-poc` | `be312ba` "HANDOFF.md — §9.4 stakeholder summary" | All commits pushed. Working tree clean (modulo 2 long-untracked files — see below). |
+| `geowealth` | `team/petarnenov/keycloak-whitelabel-poc` | `9bbaf42b591` "Branding API: env-tunable limits + per-request audit log" | All commits pushed to GitLab. Open MR pending (manual). |
 
-Both branches are deliberately isolated from `main` / `master` — see
-§14 of `geowealth-keycloak-poc-migration-plan.md` (rollback plan).
+Both branches are deliberately isolated from `main` / `master`. `PRODUCTION-RISK.md` §"Scenarios if the geowealth branch is merged" walks through the merge implications.
 
 ---
 
 ## Where we are in the plan
 
-Tracking `geowealth-keycloak-poc-migration-plan.md`. Phases 0–3 done.
-Phase 4 (hardening / telemetry / docs) is partly done:
+Phase 4 (`geowealth-keycloak-poc-migration-plan.md` §9) close-out:
 
-| Section | Item | State |
+| Section | Item | State | Where |
+|---|---|---|---|
+| §9.1 | Failure-mode coverage (4 + real-BE scenario) | ✅ done | `FAILURE-MODES.md` (5 scenarios, all <5 s, fail-open verified) |
+| §9.2 | INFO-level branding log (Keycloak side) | ✅ done | `BrandingService` (now DEBUG by default, WARN on fallback after Phase 5 #4) |
+| §9.2 | Audit log (GeoWealth side) | ✅ done | `BrandingApiServlet.auditLog` per call (Phase 5 #7) |
+| §9.2 | OPERATIONS.md ops dashboard | ✅ done | `frontend/apps/geowealth-poc/OPERATIONS.md` |
+| §9.3 | Security checks (token leak, path traversal, CSS injection, CSP) | ✅ done | `SECURITY-CHECKS.md` + CSP tightened in realm export (Phase 5 #9) |
+| §9.4 | POC README + CLAUDE.md applying-changes rows | ✅ done | `frontend/apps/geowealth-poc/README.md`, `CLAUDE.md` |
+| §9.4 | GeoWealth-side README | ✅ done | Lives on the geowealth branch |
+| §9.4 | Hand-off doc | ✅ done | `HANDOFF.md` (stakeholder synthesis) |
+| §9.5 | 60-90 s demo recording | **Not started** (manual) | — |
+
+Phase 5 (production-readiness gaps from `PRODUCTION-RISK.md`, addressed in this session):
+
+| # | Gap | State |
 |---|---|---|
-| §9.1 Failure-mode coverage | GeoWealth down, unknown firm, malformed JSON, slow API | **Not yet** — needs the running stack to walk through; should be quick once back at the machine. |
-| §9.2 Telemetry — Keycloak logs | INFO-level branding decision log | Done in `cbd1f40` (Phase 4 part 1). |
-| §9.2 Telemetry — GeoWealth logs | INFO logs on the API side | Lives on the geowealth branch, not this one. |
-| §9.2 Telemetry — `OPERATIONS.md` | One-page dashboard | **Just written, uncommitted** at `frontend/apps/geowealth-poc/OPERATIONS.md`. |
-| §9.3 Security checks | Token leak, path traversal, CSS injection, CSP | Done in `2bdbe8d`; results in `SECURITY-CHECKS.md`. |
-| §9.4 POC README | `apps/geowealth-poc/README.md` | **Just written, uncommitted** at `frontend/apps/geowealth-poc/README.md`. |
-| §9.4 CLAUDE.md update | New rows in "Applying changes" table | **Just edited, uncommitted** in `CLAUDE.md`. |
-| §9.4 GeoWealth-side README | Endpoints + auth pattern + env-var | Lives on the geowealth branch. |
-| §9.4 Hand-off doc | One-page "what worked, what didn't, prod gap" | Not started. |
-| §9.5 Demo recording | 60–90 s screencap of both firms logging in | Not started (manual). |
+| #1 | Token rotation | Design only — `PRODUCTION-HARDENING.md §"Token rotation design"`. Pending vault choice. |
+| #2 | Rate limit on `/branding-api/*` | ✅ Filter-level via Caffeine, env-tunable `POC_BRANDING_API_RATE_LIMIT_PER_MIN` |
+| #3 | BLOB size cap | ✅ 2 MB default, env-tunable `POC_BRANDING_API_MAX_ASSET_BYTES` |
+| #4 | INFO log volume | ✅ DEBUG default, WARN on fallback |
+| #5 | Cache invalidation hook | **Partial** — programmatic `BrandingService.invalidate(code)` ready; REST endpoint via `RealmResourceProvider` deferred |
+| #6 | Realm gate via attribute | ✅ `geowealthBrandingProvider` realm attribute; legacy name fallback retained |
+| #7 | Audit log on success | ✅ Structured INFO line per `/branding-api/*` call |
+| #8 | Registry placeholders | ✅ Feature-flagged via `KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_REGISTRY_PLACEHOLDERS` |
+| #9 | CSP tightening | ✅ Explicit `default-src 'self'`, `style-src 'self' 'unsafe-inline'`, `img-src 'self' data:` etc. in realm export |
+
+Full gap-by-gap detail in `PRODUCTION-HARDENING.md`.
 
 ---
 
-## Uncommitted on this machine
-
-`git status` at last checkpoint:
+## Working tree state
 
 ```
-modified:   CLAUDE.md
-?? frontend/apps/geowealth-poc/OPERATIONS.md
-?? frontend/apps/geowealth-poc/README.md
+$ git status
+On branch petarnenov/geowealth-whitelabel-poc
+Your branch is up to date with 'petarnenov/petarnenov/geowealth-whitelabel-poc'.
+
+Untracked files:
+	login-flow-bg.md      (May 21 Bulgarian login-flow notes; long-untracked, decide commit/delete)
+	proxy/                (HTTPS dev certs; long-untracked, gitignore candidate)
+
+nothing added to commit but untracked files present
 ```
 
-All three are §9.2 / §9.4 deliverables. Nothing else is dirty. Stash
-or commit before pulling on the other machine — they aren't on the
-remote yet.
-
-### Suggested commit shape
-
-One commit, message body something like:
-
-> Phase 4 part 3: POC README, ops one-pager, CLAUDE.md applying-changes rows
->
-> §9.4 deliverables for the operator side — apps/geowealth-poc/README.md
-> for runbook and what-to-expect, OPERATIONS.md for the §9.2 telemetry
-> dashboard with the actual log line shapes from BrandingService /
-> BrandingApiClient / BrandCss, and three new rows in CLAUDE.md's
-> "Applying changes" table for the geowealth-keycloak SPI source,
-> the new realm export, and the branding-api contract lockstep rule.
-
-(`Co-Authored-By: Claude` trailer per `git log` style.)
+Both untracked items predate this session — they're not blockers. Decide separately whether to commit, gitignore, or delete.
 
 ---
 
 ## Local state that lives outside git
 
-Has to be re-created on the second machine — none of it is in the
-branch.
+Has to be re-created on the second machine — none of it is in the branch.
 
 1. **`.envrc`** at repo root. Gitignored. Minimum content:
 
    ```bash
-   export POC_BRANDING_API_TOKEN="<32 random bytes; openssl rand -base64 32>"
-   export RESEND_API_TOKEN="<optional — empty falls back to logged OTP>"
-   # If using podman: DOCKER_HOST line per CLAUDE.md "Running this on macOS + Podman".
+   # Single static token shared with the geowealth Tomcat (see setenv.sh below).
+   # Stable value across machines simplifies the dev-stack <-> geowealth handshake.
+   export POC_BRANDING_API_TOKEN="AV2EPegvxRi5zVt10IQHSUAk16HhuS40UAJ60UmoaV8="
+
+   # Optional — leave blank to log the OTP instead of emailing it.
+   export RESEND_API_TOKEN=""
    ```
 
-   The token value itself doesn't have to match between machines — the
-   same value is used by `dev-branding-api.sh` and the Keycloak SPI, so
-   just regenerate locally.
+2. **`~/tools/tomcat9/bin/setenv.sh`** on the GeoWealth dev machine — same token mirrored on the Tomcat side so the `BrandingApiAuthFilter` accepts requests from Keycloak. Also bumps the rate limit so the JUnit suite fits in the window:
 
-2. **`/etc/hosts`** — only needed on Linux. macOS resolves `*.localhost`
-   for free. If your second machine is Linux:
+   ```bash
+   export POC_BRANDING_API_TOKEN="AV2EPegvxRi5zVt10IQHSUAk16HhuS40UAJ60UmoaV8="
+   export POC_BRANDING_API_RATE_LIMIT_PER_MIN="500"
+   ```
+
+3. **`/etc/hosts`** — required on **all** OSes when testing the production firm URLs in a browser, because `*.geowealth.com` resolves to real production IPs unless overridden:
 
    ```text
-   127.0.0.1 changepath.localhost
-   127.0.0.1 default.localhost
-   127.0.0.1 cca.localhost
-   127.0.0.1 unknown.localhost
+   127.0.0.1 c1wealth.geowealth.com
+   127.0.0.1 c1securities.geowealth.com
+   127.0.0.1 bcj.geowealth.com
+   127.0.0.1 smithandcox.geowealth.com
+   127.0.0.1 riverwaterpartners.geowealth.com
+   127.0.0.1 wisewealthkc.geowealth.com
+   127.0.0.1 wisewealthkcadv.geowealth.com
    ```
 
-3. **Container engine** — Docker Desktop or Podman. `./start.sh` auto-
-   detects; force with `CONTAINER_ENGINE=docker|podman ./start.sh`. On
-   Linux podman, you may need
-   `extra_hosts: ["host.docker.internal:host-gateway"]` on the keycloak
-   service so the SPI can reach the host-bound fake branding API.
+   `*.localhost` resolves to `127.0.0.1` automatically on macOS; entries above are only needed for the `.com` hostnames.
 
-4. **Python 3.8+** — only if running `./dev-branding-api.sh`.
+4. **Dev Oracle seed** — `WHITELABEL_TBL` rows for the 7 demo firms + 1 `EMPLOYEE_TBL` advisor (pass 3/4 override). The exact SQL is in `TEST-SCENARIOS.md` §"Seeded data" and §"Advisor-level seed (passes 3 / 4)". Critical: every `ENTITY_ID` / `WHITELABEL_ID` must be **32-char hex** (see the "Critical gotcha" section in the same doc).
+
+5. **Container engine** — Docker Desktop or Podman. `./start.sh` auto-detects; force with `CONTAINER_ENGINE=docker|podman ./start.sh`.
 
 ---
 
 ## Resume on the other machine
 
-Assuming you've already committed and pushed the three dirty files
-above on this machine:
-
 ```bash
-# 1. fetch the work
+# 1. Fetch the work
 git fetch origin
 git checkout petarnenov/geowealth-whitelabel-poc
 git pull --ff-only
 
-# 2. re-create .envrc per the section above, then:
+# 2. Re-create .envrc per the section above
 source .envrc
 
-# 3. bring the stack up
+# 3. Bring the stack up
 ./start.sh
 
-# 4. (recommended) run the fake branding API in a second terminal
-./dev-branding-api.sh
+# 4. Verify with the JUnit suite — comprehensive matrix
+cd geowealth-keycloak
+gradle test
+#   → 43 tests, 43 passing
 
-# 5. green check: two tabs, two themes
-#    http://changepath.localhost:5174/  → ChangePath login
-#    http://default.localhost:5174/     → GeoWealth login
-#    user: poc-user / 123
-
-# 6. one INFO line per render
-docker compose logs --since 1m keycloak | grep 'Branding:'
+# 5. (optional) shell smoke for a quick health check
+cd ..
+./test-whitelabel-scenarios.sh
 ```
 
 For the geowealth side:
 
 ```bash
-cd ~/geowealth   # or wherever you clone
+cd ~/geowealth
 git fetch
 git checkout team/petarnenov/keycloak-whitelabel-poc
 git pull --ff-only
-# findings live in ~/geowealth/keycloak-poc-findings.md on this branch
+# Re-create ~/tools/tomcat9/bin/setenv.sh per the section above, then:
+./bin/nfstart_dev petar
 ```
 
 ---
 
-## Next two or three actions when resuming
+## What's actually left
 
-In rough priority order — pick one, don't try to batch:
+Sorted by leverage / commitment:
 
-1. **Walk §9.1 failure modes.** Four small scenarios; the §9.3 security
-   walk-through pattern in `SECURITY-CHECKS.md` is the template. Add a
-   `FAILURE-MODES.md` (or extend the same file) with the repro for
-   each: stop the fake, hit unknown subdomain, run with
-   `BREAK_MODE=json`, run with `SLEEP_MS=4000`. Each should produce a
-   visible login + expected log lines.
-2. **Write the §9.4 hand-off doc.** One page — "what worked, what
-   didn't, production gap". Most of the prod-gap table is already in
-   §10 of the migration plan; the hand-off doc is the readable
-   narrative on top of that, plus the lessons-learned bullets.
-3. **Record the §9.5 demo.** Once §9.1 is clean, the recording is a
-   60–90 s capture of both browser tabs. Manual; only doable from
-   wherever the screen-recording tool is set up.
+1. **§9.5 demo recording** — 60-90 s screencap. Manual; needs screen-recording tooling.
+2. **Open the GitLab MR** for the geowealth branch (`team/petarnenov/keycloak-whitelabel-poc`). GitLab returns the create-MR link on every push.
+3. **CI workflows** — GitHub Actions for `gradle test` + `test-whitelabel-scenarios.sh` in keycloak-demo; GitLab pipeline equivalent for geowealth. ~1-2 h.
+4. **Production-readiness gap #1** (token rotation, full implementation) — blocked on the security team picking a vault; ~half-day each side once picked. Design is in `PRODUCTION-HARDENING.md`.
+5. **Production-readiness gap #5** (cache invalidation REST endpoint) — `RealmResourceProvider` Keycloak SPI extension + auth + geowealth admin webhook. ~half-day SPI + 2 h admin side. Design + interface in `PRODUCTION-HARDENING.md §"#5 Cache invalidation REST endpoint"`.
+6. **Restore Tomcat env** when no longer testing — `~/tools/tomcat9/bin/setenv.sh` currently has `POC_BRANDING_API_RATE_LIMIT_PER_MIN=500`; for prod-shape simulation, unset it so the 60/min default kicks in.
+
+Nothing else from the original migration plan is open. The 5 docs (`HANDOFF.md`, `PRODUCTION-RISK.md`, `PRODUCTION-HARDENING.md`, `TEST-SCENARIOS.md`, `FAILURE-MODES.md`) are the comprehensive deliverable set.
 
 ---
 
 ## What you can safely skip on the second machine
 
 - Pre-Phase-4 work is committed and reproducible from `./start.sh`.
-- The `geowealth-keycloak/` SPI source is on the branch; no out-of-band
-  artifacts. `./start.sh` rebuilds the JAR inside the keycloak image.
-- The realm imports both happen on a fresh DB. If your second machine
-  has an old volume cached from a prior session, `docker compose down -v`
-  before `./start.sh` to force a re-import of `geowealth-realm`.
-- Anything mentioned in `geowealth-keycloak-poc-migration-plan.md` §11
-  (risk register) is informational, not pending work.
+- The `geowealth-keycloak/` SPI source is on the branch; no out-of-band artifacts. `./start.sh` rebuilds the JAR inside the keycloak image.
+- The realm import happens on a fresh DB. If your second machine has an old volume cached, `docker compose down -v` before `./start.sh` to force a re-import of `geowealth-realm` (otherwise the realm attribute and CSP changes from Phase 5 won't apply until you patch them via the admin API).
+- Anything mentioned in `geowealth-keycloak-poc-migration-plan.md` §11 (risk register) is informational, not pending work.
+
+---
+
+## Doc map
+
+| Doc | When to open |
+|---|---|
+| `HANDOFF.md` | Stakeholder summary — what worked / what didn't / prod gap |
+| `PRODUCTION-RISK.md` | Break-probability analysis for a hypothetical merge to master |
+| `PRODUCTION-HARDENING.md` | Gap-by-gap status of the 9 production-readiness items |
+| `TEST-SCENARIOS.md` | Production resolution matrix + seed SQL + manual test recipe |
+| `FAILURE-MODES.md` | §9.1 walkthrough — 5 failure scenarios with reproduce blocks |
+| `SECURITY-CHECKS.md` | §9.3 walkthrough — token leak, traversal, CSS injection, CSP |
+| `geowealth-keycloak-poc-migration-plan.md` | Original 10-phase plan; this WIP-STATUS tracks against it |
+| `CLAUDE.md` | Codebase survival notes for working in the repo |
