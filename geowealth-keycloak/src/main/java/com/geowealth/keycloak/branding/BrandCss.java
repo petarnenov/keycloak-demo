@@ -25,9 +25,24 @@ public final class BrandCss {
             ")$"
         );
 
+    /**
+     * CSS custom property names must start with {@code --} per the spec,
+     * and the ident portion is restricted to letters, digits, underscore,
+     * and hyphen. Keeping the cap tight (64 chars) defends against a
+     * pathologically long name silently embedding a CSS escape sequence
+     * via length alone.
+     */
+    private static final java.util.regex.Pattern SAFE_KEY =
+        java.util.regex.Pattern.compile("^--[a-zA-Z0-9_-]{1,64}$");
+
     public static boolean isSafe(String value) {
         if (value == null || value.length() > 64) return false;
         return SAFE_VALUE.matcher(value).matches();
+    }
+
+    public static boolean isSafeKey(String key) {
+        if (key == null) return false;
+        return SAFE_KEY.matcher(key).matches();
     }
 
     public static String escapeOrEmpty(String value) {

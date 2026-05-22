@@ -68,6 +68,17 @@ The auth / 400 / 404 paths bypass `BREAK_MODE` on purpose: those errors must sta
 
 Every access log line carries a decision tag — `brand_hit:changepath+break_500` makes it obvious which scenario produced which response.
 
+## Security probes
+
+```bash
+# Serve a poisoned cssVariables map — one entry with a CSS-context escape
+# in the key, one in the value. The SPI's Brand constructor MUST drop both
+# (WARN log), and the rendered <style> block MUST NOT contain the injection.
+INJECT_POISON=1 ./dev-branding-api.sh
+```
+
+Used to verify defense-in-depth: even if the upstream DB row carries malicious values, the Keycloak side filters them before they reach the FreeMarker template. The decision tag becomes `brand_hit:changepath+poison` so you can spot the responses that should have been filtered.
+
 ## What this fake intentionally doesn't do
 
 - **No retries / no backoff.** The Keycloak SPI is fail-open with a 3 s request timeout; this server should respond fast or be killed.

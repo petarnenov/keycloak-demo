@@ -40,6 +40,16 @@ Failure-mode knobs (used to exercise the SPI's fail-open paths):
   BREAK_MODE=status_503   ditto, 503 (closer to a real DB-down case).
 Asset routes ignore BREAK_MODE — only JSON is broken on purpose, since
 that's where the contract failure modes live.
+
+Security knobs:
+  INJECT_POISON=1    Add two deliberately-malicious cssVariables entries
+                     to every /whitelabel/{code} response: one with a key
+                     that would break the CSS context, one with a value
+                     containing an attempted CSS rule escape. The SPI's
+                     defense-in-depth filter (BrandCss + Brand
+                     constructor) MUST drop both. Used to verify that
+                     poisoned data from an upstream DB row cannot
+                     contaminate the rendered <style> block.
 """
 
 import hmac
@@ -79,6 +89,27 @@ def _read_sleep_ms() -> int:
         sys.stderr.write("FATAL: SLEEP_MS must be >= 0\n")
         sys.exit(1)
     return v
+
+
+def _read_inject_poison() -> bool:
+    raw = os.environ.get("INJECT_POISON", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+# Deliberately ugly. Both entries should be stripped by the Keycloak SPI's
+# Brand constructor — the key has a CSS-context escape attempt, and the
+# value has the same kind of escape via a properly-formed key. Edit with
+# care: anything you put here lands in test fixtures that prove our
+# defense-in-depth is working, so each piece should be a real attack
+# shape, not a placeholder.
+POISON_ENTRIES = {
+    # Bad key — closing the :root block, opening a body rule.
+    "--theme-link-color; } body { background: url(http://evil/x); /*": "#ff0000",
+    # Bad value — same attack delivered through the value side, with a
+    # well-formed key so the key check passes and the value check has to
+    # do the work.
+    "--theme-injected-poison": "red; } body { background: url(http://evil/y); /*",
+}
 
 
 # --- Branding data ---------------------------------------------------------
@@ -211,6 +242,7 @@ class Handler(BaseHTTPRequestHandler):
     expected_token = ""   # populated at server-construction time
     break_mode = "none"   # populated at server-construction time
     sleep_ms = 0          # populated at server-construction time
+    inject_poison = False # populated at server-construction time
 
     # Silence the default per-request access log so our INFO logger owns
     # output. The base class writes to stderr in a hard-to-grep format.
@@ -322,8 +354,20 @@ class Handler(BaseHTTPRequestHandler):
                         decision = f"brand_not_found:{code}"
                         status_code, _ = self._write_error(404, "not_found", f"no whitelabel for code '{code}'")
                         return
-                    status_code, suffix = self._write_json(200, brand)
-                    decision = f"brand_hit:{code}{suffix}"
+                    response = brand
+                    poison_suffix = ""
+                    if self.inject_poison:
+                        # Don't mutate BRANDS — that would compound across
+                        # requests. Shallow copy + a fresh cssVariables map
+                        # with POISON_ENTRIES merged in front of the real
+                        # entries (so they're easy to spot in DevTools).
+                        response = dict(brand)
+                        merged = dict(POISON_ENTRIES)
+                        merged.update(brand["cssVariables"])
+                        response["cssVariables"] = merged
+                        poison_suffix = "+poison"
+                    status_code, suffix = self._write_json(200, response)
+                    decision = f"brand_hit:{code}{poison_suffix}{suffix}"
                     return
 
                 if len(parts) == 6 and parts[4] == "asset":
@@ -362,13 +406,14 @@ def main():
     Handler.expected_token = _expected_token()
     Handler.break_mode = _read_break_mode()
     Handler.sleep_ms = _read_sleep_ms()
+    Handler.inject_poison = _read_inject_poison()
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8080"))
     server = ThreadingHTTPServer((host, port), Handler)
     logging.info(
-        "listening on http://%s:%d (firms: %s; default=%s, break_mode=%s, sleep_ms=%d)",
+        "listening on http://%s:%d (firms: %s; default=%s, break_mode=%s, sleep_ms=%d, inject_poison=%s)",
         host, port, ", ".join(sorted(BRANDS.keys())), DEFAULT_CODE,
-        Handler.break_mode, Handler.sleep_ms,
+        Handler.break_mode, Handler.sleep_ms, Handler.inject_poison,
     )
     try:
         server.serve_forever()

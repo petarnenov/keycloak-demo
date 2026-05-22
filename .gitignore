@@ -22,3 +22,6 @@ bin/
 #AI
 .claude
 
+# Ephemeral Playwright MCP artifacts (per-run snapshots/screenshots).
+.playwright-mcp/
+
