@@ -48,7 +48,13 @@
             <meta name="${meta?split('==')[0]}" content="${meta?split('==')[1]}"/>
         </#list>
     </#if>
+    <#-- Brand-aware tab title. Falls back to the upstream "Sign in to {0}"
+         message keyed on realm.displayName when no brand is injected. -->
+    <#if brand??>
+    <title>${msg("loginTitle", brand.displayName)}</title>
+    <#else>
     <title>${msg("loginTitle",(realm.displayName!''))}</title>
+    </#if>
     <link rel="icon" href="${url.resourcesPath}/img/favicon.ico" />
     <#if properties.stylesCommon?has_content>
         <#list properties.stylesCommon?split(' ') as style>
