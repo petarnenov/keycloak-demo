@@ -52,7 +52,6 @@ Security knobs:
                      contaminate the rendered <style> block.
 """
 
-import base64
 import hmac
 import http
 import json
@@ -355,22 +354,27 @@ class Handler(BaseHTTPRequestHandler):
                         decision = f"brand_not_found:{code}"
                         status_code, _ = self._write_error(404, "not_found", f"no whitelabel for code '{code}'")
                         return
-                    # Inline the login logo as a data URI in the brand JSON.
-                    # The contract proper routes assets through assets.loginLogo.url
-                    # to /asset/{kind}; this POC shortcut lets the Keycloak SPI
-                    # render a logo without a second HTTP round-trip per render.
-                    # Real Tomcat servlet is expected to follow the contract; the
-                    # SPI tolerates either shape (assets.* takes precedence later).
+                    # Emit the contract-aligned `assets` map (see
+                    # contracts/branding-api.openapi.yaml). Each AssetRef
+                    # points at this fake's existing /asset/{kind} endpoint,
+                    # which Keycloak's BrandingApiClient follows with a
+                    # second HTTP GET to base64-encode the bytes.
                     response = dict(brand)
                     code_assets = ASSETS.get(code, {})
-                    logo_bytes = code_assets.get("logo-login")
-                    if logo_bytes:
-                        b64 = base64.b64encode(logo_bytes).decode("ascii")
-                        response["loginLogoDataUri"] = f"data:image/svg+xml;base64,{b64}"
-                    favicon_bytes = code_assets.get("favicon")
-                    if favicon_bytes:
-                        b64 = base64.b64encode(favicon_bytes).decode("ascii")
-                        response["faviconDataUri"] = f"data:image/svg+xml;base64,{b64}"
+                    asset_refs = {}
+                    base = f"/branding-api/keycloak/whitelabel/{code}/asset"
+                    if "logo-login" in code_assets:
+                        asset_refs["loginLogo"] = {
+                            "url": f"{base}/logo-login",
+                            "contentType": ASSET_CONTENT_TYPES.get("logo-login", "application/octet-stream"),
+                        }
+                    if "favicon" in code_assets:
+                        asset_refs["favicon"] = {
+                            "url": f"{base}/favicon",
+                            "contentType": ASSET_CONTENT_TYPES.get("favicon", "application/octet-stream"),
+                        }
+                    if asset_refs:
+                        response["assets"] = asset_refs
                     poison_suffix = ""
                     if self.inject_poison:
                         # Don't mutate BRANDS — that would compound across

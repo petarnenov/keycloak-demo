@@ -6,12 +6,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Optional;
 
 /**
@@ -56,13 +58,31 @@ public final class BrandingApiClient {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
-    /** GET /whitelabel/{code} — returns the parsed Brand or empty on any failure. */
+    /**
+     * Fetch the brand JSON for {@code code}, follow up with asset GETs
+     * (login logo, favicon) per the OpenAPI contract, and return the
+     * fully-populated {@link Brand}. Returns {@link Optional#empty()} on
+     * any failure of the brand JSON call; asset failures are
+     * <em>silently absorbed</em> — a missing or unreachable asset
+     * leaves the corresponding data URI null, the template renders
+     * gracefully without it.
+     */
     public Optional<Brand> fetchBrand(String code) {
         if (code == null || code.isEmpty()) return Optional.empty();
         URI uri = baseUri.resolve("/branding-api/keycloak/whitelabel/" + urlEncode(code));
-        Optional<BrandDto> dto = getAsJson(uri, BrandDto.class);
-        if (dto.isEmpty()) return Optional.empty();
-        Brand brand = dto.get().toBrand();
+        Optional<BrandDto> dtoOpt = getAsJson(uri, BrandDto.class);
+        if (dtoOpt.isEmpty()) return Optional.empty();
+        BrandDto dto = dtoOpt.get();
+
+        // Resolve and fetch the optional asset payloads. Each fetch is
+        // best-effort and capped at a tight timeout so a slow asset
+        // backend doesn't dominate cold-cache login latency. A failing
+        // asset is just absent — Brand.java tolerates nulls, and the
+        // template falls back to displayName / theme favicon.
+        String loginLogoDataUri = fetchAssetAsDataUri(dto.assets != null ? dto.assets.loginLogo : null, "login-logo");
+        String faviconDataUri   = fetchAssetAsDataUri(dto.assets != null ? dto.assets.favicon   : null, "favicon");
+
+        Brand brand = dto.toBrand(loginLogoDataUri, faviconDataUri);
         if (brand == null) {
             // 200 OK but the payload is missing fields the Keycloak side
             // can't render with. That's a contract violation — distinct
@@ -75,6 +95,89 @@ public final class BrandingApiClient {
             return Optional.empty();
         }
         return Optional.of(brand);
+    }
+
+    /**
+     * GET the asset bytes referenced by {@code ref} (an
+     * {@link BrandDto.AssetRef} or {@code null}) and return them as a
+     * {@code data:<contentType>;base64,<...>} URI. Returns {@code null}
+     * on any failure or a missing reference — caller renders without
+     * the asset.
+     *
+     * <p>Url resolution: {@link BrandDto.AssetRef#url} can be absolute
+     * (e.g. {@code https://cdn.example.com/logo.svg}) or API-relative
+     * (e.g. {@code /branding-api/keycloak/whitelabel/cca/asset/logo-login}).
+     * The relative form is resolved against {@link #baseUri}.</p>
+     *
+     * <p>Latency budget: a 2 s request timeout, half the brand JSON
+     * timeout. Two assets * 2 s + the 3 s brand + 3 s lookup keeps a
+     * cold-cache login worst-case under 10 s. Warm cache: zero asset
+     * fetches (Brand is the cache value).</p>
+     */
+    private String fetchAssetAsDataUri(BrandDto.AssetRef ref, String kind) {
+        if (ref == null || ref.url == null || ref.url.isEmpty()) return null;
+        URI uri;
+        try {
+            URI parsed = new URI(ref.url);
+            uri = parsed.isAbsolute() ? parsed : baseUri.resolve(parsed);
+        } catch (URISyntaxException e) {
+            LOG.warnf("BrandingApi asset[%s]: invalid URL '%s'", kind, truncate(ref.url, 80));
+            return null;
+        }
+
+        long started = System.nanoTime();
+        HttpRequest req = HttpRequest.newBuilder(uri)
+            .timeout(Duration.ofSeconds(2))
+            .header("Authorization", "Bearer " + bearerToken)
+            .GET()
+            .build();
+        try {
+            HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            long latencyMs = (System.nanoTime() - started) / 1_000_000L;
+            if (resp.statusCode() != 200) {
+                LOG.warnf("BrandingApi asset[%s] %s -> HTTP %d after %d ms",
+                    kind, uri, resp.statusCode(), latencyMs);
+                return null;
+            }
+            byte[] body = resp.body();
+            if (body == null || body.length == 0) {
+                LOG.warnf("BrandingApi asset[%s] %s -> empty body after %d ms",
+                    kind, uri, latencyMs);
+                return null;
+            }
+            // Prefer the response Content-Type header — server is the
+            // authority on the bytes it just streamed. Fall back to the
+            // ref's declared contentType (informative), then a safe
+            // default. Brand.java's allowlist will drop anything that
+            // doesn't shape up to image/{svg+xml,png,jpeg}.
+            String contentType = resp.headers().firstValue("Content-Type")
+                .filter(s -> !s.isBlank())
+                .orElse(ref.contentType != null ? ref.contentType : "application/octet-stream");
+            // Strip a charset parameter if present (e.g. "image/svg+xml; charset=utf-8")
+            int semi = contentType.indexOf(';');
+            if (semi >= 0) contentType = contentType.substring(0, semi).trim();
+            String b64 = Base64.getEncoder().encodeToString(body);
+            return "data:" + contentType + ";base64," + b64;
+        } catch (java.net.http.HttpTimeoutException e) {
+            long latencyMs = (System.nanoTime() - started) / 1_000_000L;
+            LOG.warnf("BrandingApi asset[%s] timeout on %s after %d ms (limit 2000 ms)",
+                kind, uri, latencyMs);
+            return null;
+        } catch (Exception e) {
+            long latencyMs = (System.nanoTime() - started) / 1_000_000L;
+            if (LOG.isDebugEnabled()) {
+                LOG.debugf(e, "BrandingApi asset[%s] error on %s after %d ms", kind, uri, latencyMs);
+            } else {
+                LOG.warnf("BrandingApi asset[%s] error on %s after %d ms: %s",
+                    kind, uri, latencyMs, e.getClass().getSimpleName());
+            }
+            return null;
+        }
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "<null>";
+        return s.length() <= max ? s : s.substring(0, max) + "…";
     }
 
     /** GET /whitelabel/lookup?host={host} — returns firm code, empty on failure. */
