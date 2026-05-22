@@ -20,6 +20,17 @@ public final class BrandDto {
     public String code;
     public String displayName;
     public Map<String, String> cssVariables;
+    /**
+     * POC shortcut: the fake emits the login logo inline as a
+     * {@code data:image/svg+xml;base64,...} URI in this field. The
+     * contract proper (see {@code contracts/branding-api.openapi.yaml})
+     * routes logos through {@code assets.loginLogo.url} pointing at a
+     * separate {@code /asset/{kind}} endpoint. The real Tomcat servlet
+     * will follow the contract; this field is kept tolerant on the wire
+     * so a contract-emitting server that doesn't set it still parses.
+     * Brand.java sanitizes the value before it reaches the template.
+     */
+    public String loginLogoDataUri;
 
     public BrandDto() {}
 
@@ -32,6 +43,7 @@ public final class BrandDto {
     public Brand toBrand() {
         if (code == null || code.isEmpty()) return null;
         if (cssVariables == null || cssVariables.isEmpty()) return null;
-        return new Brand(code, displayName != null ? displayName : code, cssVariables);
+        return new Brand(code, displayName != null ? displayName : code, cssVariables,
+            loginLogoDataUri);
     }
 }

@@ -52,6 +52,7 @@ Security knobs:
                      contaminate the rendered <style> block.
 """
 
+import base64
 import hmac
 import http
 import json
@@ -354,14 +355,22 @@ class Handler(BaseHTTPRequestHandler):
                         decision = f"brand_not_found:{code}"
                         status_code, _ = self._write_error(404, "not_found", f"no whitelabel for code '{code}'")
                         return
-                    response = brand
+                    # Inline the login logo as a data URI in the brand JSON.
+                    # The contract proper routes assets through assets.loginLogo.url
+                    # to /asset/{kind}; this POC shortcut lets the Keycloak SPI
+                    # render a logo without a second HTTP round-trip per render.
+                    # Real Tomcat servlet is expected to follow the contract; the
+                    # SPI tolerates either shape (assets.* takes precedence later).
+                    response = dict(brand)
+                    logo_bytes = ASSETS.get(code, {}).get("logo-login")
+                    if logo_bytes:
+                        b64 = base64.b64encode(logo_bytes).decode("ascii")
+                        response["loginLogoDataUri"] = f"data:image/svg+xml;base64,{b64}"
                     poison_suffix = ""
                     if self.inject_poison:
                         # Don't mutate BRANDS — that would compound across
-                        # requests. Shallow copy + a fresh cssVariables map
-                        # with POISON_ENTRIES merged in front of the real
-                        # entries (so they're easy to spot in DevTools).
-                        response = dict(brand)
+                        # requests. cssVariables already on the copy; just
+                        # merge POISON_ENTRIES in front of the real entries.
                         merged = dict(POISON_ENTRIES)
                         merged.update(brand["cssVariables"])
                         response["cssVariables"] = merged

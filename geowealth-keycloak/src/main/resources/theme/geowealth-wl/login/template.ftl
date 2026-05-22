@@ -110,6 +110,17 @@ button.pf-v5-c-button.pf-m-primary:hover {
     background-color: var(--pf-v5-global--link--Color--hover, #0e4e79) !important;
     border-color: var(--pf-v5-global--link--Color--hover, #0e4e79) !important;
 }
+/* Per-firm logo in the login card header. Bound dimensions so a misjudged
+   asset can't dominate the layout; auto width keeps the original aspect
+   ratio of the SVG / PNG. */
+img.geowealth-brand-logo {
+    display: block;
+    max-height: 48px;
+    max-width: 240px;
+    width: auto;
+    height: auto;
+    margin: 0 auto;
+}
 <#-- Fallback banner styling. Rendered only when brandFallback is true
      (set by GeoWealthLoginFormsProvider when BrandingService returned a
      registry_fallback path). Amber so it's visible against either the
@@ -195,13 +206,21 @@ button.pf-v5-c-button.pf-m-primary:hover {
 <div class="${properties.kcLogin!}">
   <div class="${properties.kcLoginContainer!}">
     <header id="kc-header" class="pf-v5-c-login__header">
-      <#-- Brand displayName wins over realm displayName when the
-           GeoWealthLoginFormsProvider injected the brand attribute for
-           this render. Plain ${...} interpolation auto-escapes under
-           Keycloak's FreeMarker output_format, so a Brand.displayName
-           with unexpected HTML can't break out of the text context. -->
+      <#-- Brand-aware header. When the GeoWealthLoginFormsProvider injected
+           a brand for this render, prefer the inlined logo (data URI,
+           server-validated in Brand.java to be data:image/{svg+xml,png,jpeg};
+           base64,…); fall back to the brand display name as plain text;
+           fall back further to the upstream realm displayName for non-POC
+           realms. Plain ${...} interpolation auto-escapes under Keycloak's
+           FreeMarker output_format. -->
       <#if brand??>
-      <div id="kc-header-wrapper" class="pf-v5-c-brand">${brand.displayName}</div>
+      <div id="kc-header-wrapper" class="pf-v5-c-brand">
+        <#if brand.loginLogoDataUri??>
+          <img class="geowealth-brand-logo" src="${brand.loginLogoDataUri}" alt="${brand.displayName}" />
+        <#else>
+          ${brand.displayName}
+        </#if>
+      </div>
       <#else>
       <div id="kc-header-wrapper"
               class="pf-v5-c-brand">${kcSanitize(msg("loginTitleHtml",(realm.displayNameHtml!'')))?no_esc}</div>

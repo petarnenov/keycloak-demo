@@ -5,6 +5,7 @@ import org.jboss.logging.Logger;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Immutable per-firm branding payload exposed to FreeMarker templates as
@@ -29,11 +30,28 @@ public final class Brand {
 
     private static final Logger LOG = Logger.getLogger(Brand.class);
 
+    /**
+     * Tight allowlist for the login-logo data URI. Only inline SVG and PNG/JPEG
+     * are accepted; anything else (incl. an attacker-supplied {@code javascript:}
+     * URI smuggled into a poisoned DB row) is dropped at construction time.
+     * Charset is also restricted so the URI can't terminate the surrounding
+     * HTML attribute context — quote, angle bracket, newline are all out.
+     */
+    private static final Pattern SAFE_LOGO_DATA_URI = Pattern.compile(
+        "^data:image/(?:svg\\+xml|png|jpeg);base64,[A-Za-z0-9+/]{1,200000}={0,2}$"
+    );
+
     private final String code;
     private final String displayName;
     private final Map<String, String> cssVariables;
+    private final String loginLogoDataUri; // nullable
 
     public Brand(String code, String displayName, Map<String, String> cssVariables) {
+        this(code, displayName, cssVariables, null);
+    }
+
+    public Brand(String code, String displayName, Map<String, String> cssVariables,
+                 String loginLogoDataUri) {
         if (code == null || code.isEmpty()) {
             throw new IllegalArgumentException("brand code must be non-empty");
         }
@@ -41,6 +59,17 @@ public final class Brand {
         this.displayName = displayName == null ? code : displayName;
         this.cssVariables = Collections.unmodifiableMap(
             filterUnsafe(code, cssVariables == null ? Map.of() : cssVariables));
+        this.loginLogoDataUri = sanitizeLogo(code, loginLogoDataUri);
+    }
+
+    private static String sanitizeLogo(String code, String value) {
+        if (value == null || value.isEmpty()) return null;
+        if (SAFE_LOGO_DATA_URI.matcher(value).matches()) return value;
+        // Log a prefix only — payload may be a base64 megablob, and we
+        // never want a poisoned value to fill the log file.
+        LOG.warnf("Brand[%s]: dropping unsafe login-logo data URI (prefix: '%s')",
+            code, truncate(value));
+        return null;
     }
 
     private static Map<String, String> filterUnsafe(String code, Map<String, String> source) {
@@ -74,4 +103,5 @@ public final class Brand {
     public String getCode() { return code; }
     public String getDisplayName() { return displayName; }
     public Map<String, String> getCssVariables() { return cssVariables; }
+    public String getLoginLogoDataUri() { return loginLogoDataUri; }
 }

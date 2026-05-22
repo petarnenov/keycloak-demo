@@ -54,6 +54,16 @@ public final class BrandRegistry {
         return h.substring(0, dot);
     }
 
+    // Tiny SVG placeholders so the registry-fallback path still shows
+    // *something* on the login page. Pre-base64-encoded at build time;
+    // identical shape to what the fake serves at /asset/logo-login, so
+    // a registry-fallback render and an api-hit render look visually
+    // similar (same rectangle + firm name in firm-primary color).
+    private static final String LOGO_CHANGEPATH =
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgNjAiPjxyZWN0IHdpZHRoPSIyMjAiIGhlaWdodD0iNjAiIHJ4PSI2IiBmaWxsPSIjMTU1ZThmIi8+PHRleHQgeD0iMTEwIiB5PSIzOCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmYiPkNoYW5nZVBhdGg8L3RleHQ+PC9zdmc+";
+    private static final String LOGO_CCA =
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMjAgNjAiPjxyZWN0IHdpZHRoPSIyMjAiIGhlaWdodD0iNjAiIHJ4PSI2IiBmaWxsPSIjYzg0ODJhIi8+PHRleHQgeD0iMTEwIiB5PSIzOCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNmZmYiPkdlb1dlYWx0aDwvdGV4dD48L3N2Zz4=";
+
     private void seed() {
         // ChangePath — real palette from etc/whitelabel/changepath in the
         // geowealth dev tree. Same values the Phase 1 static CSS hardcoded.
@@ -69,7 +79,7 @@ public final class BrandRegistry {
         changepath.put("--pf-v5-global--link--Color--hover",    "#0e4e79");
         changepath.put("--pf-v5-global--active-color--100",     "#155e8f");
         brandsByCode.put("changepath",
-            new Brand("changepath", "ChangePath", changepath));
+            new Brand("changepath", "ChangePath", changepath, LOGO_CHANGEPATH));
 
         // GeoWealth default — distinctive orange/teal so the difference vs
         // ChangePath is unmistakable in a side-by-side demo.
@@ -85,6 +95,6 @@ public final class BrandRegistry {
         geowealth.put("--pf-v5-global--link--Color--hover",     "#a83a20");
         geowealth.put("--pf-v5-global--active-color--100",      "#c8482a");
         brandsByCode.put(DEFAULT_CODE,
-            new Brand(DEFAULT_CODE, "GeoWealth", geowealth));
+            new Brand(DEFAULT_CODE, "GeoWealth", geowealth, LOGO_CCA));
     }
 }
