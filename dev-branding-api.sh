@@ -5,8 +5,14 @@
 # machine.
 #
 # Usage:
-#   ./dev-branding-api.sh           # foreground, ctrl-c to stop
-#   PORT=18080 ./dev-branding-api.sh
+#   ./dev-branding-api.sh                      # foreground, ctrl-c to stop
+#   PORT=18080 ./dev-branding-api.sh           # custom port
+#   SLEEP_MS=4000 ./dev-branding-api.sh        # drive SPI's 3 s request timeout
+#   BREAK_MODE=json ./dev-branding-api.sh      # return invalid JSON
+#   BREAK_MODE=status_500 ./dev-branding-api.sh
+#   BREAK_MODE=status_503 ./dev-branding-api.sh
+# BREAK_MODE/SLEEP_MS are read at startup, baked into the handler. To change
+# them, restart the script — there's no live admin endpoint.
 #
 # Prereqs:
 #   * .envrc exports POC_BRANDING_API_TOKEN (the same token Keycloak's SPI
@@ -54,9 +60,11 @@ fi
 
 cat <<EOF
 ==> Fake branding API
-    bind:    http://${HOST_BIND}:${PORT_BIND}
-    firms:   changepath, cca (default)
-    token:   POC_BRANDING_API_TOKEN (length=${#POC_BRANDING_API_TOKEN})
+    bind:       http://${HOST_BIND}:${PORT_BIND}
+    firms:      changepath, cca (default)
+    token:      POC_BRANDING_API_TOKEN (length=${#POC_BRANDING_API_TOKEN})
+    break_mode: ${BREAK_MODE:-none}
+    sleep_ms:   ${SLEEP_MS:-0}
 
     Keycloak compose env (already set in docker-compose.yml):
       KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_URL=http://host.docker.internal:${PORT_BIND}
@@ -72,4 +80,6 @@ exec env \
   HOST="$HOST_BIND" \
   PORT="$PORT_BIND" \
   POC_BRANDING_API_TOKEN="$POC_BRANDING_API_TOKEN" \
+  BREAK_MODE="${BREAK_MODE:-none}" \
+  SLEEP_MS="${SLEEP_MS:-0}" \
   python3 "$(dirname "$0")/dev-branding-api/server.py"

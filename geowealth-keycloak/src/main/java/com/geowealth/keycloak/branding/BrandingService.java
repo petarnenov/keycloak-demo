@@ -42,64 +42,91 @@ public final class BrandingService {
     }
 
     public Brand lookupByHost(String host) {
-        String code = resolveCode(host);
-        Brand brand = resolveBrand(code);
-        if (LOG.isDebugEnabled()) {
-            LOG.debugf("Branding: host=%s -> code=%s -> brand=%s",
-                host, code, brand.getCode());
-        }
-        return brand;
+        long started = System.nanoTime();
+        Resolved<String> code = resolveCode(host);
+        // If the lookup call just failed (host_derived after an API
+        // attempt), don't try the brand fetch — we already know the
+        // backend is unreachable, so a second 3 s timeout would just
+        // double the login latency for no chance of success. Skip
+        // straight to the registry fallback.
+        boolean skipBrandApi = "host_derived".equals(code.source()) && apiClient != null;
+        Resolved<Brand> brand = resolveBrand(code.value(), skipBrandApi);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
+        // One line per template render with everything an operator needs to
+        // grep for: did the cache help, did the API succeed, did we fall
+        // back. INFO so it's visible without enabling DEBUG; cheap because
+        // a login render is already orders of magnitude more expensive.
+        LOG.infof(
+            "Branding: host=%s code=%s code_src=%s brand_src=%s latency_ms=%d",
+            host == null ? "-" : host,
+            brand.value().getCode(),
+            code.source(),
+            brand.source(),
+            elapsedMs
+        );
+        return brand.value();
     }
 
-    private String resolveCode(String host) {
-        if (host == null || host.isEmpty()) return BrandRegistry.DEFAULT_CODE;
+    private Resolved<String> resolveCode(String host) {
+        if (host == null || host.isEmpty()) {
+            return new Resolved<>(BrandRegistry.DEFAULT_CODE, "host_empty");
+        }
 
         // 1) Cache hit.
         Optional<String> cached = hostCache.get(host);
-        if (cached.isPresent()) return cached.get();
+        if (cached.isPresent()) {
+            return new Resolved<>(cached.get(), "cache_hit");
+        }
 
         // 2) API lookup, if enabled.
         if (apiClient != null) {
             Optional<String> fromApi = apiClient.lookupHost(host);
             if (fromApi.isPresent()) {
                 hostCache.put(host, fromApi.get());
-                return fromApi.get();
+                return new Resolved<>(fromApi.get(), "api_hit");
             }
         }
 
         // 3) Fallback: derive from hostname locally. Mirrors GeoWealth's
         //    identifyFirmByUrl() rough behavior so the demo keeps working
-        //    without the API.
+        //    without the API. Cache the derived value too — short-circuits
+        //    subsequent lookups when GeoWealth is intermittently unreachable.
         String derived = BrandRegistry.firmCodeFromHost(host);
-        // Cache the derived value too — short-circuits subsequent lookups
-        // when GeoWealth is intermittently unreachable.
         hostCache.put(host, derived);
-        return derived;
+        return new Resolved<>(derived, "host_derived");
     }
 
-    private Brand resolveBrand(String code) {
+    private Resolved<Brand> resolveBrand(String code, boolean skipApi) {
         if (code == null) code = BrandRegistry.DEFAULT_CODE;
 
         // 1) Cache hit.
         Optional<Brand> cached = brandCache.get(code);
-        if (cached.isPresent()) return cached.get();
+        if (cached.isPresent()) {
+            return new Resolved<>(cached.get(), "cache_hit");
+        }
 
-        // 2) API fetch.
-        if (apiClient != null) {
+        // 2) API fetch — skipped when the lookup call in the same render
+        //    already failed (degraded mode, avoids a redundant 3 s wait).
+        if (apiClient != null && !skipApi) {
             Optional<Brand> fromApi = apiClient.fetchBrand(code);
             if (fromApi.isPresent()) {
                 brandCache.put(code, fromApi.get());
-                return fromApi.get();
+                return new Resolved<>(fromApi.get(), "api_hit");
             }
         }
 
         // 3) Hardcoded fallback. BrandRegistry has the demo default plus
         //    ChangePath so the visual continues to differentiate even
-        //    without GeoWealth.
+        //    without GeoWealth. Cache the fallback too so we don't hammer
+        //    the API every request while it's down.
         Brand fb = fallback.lookupByCode(code);
-        // Cache the fallback too so we don't hammer the API every request
-        // while it's down.
         brandCache.put(code, fb);
-        return fb;
+        return new Resolved<>(fb, skipApi ? "registry_fallback_skip" : "registry_fallback");
     }
+
+    /**
+     * Carries a resolved value alongside the path that produced it so the
+     * INFO log can record cache hit vs API hit vs fallback in one shot.
+     */
+    private record Resolved<T>(T value, String source) {}
 }

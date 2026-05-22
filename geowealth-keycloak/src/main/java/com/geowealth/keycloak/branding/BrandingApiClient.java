@@ -60,9 +60,21 @@ public final class BrandingApiClient {
     public Optional<Brand> fetchBrand(String code) {
         if (code == null || code.isEmpty()) return Optional.empty();
         URI uri = baseUri.resolve("/branding-api/keycloak/whitelabel/" + urlEncode(code));
-        return getAsJson(uri, BrandDto.class)
-            .map(BrandDto::toBrand)
-            .filter(b -> b != null);
+        Optional<BrandDto> dto = getAsJson(uri, BrandDto.class);
+        if (dto.isEmpty()) return Optional.empty();
+        Brand brand = dto.get().toBrand();
+        if (brand == null) {
+            // 200 OK but the payload is missing fields the Keycloak side
+            // can't render with. That's a contract violation — distinct
+            // from a transport failure or a parse failure — and an
+            // operator looking at the logs deserves to know.
+            LOG.errorf(
+                "BrandingApi contract violation on %s: response was valid JSON but missing required fields (code/cssVariables); falling back",
+                uri
+            );
+            return Optional.empty();
+        }
+        return Optional.of(brand);
     }
 
     /** GET /whitelabel/lookup?host={host} — returns firm code, empty on failure. */
@@ -75,6 +87,7 @@ public final class BrandingApiClient {
     }
 
     private <T> Optional<T> getAsJson(URI uri, Class<T> type) {
+        long started = System.nanoTime();
         HttpRequest req = HttpRequest.newBuilder(uri)
             .timeout(Duration.ofSeconds(3))
             .header("Accept", "application/json")
@@ -83,24 +96,40 @@ public final class BrandingApiClient {
             .build();
         try {
             HttpResponse<byte[]> resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            long latencyMs = (System.nanoTime() - started) / 1_000_000L;
             if (resp.statusCode() != 200) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debugf("BrandingApi %s -> HTTP %d", uri, resp.statusCode());
-                }
+                LOG.warnf("BrandingApi %s -> HTTP %d after %d ms", uri, resp.statusCode(), latencyMs);
                 return Optional.empty();
             }
-            return Optional.ofNullable(json.readValue(resp.body(), type));
+            try {
+                return Optional.ofNullable(json.readValue(resp.body(), type));
+            } catch (com.fasterxml.jackson.core.JsonProcessingException jpe) {
+                // Server returned 200 with a body Jackson can't parse —
+                // contract violation, not a transport flap. Bump to ERROR
+                // so it's separable in the log from intermittent 5xx /
+                // timeouts that don't need a human's attention.
+                long parseLatencyMs = (System.nanoTime() - started) / 1_000_000L;
+                LOG.errorf(
+                    "BrandingApi JSON parse failure on %s after %d ms: %s",
+                    uri, parseLatencyMs, jpe.getOriginalMessage()
+                );
+                return Optional.empty();
+            }
         } catch (java.net.http.HttpTimeoutException e) {
-            LOG.warnf("BrandingApi timeout on %s", uri);
+            long latencyMs = (System.nanoTime() - started) / 1_000_000L;
+            LOG.warnf("BrandingApi timeout on %s after %d ms (limit 3000 ms)", uri, latencyMs);
             return Optional.empty();
         } catch (Exception e) {
             // Catch-all is deliberate: any failure must NOT throw past this
             // method. BrandingService handles fallback; logging here is the
-            // only signal we get.
+            // only signal we get. Transport errors stay at WARN — flapping
+            // is expected in real ops.
+            long latencyMs = (System.nanoTime() - started) / 1_000_000L;
             if (LOG.isDebugEnabled()) {
-                LOG.debugf(e, "BrandingApi error on %s", uri);
+                LOG.debugf(e, "BrandingApi error on %s after %d ms", uri, latencyMs);
             } else {
-                LOG.warnf("BrandingApi error on %s: %s", uri, e.getClass().getSimpleName());
+                LOG.warnf("BrandingApi error on %s after %d ms: %s",
+                    uri, latencyMs, e.getClass().getSimpleName());
             }
             return Optional.empty();
         }

@@ -27,6 +27,19 @@ Bind: 127.0.0.1:8080 by default (Keycloak in compose reaches it via
 `host.docker.internal:8080` on macOS). Override with `HOST` / `PORT` env
 vars. Refuses to start without a token — fail fast beats a fake that
 silently lets every unauthenticated request through.
+
+Failure-mode knobs (used to exercise the SPI's fail-open paths):
+  SLEEP_MS=N         add N ms latency before every JSON response. Use
+                     SLEEP_MS=4000 to push past the SPI's 3 s request
+                     timeout.
+  BREAK_MODE=none    (default) normal behavior.
+  BREAK_MODE=json    /whitelabel/{code} and /lookup return syntactically
+                     invalid JSON. Drives the SPI's Jackson parse error
+                     path → ERROR log + registry fallback.
+  BREAK_MODE=status_500   /whitelabel/{code} and /lookup return 500.
+  BREAK_MODE=status_503   ditto, 503 (closer to a real DB-down case).
+Asset routes ignore BREAK_MODE — only JSON is broken on purpose, since
+that's where the contract failure modes live.
 """
 
 import hmac
@@ -38,6 +51,34 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
+
+
+# --- Failure-mode knobs ----------------------------------------------------
+
+VALID_BREAK_MODES = {"none", "json", "status_500", "status_503"}
+
+
+def _read_break_mode() -> str:
+    raw = os.environ.get("BREAK_MODE", "none").strip().lower()
+    if raw not in VALID_BREAK_MODES:
+        sys.stderr.write(
+            f"FATAL: BREAK_MODE='{raw}' is not one of {sorted(VALID_BREAK_MODES)}\n"
+        )
+        sys.exit(1)
+    return raw
+
+
+def _read_sleep_ms() -> int:
+    raw = os.environ.get("SLEEP_MS", "0").strip()
+    try:
+        v = int(raw)
+    except ValueError:
+        sys.stderr.write(f"FATAL: SLEEP_MS='{raw}' is not an integer\n")
+        sys.exit(1)
+    if v < 0:
+        sys.stderr.write("FATAL: SLEEP_MS must be >= 0\n")
+        sys.exit(1)
+    return v
 
 
 # --- Branding data ---------------------------------------------------------
@@ -168,32 +209,70 @@ def _firm_code_from_host(host: str) -> str:
 class Handler(BaseHTTPRequestHandler):
     server_version = "FakeBrandingAPI/0.1"
     expected_token = ""   # populated at server-construction time
+    break_mode = "none"   # populated at server-construction time
+    sleep_ms = 0          # populated at server-construction time
 
     # Silence the default per-request access log so our INFO logger owns
     # output. The base class writes to stderr in a hard-to-grep format.
     def log_message(self, format, *args):  # noqa: A002 — base class signature
         pass
 
-    def _write_json(self, status: int, payload: dict):
+    def _maybe_sleep(self):
+        if self.sleep_ms > 0:
+            time.sleep(self.sleep_ms / 1000.0)
+
+    def _apply_break_to_json(self, status: int, payload: dict) -> tuple:
+        """Returns (status, body_bytes, content_type, decision_suffix).
+
+        If BREAK_MODE rewrites this response, applies the rewrite and tags
+        the decision for the access log. Otherwise echoes the normal path.
+        """
+        if self.break_mode == "json":
+            return (status, b'{"broken": true, "missing_brace"', "application/json; charset=utf-8", "+break_json")
+        if self.break_mode == "status_500":
+            return (500, b'{"error":"internal","message":"BREAK_MODE=status_500"}', "application/json; charset=utf-8", "+break_500")
+        if self.break_mode == "status_503":
+            return (503, b'{"error":"unavailable","message":"BREAK_MODE=status_503"}', "application/json; charset=utf-8", "+break_503")
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        return (status, body, "application/json; charset=utf-8", "")
+
+    def _write_json(self, status: int, payload: dict, breakable: bool = True) -> tuple:
+        """Write a JSON response. When breakable, BREAK_MODE may rewrite it.
+
+        Returns (emitted_status, decision_suffix) so the access log can
+        record what the client actually saw, not the intended status.
+        """
+        self._maybe_sleep()
+        if breakable:
+            emitted, body, content_type, decision_suffix = self._apply_break_to_json(status, payload)
+        else:
+            emitted = status
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            content_type = "application/json; charset=utf-8"
+            decision_suffix = ""
+        self.send_response(emitted)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+        return emitted, decision_suffix
 
-    def _write_error(self, status: int, tag: str, message: str):
-        self._write_json(status, {"error": tag, "message": message})
+    def _write_error(self, status: int, tag: str, message: str) -> tuple:
+        # Auth/validation errors bypass BREAK_MODE — those errors must stay
+        # crisp regardless of failure-mode testing.
+        return self._write_json(status, {"error": tag, "message": message}, breakable=False)
 
     def _write_bytes(self, status: int, content_type: str, body: bytes,
-                     cache_control: str = "public, max-age=300"):
+                     cache_control: str = "public, max-age=300") -> int:
+        self._maybe_sleep()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(body)
+        return status
 
     def _check_auth(self) -> bool:
         raw = self.headers.get("Authorization", "")
@@ -211,8 +290,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not self._check_auth():
                 decision = "unauthorized"
-                status_code = 401
-                self._write_error(401, "unauthorized", "missing or invalid bearer token")
+                status_code, _ = self._write_error(401, "unauthorized", "missing or invalid bearer token")
                 return
 
             if path.startswith("/branding-api/keycloak/whitelabel/lookup"):
@@ -220,13 +298,11 @@ class Handler(BaseHTTPRequestHandler):
                 host_values = qs.get("host", [])
                 if not host_values or not host_values[0].strip():
                     decision = "lookup_missing_host"
-                    status_code = 400
-                    self._write_error(400, "bad_request", "missing 'host' query parameter")
+                    status_code, _ = self._write_error(400, "bad_request", "missing 'host' query parameter")
                     return
                 code = _firm_code_from_host(host_values[0])
-                decision = f"lookup:{host_values[0]}->{code}"
-                status_code = 200
-                self._write_json(200, {"code": code})
+                status_code, suffix = self._write_json(200, {"code": code})
+                decision = f"lookup:{host_values[0]}->{code}{suffix}"
                 return
 
             parts = path.strip("/").split("/")
@@ -244,12 +320,10 @@ class Handler(BaseHTTPRequestHandler):
                     brand = BRANDS.get(code)
                     if not brand:
                         decision = f"brand_not_found:{code}"
-                        status_code = 404
-                        self._write_error(404, "not_found", f"no whitelabel for code '{code}'")
+                        status_code, _ = self._write_error(404, "not_found", f"no whitelabel for code '{code}'")
                         return
-                    decision = f"brand_hit:{code}"
-                    status_code = 200
-                    self._write_json(200, brand)
+                    status_code, suffix = self._write_json(200, brand)
+                    decision = f"brand_hit:{code}{suffix}"
                     return
 
                 if len(parts) == 6 and parts[4] == "asset":
@@ -257,25 +331,21 @@ class Handler(BaseHTTPRequestHandler):
                     bucket = ASSETS.get(code)
                     if not bucket or kind not in bucket:
                         decision = f"asset_not_found:{code}/{kind}"
-                        status_code = 404
-                        self._write_error(404, "not_found", f"no asset '{kind}' for code '{code}'")
+                        status_code, _ = self._write_error(404, "not_found", f"no asset '{kind}' for code '{code}'")
                         return
                     decision = f"asset_hit:{code}/{kind}"
-                    status_code = 200
-                    self._write_bytes(200, ASSET_CONTENT_TYPES.get(kind, "application/octet-stream"),
-                                      bucket[kind])
+                    status_code = self._write_bytes(200, ASSET_CONTENT_TYPES.get(kind, "application/octet-stream"),
+                                                    bucket[kind])
                     return
 
             decision = "unknown_route"
-            status_code = 404
-            self._write_error(404, "not_found", f"unknown path {path}")
+            status_code, _ = self._write_error(404, "not_found", f"unknown path {path}")
         except Exception as exc:  # pragma: no cover — defense in depth
             decision = f"exception:{type(exc).__name__}"
-            status_code = 500
             try:
-                self._write_error(500, "internal", "unhandled server error")
+                status_code, _ = self._write_error(500, "internal", "unhandled server error")
             except Exception:
-                pass
+                status_code = 500
         finally:
             elapsed_ms = (time.monotonic() - started) * 1000.0
             logging.info(
@@ -290,12 +360,15 @@ def main():
         format="%(asctime)s %(levelname)s fake-branding-api %(message)s",
     )
     Handler.expected_token = _expected_token()
+    Handler.break_mode = _read_break_mode()
+    Handler.sleep_ms = _read_sleep_ms()
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8080"))
     server = ThreadingHTTPServer((host, port), Handler)
     logging.info(
-        "listening on http://%s:%d (firms: %s; default=%s)",
+        "listening on http://%s:%d (firms: %s; default=%s, break_mode=%s, sleep_ms=%d)",
         host, port, ", ".join(sorted(BRANDS.keys())), DEFAULT_CODE,
+        Handler.break_mode, Handler.sleep_ms,
     )
     try:
         server.serve_forever()

@@ -45,6 +45,29 @@ curl -s -H "Authorization: Bearer $T" \
 
 Color palettes mirror `geowealth-keycloak/.../BrandRegistry.java` exactly, so the rendered login looks identical whether the SPI is reading from this fake or falling back to its hardcoded registry. If you change palettes here, mirror them in `BrandRegistry`, or vice versa, or the fallback will visually drift from the API path.
 
+## Failure-mode knobs
+
+The fake supports a handful of env-var-driven failure modes so the Keycloak SPI's fail-open chain can be exercised end-to-end without touching the SPI itself. All are read at startup; restart the server to change them.
+
+```bash
+# Slow API → trips the SPI's 3 s request timeout, fall back to registry.
+SLEEP_MS=4000 ./dev-branding-api.sh
+
+# Malformed JSON → Jackson parse error on the SPI side, ERROR log + registry.
+BREAK_MODE=json ./dev-branding-api.sh
+
+# Upstream 500 / 503 → SPI sees non-200, fall back to registry.
+BREAK_MODE=status_500 ./dev-branding-api.sh
+BREAK_MODE=status_503 ./dev-branding-api.sh
+
+# Combine — slow AND broken.
+SLEEP_MS=500 BREAK_MODE=json ./dev-branding-api.sh
+```
+
+The auth / 400 / 404 paths bypass `BREAK_MODE` on purpose: those errors must stay crisp so the failure-mode tests don't false-positive when the request itself was just wrong. Asset routes also ignore `BREAK_MODE` (only the JSON contract has interesting failure shapes).
+
+Every access log line carries a decision tag — `brand_hit:changepath+break_500` makes it obvious which scenario produced which response.
+
 ## What this fake intentionally doesn't do
 
 - **No retries / no backoff.** The Keycloak SPI is fail-open with a 3 s request timeout; this server should respond fast or be killed.
