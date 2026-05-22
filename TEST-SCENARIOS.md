@@ -38,8 +38,8 @@ All but `mca` and `code` carry LOGIN_LOGO_BIG + FAVICON BLOBs (SVGs with the fir
 | 2 | `FIRM.CLIENT_PORTAL_BASE_URL` substring | `c1wealthclient.geowealth.int` | `c1wealth` | navy/gold | Client portal subdomain |
 | 2 | same | `bcjclient.geowealth.int` | `bcj` | forest/cream | |
 | 2 | same | `smithandcoxclient.geowealth.int` | `smithandcox` | plum/blush | |
-| 3 | `EMPLOYEE.SYSTEM_BASE_URL` + cpWhitelabelKeyword override | `wisewealthkcadv.geowealth.com` | (would be) `c1wealth` | (would be) navy/gold | **Seed infrastructure ready, runtime blocked** — see "Pass 3/4 dev blocker" below |
-| 4 | `EMPLOYEE.CLIENT_PORTAL_BASE_URL` | `wisewealthkcadvclient.geowealth.int` | (would be) `c1wealth` | (would be) navy/gold | Same blocker |
+| 3 | `EMPLOYEE.SYSTEM_BASE_URL` + cpWhitelabelKeyword override | `wisewealthkcadv.geowealth.com` | `c1wealth` | navy/gold | Advisor seed required (see below) |
+| 4 | `EMPLOYEE.CLIENT_PORTAL_BASE_URL` | `wisewealthkcadvclient.geowealth.int` | `c1wealth` | navy/gold | Same advisor seed |
 | 5 | `topSubDomain` equals `FIRM.CODE` | `bcj.localhost` | `bcj` | forest/cream | Fallback for any subdomain matching an active firm's code |
 | 5 | same | `c1wealth.localhost` | `c1wealth` | navy/gold | |
 | default | nothing matched | `unknown.foo.com` | `cca` | orange/teal | GeoWealth default firm |
@@ -92,27 +92,33 @@ Three production-aligned paths to bind a whitelabel to a URL:
 
 None of these are seeded today. Test rounds with `mca.localhost` / `changepath.localhost` will continue to fall through to the GeoWealth default until one of the above is added.
 
-## Pass 3 / 4 dev blocker — advisor seeding
-
-The seed for advisor-level URL overrides:
+## Advisor-level seed (passes 3 / 4)
 
 ```sql
 INSERT INTO gp.ENTITY_TBL (
     ENTITY_ID, ENTITY_TYPE_CD, ENTITY_ACTIVE_FLAG, FIRM_CD,
-    SYSTEM_BASE_URL, CLIENT_PORTAL_BASE_URL, CP_WHITELABEL_KEYWORD, NICKNAME
+    SYSTEM_BASE_URL, CLIENT_PORTAL_BASE_URL, CP_WHITELABEL_KEYWORD
 ) VALUES (
-    'ADV0001000000000000000000ADV0001', 4, 1, 7,
-    'wisewealthkcadv.geowealth.com', 'wisewealthkcadvclient.geowealth.int',
-    'c1wealth', 'Test Override Advisor'
+    '80C84BDACDEF43A092C71F7CCE10969E',   -- valid 32-char hex (see gotcha below)
+    4,                                    -- NEmployeeDetail discriminator
+    1,                                    -- entityActiveFlag
+    7,                                    -- wisewealthkc firm (no own WL row)
+    'wisewealthkcadv.geowealth.com',
+    'wisewealthkcadvclient.geowealth.int',
+    'c1wealth'                            -- override → fetch c1wealth WL
 );
 INSERT INTO gp.USER_DETAIL_TBL (ENTITY_ID, HIDE_DISABLED_WORKFLOWS)
-VALUES ('ADV0001000000000000000000ADV0001', 0);
+VALUES ('80C84BDACDEF43A092C71F7CCE10969E', 0);
 COMMIT;
 ```
 
-After this seed, `/lookup?host=wisewealthkcadv.geowealth.com` *should* return `c1wealth` (the firm's keyword override). Instead it returns `cca` plus an `identifyFirmByUrl failed` WARN — and worse, **every host that doesn't match passes 1 or 2 fails the same way** (so `bcj.localhost`, `c1wealth.localhost`, etc. start returning `cca` even though pass-5 would otherwise resolve them correctly). The Akka actor for `IdentifyFirmByUrlMsg` raises `ServiceException: null` whose inner cause never surfaces in `catalina.out` — suspected NPE inside `Firm.toDTO` (similar shape to the pre-restart `FirmSSO.getEnforcementType().isOff()` NPE we saw on a different code path), but the actor swallows it before `logAndThrow`.
+After this seed, `/lookup?host=wisewealthkcadv.geowealth.com` returns `c1wealth` (advisor's `cpWhitelabelKeyword` override wins over the firm's code, per `AuthorizationManagerTrait` pass 3). The login renders the c1wealth navy/gold brand despite the advisor's firm being wisewealthkc.
 
-Until that's debugged on the GeoWealth side, the advisor row stays **deleted** so it doesn't break the rest of the matrix. The two affected tests in `WhitelabelScenariosIT.Pass3And4Lookup` are `@Disabled` with the seed and blocker documented; drop the annotation once the actor surfaces the underlying cause and the NPE is fixed.
+**Critical gotcha — ENTITY_ID must be 32 hex chars.** `ENTITY_TBL.ENTITY_ID` is mapped through `com.netfolio.util.UUID` via the Hibernate `IDConverter` custom type. Non-hex characters anywhere in the ID (`'V'`, `'W'`, `'L'`, etc.) cause `IDConverter.nullSafeGet` to throw `NumberFormatException` during the `loadAllActiveEmployeesWithWitelabel` query, and the `IdentifyFirmByUrlMsg` Akka actor's reaction surfaces this as `ServiceException: null` with **no inner cause in `catalina.out`** (the actor catches `Throwable` but the underlying `printStackTrace` from `Mailer.waitAndTakeResult` is the only signal). Even worse, this exception bricks the actor's pass-3 query for *every* lookup that falls past pass 1/2 — so `bcj.localhost`, `c1wealth.localhost`, and any unmatched host all start returning `cca` until the bad row is removed.
+
+Same constraint applies to `WHITELABEL_TBL.WHITELABEL_ID`: cca, changepath, c1wealth and the others all use valid 32-char hex UUIDs. The original `'cpath0000000000000000000000cpath'` and `'c1wealth00000000000000000000c1wl'` seeds caused 404s on `/whitelabel/{code}` for the same reason (silent skip during Hibernate fetch).
+
+If a future seed batch goes wrong, the diagnostic shortcut is the patched `Mailer.waitAndTakeResult` on the geowealth side (squashed into the GEO-99999 commit on `team/petarnenov/keycloak-whitelabel-poc`): the inner exception is now routed through log4j so `catalina.out` carries the actual `Caused by:` chain instead of swallowing it.
 
 ## Caveat: Tomcat class reload
 
