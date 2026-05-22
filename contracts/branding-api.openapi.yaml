@@ -1,0 +1,392 @@
+openapi: 3.1.0
+info:
+  title: GeoWealth Branding API (Keycloak white-labeling POC)
+  version: 0.1.0
+  description: |
+    Read-only HTTP contract between Keycloak (consumer) and GeoWealth Tomcat
+    (producer) for per-firm white-labeling on the Keycloak login screen.
+
+    **Source of truth.** This file pins the wire format. Both sides develop
+    against it:
+
+    - **Keycloak side** (`geowealth-keycloak/`) — `BrandingApiClient` consumes
+      `GET /whitelabel/{code}` and `GET /whitelabel/lookup`. The SPI currently
+      reads only `code`, `displayName`, and `cssVariables` from the brand
+      response (see `BrandDto.java`); the wider schema is declared here for
+      forward compatibility so geowealth doesn't have to re-version the API
+      when later Keycloak phases start using `assets`, `supportEmail`, etc.
+    - **GeoWealth side** (`team/petarnenov/keycloak-whitelabel-poc`) — a
+      Jakarta servlet under `/branding-api/*` registered in `web.xml` before
+      the Struts filter (per findings doc, §Q1). Reads `WHITELABEL_TBL` via
+      `WhitelabelDAO`.
+
+    **Auth.** Every endpoint requires a constant-time-compared static bearer
+    token. The token is shared via `.envrc` on both sides
+    (`POC_BRANDING_API_TOKEN`). The token MUST NOT be logged.
+
+    **Caching.** Responses set `Cache-Control: no-store`. Keycloak owns the
+    cache (Caffeine, 60 s TTL); HTTP-layer caching here would interact badly
+    with the upstream cache.
+
+    **Failure semantics.** Keycloak side is fail-open — any non-200, timeout,
+    or malformed JSON falls back to the hardcoded `BrandRegistry`. The
+    server side is therefore allowed to fail cleanly (4xx/5xx) without
+    risking a login outage. Don't add retries server-side; Keycloak's own
+    cache absorbs transient failures within the TTL window.
+
+  contact:
+    name: keycloak-demo POC
+    url: https://github.com/petarnenov/keycloak-demo
+
+servers:
+  - url: http://host.docker.internal:8080
+    description: GeoWealth Tomcat reachable from the Keycloak container on macOS (Docker Desktop / Podman). Linux equivalent uses `--add-host=host.docker.internal:host-gateway`.
+  - url: http://localhost:8080
+    description: Same Tomcat seen from the host (for manual curl tests).
+
+tags:
+  - name: whitelabel
+    description: Per-firm branding payload + asset BLOBs.
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  /branding-api/keycloak/whitelabel/{code}:
+    get:
+      tags: [whitelabel]
+      summary: Get the full branding payload for a firm.
+      description: |
+        Returns the JSON blob the Keycloak parametric theme renders against.
+        Keycloak's SPI currently reads only `code`, `displayName`, and
+        `cssVariables`; other fields are tolerated but ignored
+        (`@JsonIgnoreProperties(ignoreUnknown = true)` in `BrandDto`).
+
+        All color values in `cssVariables` MUST match the regex
+        `^#[0-9a-fA-F]{3,8}$` or be one of the allowed CSS keywords
+        (`transparent`, `inherit`, `initial`, `unset`, `none`,
+        `currentColor`). Anything else is rejected client-side by
+        `BrandCss.isSafe()` before crossing into the rendered `<style>`
+        block; the server SHOULD validate at the source as well (defense in
+        depth — see findings §Q3).
+      operationId: getBrand
+      parameters:
+        - $ref: '#/components/parameters/firmCode'
+      responses:
+        '200':
+          description: Branding payload for the firm.
+          headers:
+            Cache-Control:
+              schema: { type: string, example: "no-store" }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Brand' }
+              examples:
+                changepath:
+                  $ref: '#/components/examples/changepathBrand'
+                default:
+                  $ref: '#/components/examples/ccaBrand'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /branding-api/keycloak/whitelabel/lookup:
+    get:
+      tags: [whitelabel]
+      summary: Resolve hostname → firm code.
+      description: |
+        Wraps GeoWealth's existing `AuthorizationManagerTrait.identifyFirmByUrl()`
+        — the single source of truth for host→firm matching, including
+        per-advisor subdomain rules. Keycloak MUST NOT reimplement this
+        algorithm; always call the lookup endpoint.
+
+        Returns the default firm code (`cca` per findings §Q5) for any host
+        that doesn't match, never 404. This keeps the Keycloak side's host
+        resolution branch-free.
+      operationId: lookupHost
+      parameters:
+        - name: host
+          in: query
+          required: true
+          description: |
+            The browser-visible hostname (and optional port) carried in the
+            HTTP `Host` or `X-Forwarded-Host` header by the original
+            request. Keycloak strips no characters before forwarding;
+            servers MUST tolerate ports (e.g. `changepath.localhost:8898`).
+          schema: { type: string, example: "changepath.localhost:8898" }
+      responses:
+        '200':
+          description: Firm code (resolved or default).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LookupResponse' }
+              examples:
+                resolved:
+                  value: { code: changepath }
+                fellThroughToDefault:
+                  value: { code: cca }
+        '400':
+          description: |
+            Missing `host` query parameter or syntactically invalid hostname.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /branding-api/keycloak/whitelabel/{code}/asset/{kind}:
+    get:
+      tags: [whitelabel]
+      summary: Stream a per-firm asset BLOB.
+      description: |
+        Streams binary assets — logos, favicon, terms-of-use PDF — from
+        `WHITELABEL_TBL` (or `etc/whitelabel/<code>/` for terms PDFs). Used
+        by future Keycloak phases (logo on login page, favicon, terms link
+        target). Not yet consumed by the SPI; pinned here so geowealth can
+        build it once and Keycloak can wire it later without re-versioning.
+
+        **Caching.** Strong `ETag` based on the row's `LAST_UPDATE_DATE` +
+        BLOB SHA-256. `Cache-Control: public, max-age=86400, immutable` when
+        the URL carries a versioned path segment (not yet defined — future
+        addition); `max-age=300` otherwise.
+
+        **CSP.** Because this endpoint lives on a different origin than
+        Keycloak (host.docker.internal:8080 vs the browser-side Keycloak
+        URL), the Keycloak side will likely proxy these through a
+        `RealmResourceProvider` to keep the default CSP intact. The server
+        contract is unchanged regardless.
+      operationId: getAsset
+      parameters:
+        - $ref: '#/components/parameters/firmCode'
+        - name: kind
+          in: path
+          required: true
+          description: Which asset to stream.
+          schema:
+            type: string
+            enum: [favicon, logo-login, logo-login-small, terms]
+        - name: If-None-Match
+          in: header
+          required: false
+          description: ETag from a previous response; server returns 304 if unchanged.
+          schema: { type: string }
+      responses:
+        '200':
+          description: BLOB body. Content-Type is set to match the underlying file (PNG/SVG/PDF).
+          headers:
+            ETag:
+              schema: { type: string, example: '"f0a1c39b…"' }
+            Cache-Control:
+              schema: { type: string, example: "public, max-age=300" }
+            Content-Type:
+              schema: { type: string, example: "image/png" }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '304': { description: Asset unchanged since the If-None-Match ETag. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: |
+            Firm exists but the requested asset is null/missing. Keycloak
+            theme ships a default fallback for each `kind`, so 404 here is
+            non-fatal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Static bearer token from `POC_BRANDING_API_TOKEN`. Server-side
+        comparison MUST be constant-time. The token MUST NOT appear in
+        access logs, error messages, or stack traces.
+
+  parameters:
+    firmCode:
+      name: code
+      in: path
+      required: true
+      description: |
+        Firm identifier — corresponds to `WHITELABEL_TBL.CODE` (case-sensitive
+        as stored). Examples: `changepath`, `cca` (the GeoWealth default,
+        per findings §Q5).
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+        pattern: '^[a-z0-9][a-z0-9_-]*$'
+        example: changepath
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No row in `WHITELABEL_TBL` for the given `code`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Upstream dependency (DB) unreachable. Keycloak side will fall back to cached/registry value.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    Brand:
+      type: object
+      required: [code, displayName, cssVariables]
+      properties:
+        code:
+          type: string
+          description: Firm code (echoes the path parameter).
+          example: changepath
+        firmCd:
+          type: integer
+          description: Numeric `FIRM_TBL.FIRM_CD` if available. Not consumed by Keycloak yet.
+          example: 4
+        displayName:
+          type: string
+          description: Human-readable firm name (`WHITELABEL_TBL.NAME`).
+          example: ChangePath
+        supportEmail: { type: string, format: email, example: "supportemail@changepath.com" }
+        phone:        { type: string, example: "888.798.2360" }
+        address:      { type: string, example: "11460 Tomahawk Creek Pkwy, Ste 200" }
+        website:      { type: string, format: uri, example: "http://www.changepath.com/" }
+        advisorPortalUrl: { type: string, format: uri }
+        clientPortalUrl:  { type: string, format: uri }
+        termsUrl:
+          type: string
+          description: |
+            Relative URL pointing back at this API's `/asset/terms` endpoint, or an absolute external URL if the firm hosts terms elsewhere.
+          example: "/branding-api/keycloak/whitelabel/changepath/asset/terms"
+        assets:
+          type: object
+          description: Per-asset metadata. Keycloak SPI doesn't read this yet but the field is pinned for future phases.
+          additionalProperties: false
+          properties:
+            favicon:    { $ref: '#/components/schemas/AssetRef' }
+            loginLogo:  { $ref: '#/components/schemas/AssetRef' }
+        cssVariables:
+          type: object
+          description: |
+            CSS-variable map applied as `:root { --name: value; }` in the
+            rendered theme. **All values** MUST pass `BrandCss.isSafe()` on
+            the Keycloak side: `^#[0-9a-fA-F]{3,8}$` hex colors, or one of
+            `transparent | inherit | initial | unset | none | currentColor`.
+            Anything else is silently dropped to `""` at render time.
+
+            Recommended keys (consumed by `template.ftl` today):
+              - `--theme-link-color`
+              - `--theme-gradient-start`
+              - `--theme-gradient-end`
+              - `--theme-body-background`
+              - `--theme-button-background`
+              - `--pf-v5-global--primary-color--100`
+              - `--pf-v5-global--primary-color--200`
+              - `--pf-v5-global--link--Color`
+              - `--pf-v5-global--link--Color--hover`
+              - `--pf-v5-global--active-color--100`
+          additionalProperties:
+            type: string
+            maxLength: 64
+        version:
+          type: string
+          format: date-time
+          description: |
+            Logical version (`LAST_UPDATE_DATE` of the row). Bumping this
+            invalidates client-side caches keyed off `version`.
+          example: "2026-05-21T09:14:22Z"
+
+    AssetRef:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: Absolute or API-relative URL to fetch the binary.
+          example: "/branding-api/keycloak/whitelabel/changepath/asset/favicon"
+        etag:
+          type: string
+          description: Opaque ETag — pre-fetched so callers can issue conditional GETs.
+          example: '"f0a1c39b…"'
+        contentType:
+          type: string
+          example: image/png
+
+    LookupResponse:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: Firm code, or `cca` (the default) on no match.
+          example: changepath
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error tag.
+          example: not_found
+        message:
+          type: string
+          description: |
+            Human-readable detail. MUST NOT contain secrets (no bearer
+            tokens, no DB connection strings).
+          example: "no whitelabel row for code 'doesnotexist'"
+
+  examples:
+
+    changepathBrand:
+      summary: ChangePath — production values from etc/whitelabel/changepath/.
+      value:
+        code: changepath
+        firmCd: 4
+        displayName: ChangePath
+        supportEmail: supportemail@changepath.com
+        phone: "888.798.2360"
+        website: http://www.changepath.com/
+        cssVariables:
+          --theme-link-color: "#155e8f"
+          --theme-gradient-start: "#0e4e79"
+          --theme-gradient-end: "#b5dea4"
+          --theme-body-background: "#f5f5f5"
+          --theme-button-background: "#155e8f"
+          --pf-v5-global--primary-color--100: "#155e8f"
+          --pf-v5-global--primary-color--200: "#0e4e79"
+          --pf-v5-global--link--Color: "#155e8f"
+          --pf-v5-global--link--Color--hover: "#0e4e79"
+          --pf-v5-global--active-color--100: "#155e8f"
+        version: "2026-05-21T09:14:22Z"
+
+    ccaBrand:
+      summary: GeoWealth default (firm_cd=1, code=cca per findings §Q5).
+      value:
+        code: cca
+        firmCd: 1
+        displayName: GeoWealth
+        supportEmail: support@geowealth.com
+        cssVariables:
+          --theme-link-color: "#c8482a"
+          --theme-gradient-start: "#1f4d3f"
+          --theme-gradient-end: "#e6b85c"
+          --theme-body-background: "#fafaf6"
+          --theme-button-background: "#c8482a"
+          --pf-v5-global--primary-color--100: "#c8482a"
+          --pf-v5-global--primary-color--200: "#a83a20"
+          --pf-v5-global--link--Color: "#c8482a"
+          --pf-v5-global--link--Color--hover: "#a83a20"
+          --pf-v5-global--active-color--100: "#c8482a"
+        version: "2026-05-21T09:14:22Z"
