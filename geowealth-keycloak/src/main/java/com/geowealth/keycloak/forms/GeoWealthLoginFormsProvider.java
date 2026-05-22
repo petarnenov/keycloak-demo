@@ -1,0 +1,88 @@
+package com.geowealth.keycloak.forms;
+
+import com.geowealth.keycloak.branding.Brand;
+import com.geowealth.keycloak.branding.BrandingService;
+
+import org.jboss.logging.Logger;
+import org.keycloak.forms.login.freemarker.FreeMarkerLoginFormsProvider;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.theme.Theme;
+
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
+
+import java.util.Locale;
+
+/**
+ * Drop-in replacement for Keycloak's default {@link FreeMarkerLoginFormsProvider}
+ * that, just before any login template renders, resolves the firm from the
+ * incoming request's {@code Host} header (or {@code X-Forwarded-Host} if
+ * present) and exposes the brand as the {@code ${brand}} FreeMarker variable.
+ *
+ * <p>Resolution flows through {@link BrandingService}: cache → GeoWealth API
+ * → hardcoded fallback. The provider never blocks login on a branding
+ * outage — the service guarantees a non-null Brand return.</p>
+ *
+ * <p>Override hook: {@link #processTemplate(Theme, String, Locale)} is the
+ * single funnel through which every {@code createXxx(...)} method in the
+ * parent renders. Mutating the {@code attributes} map (protected on the
+ * parent) lets the parent class do all its resource/message work
+ * unchanged.</p>
+ *
+ * <p>Scope: only injects {@code brand} when the current realm is the POC
+ * realm ({@code geowealth-realm}). Any other realm sees parent behavior
+ * verbatim, so this provider is safe to ship alongside the existing
+ * demo-realm.</p>
+ */
+public class GeoWealthLoginFormsProvider extends FreeMarkerLoginFormsProvider {
+
+    private static final Logger LOG = Logger.getLogger(GeoWealthLoginFormsProvider.class);
+
+    private static final String GEOWEALTH_REALM = "geowealth-realm";
+    private static final String ATTR_NAME = "brand";
+
+    private final BrandingService brandingService;
+
+    public GeoWealthLoginFormsProvider(KeycloakSession session, BrandingService brandingService) {
+        super(session);
+        this.brandingService = brandingService;
+    }
+
+    @Override
+    protected Response processTemplate(Theme theme, String templateName, Locale locale) {
+        if (realm != null && GEOWEALTH_REALM.equals(realm.getName())) {
+            Brand brand = brandingService.lookupByHost(currentRequestHost());
+            setAttribute(ATTR_NAME, brand);
+            if (LOG.isDebugEnabled()) {
+                LOG.debugf("Resolved brand for %s template: code=%s",
+                    templateName, brand.getCode());
+            }
+        }
+        return super.processTemplate(theme, templateName, locale);
+    }
+
+    /**
+     * Prefer X-Forwarded-Host when behind a trusted reverse proxy
+     * (production architecture; Keycloak set to --proxy-headers=xforwarded).
+     * Fall back to Host, then the URI authority. Never throws — any
+     * unexpected request-context state defaults to the realm fallback in
+     * the BrandingService.
+     */
+    private String currentRequestHost() {
+        try {
+            HttpHeaders headers = session.getContext().getHttpRequest().getHttpHeaders();
+            String xfh = headers.getHeaderString("X-Forwarded-Host");
+            if (xfh != null && !xfh.isBlank()) {
+                int comma = xfh.indexOf(',');
+                return (comma >= 0 ? xfh.substring(0, comma) : xfh).trim();
+            }
+            String host = headers.getHeaderString(HttpHeaders.HOST);
+            if (host != null && !host.isBlank()) {
+                return host.trim();
+            }
+        } catch (Exception ignored) {
+            // Defensive: ensure no headers-related issue breaks login.
+        }
+        return session.getContext().getUri().getRequestUri().getAuthority();
+    }
+}

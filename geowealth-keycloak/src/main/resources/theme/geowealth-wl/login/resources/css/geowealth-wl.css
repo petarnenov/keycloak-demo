@@ -1,0 +1,15 @@
+/* GeoWealth white-label login theme — Phase 2.a.
+ *
+ * The brand-varying portion (CSS variables on :root, the gradient on body,
+ * primary button colors) moved into template.ftl as an inline <style> block
+ * driven by ${brand} from GeoWealthLoginFormsProvider.
+ *
+ * This file is intentionally kept as a real CSS resource because:
+ *   - theme.properties' `styles=css/geowealth-wl.css` already references it;
+ *     keeping the file means we exercise Keycloak's static-resource serving
+ *     path and CSP defaults at every login.
+ *   - It's the natural home for any layout / typography tweaks that don't
+ *     vary per brand and would otherwise have to live in template.ftl.
+ *
+ * Nothing here yet — by design.
+ */

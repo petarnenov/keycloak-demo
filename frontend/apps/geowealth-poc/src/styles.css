@@ -1,0 +1,71 @@
+/* The POC app intentionally renders un-branded — only the Keycloak login
+ * itself is themed in Phase 1. Keeps a strong visual signal that the brand
+ * is being driven by Keycloak, not by client-side CSS. */
+
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #111;
+  background: #fafafa;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.card {
+  background: white;
+  max-width: 28rem;
+  width: 100%;
+  padding: 2.5rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.card header h1 {
+  font-size: 1.25rem;
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+
+.card section {
+  margin: 1.5rem 0 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+button {
+  background: #111;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.25rem;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  justify-self: start;
+}
+
+button:hover { background: #333; }
+
+code {
+  background: #f3f3f3;
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+.muted { color: #666; margin: 0; }
+.small { font-size: 0.85rem; }
+
+footer {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}

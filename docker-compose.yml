@@ -68,8 +68,23 @@ services:
       RESEND_FROM: "Demo Realm <onboarding@resend.dev>"
       OTP_TRUST_WINDOW_MINUTES: "60"
       USER_SERVICE_URL: http://user-service:8080
+      # POC: GeoWealth white-labeling sync. The LoginFormsProvider override
+      # in geowealth-keycloak/ reads these at SPI init time and constructs
+      # the BrandingApiClient. If either URL or TOKEN is blank, the provider
+      # falls through to the hardcoded BrandRegistry fallback — useful when
+      # the geowealth Tomcat isn't running yet. host.docker.internal resolves
+      # to the dev machine's loopback on Docker Desktop / Podman (macOS).
+      # On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]`.
+      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_URL: "http://host.docker.internal:8080"
+      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_TOKEN: "${POC_BRANDING_API_TOKEN}"
+      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_CACHE_TTL_SECONDS: "60"
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+      # POC: white-labeling realm imported alongside the demo realm. Both go
+      # through Keycloak's --import-realm sweep; IGNORE_EXISTING means the
+      # geowealth-realm is only created on first run (fresh DB) or after
+      # `down -v`. To edit a running realm, use the admin API.
+      - ./keycloak/geowealth-realm-export.json:/opt/keycloak/data/import/geowealth-realm.json
       - keycloak_data:/opt/keycloak/data
     networks:
       - keycloak-network
@@ -155,6 +170,22 @@ services:
     command: sh -c "npm install && npm run -w mfe-admin build && npm run -w mfe-admin preview"
     ports:
       - "5183:5183"
+
+  # ---- POC: GeoWealth white-labeling demo app --------------------------------
+  # Standalone Vite dev server at :5174, isolated from the MFE shell. Entered
+  # via subdomains (changepath.localhost:5174, default.localhost:5174) so the
+  # browser-visible Host header drives ThemeSelectorProvider's tenant
+  # resolution against Keycloak (Phase 2). Macos resolves *.localhost
+  # automatically; Linux may need /etc/hosts entries.
+  geowealth-poc:
+    <<: *mfe-common
+    command: sh -c "npm install && npm run -w geowealth-poc dev -- --host 0.0.0.0"
+    ports:
+      - "5174:5174"
+    environment:
+      VITE_KEYCLOAK_REALM: geowealth-realm
+      VITE_KEYCLOAK_CLIENT_ID: geowealth-poc-client
+      VITE_APP_TITLE: "GeoWealth POC"
 
   # ---- backend: one BFF per MFE ----------------------------------------------
   # Same image, different config. APP_ALLOWED_ROLES is what gates /api/user;
