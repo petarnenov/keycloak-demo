@@ -39,7 +39,24 @@ public class GeoWealthLoginFormsProvider extends FreeMarkerLoginFormsProvider {
 
     private static final Logger LOG = Logger.getLogger(GeoWealthLoginFormsProvider.class);
 
-    private static final String GEOWEALTH_REALM = "geowealth-realm";
+    /**
+     * Realm attribute name that opts a realm into GeoWealth white-labeling.
+     * The POC seed (keycloak/geowealth-realm-export.json) sets this on
+     * {@code geowealth-realm} so the provider lights up there; any realm
+     * without the attribute renders with the upstream FreeMarkerLoginFormsProvider
+     * verbatim. Attribute-based gating is rename-safe — a realm with a
+     * different name still picks up branding as long as the attribute
+     * sticks.
+     *
+     * <p>For backwards compatibility, also matches the legacy
+     * {@code "geowealth-realm"} name so a realm export that predates the
+     * attribute keeps working.</p>
+     */
+    private static final String REALM_ATTR_OPT_IN = "geowealthBrandingProvider";
+
+    /** Legacy fallback — realm name match for installs that haven't yet set the realm attribute. */
+    private static final String LEGACY_REALM_NAME = "geowealth-realm";
+
     private static final String ATTR_NAME = "brand";
     private static final String ATTR_FALLBACK = "brandFallback";
 
@@ -52,7 +69,7 @@ public class GeoWealthLoginFormsProvider extends FreeMarkerLoginFormsProvider {
 
     @Override
     protected Response processTemplate(Theme theme, String templateName, Locale locale) {
-        if (realm != null && GEOWEALTH_REALM.equals(realm.getName())) {
+        if (realm != null && isOptedIn(realm)) {
             BrandResolution resolved = brandingService.lookupByHostResolved(currentRequestHost());
             Brand brand = resolved.brand();
             setAttribute(ATTR_NAME, brand);
@@ -63,6 +80,20 @@ public class GeoWealthLoginFormsProvider extends FreeMarkerLoginFormsProvider {
             }
         }
         return super.processTemplate(theme, templateName, locale);
+    }
+
+    /**
+     * True when the realm has opted into the GeoWealth branding provider.
+     * Checks for the {@link #REALM_ATTR_OPT_IN} realm attribute first
+     * (production-correct mechanism — rename-safe, environment-portable);
+     * falls through to the legacy realm-name string match so an existing
+     * deployment that hasn't been re-imported still works during the
+     * migration window.
+     */
+    private static boolean isOptedIn(org.keycloak.models.RealmModel realm) {
+        String attr = realm.getAttribute(REALM_ATTR_OPT_IN);
+        if (attr != null && Boolean.parseBoolean(attr.trim())) return true;
+        return LEGACY_REALM_NAME.equals(realm.getName());
     }
 
     /**

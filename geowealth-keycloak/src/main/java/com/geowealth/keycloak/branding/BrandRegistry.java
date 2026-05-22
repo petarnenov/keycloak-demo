@@ -54,6 +54,28 @@ public final class BrandRegistry {
         return h.substring(0, dot);
     }
 
+    /**
+     * Feature flag — when {@code KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_REGISTRY_PLACEHOLDERS}
+     * is set to {@code "false"} (case-insensitive) the registry stops
+     * surfacing the embedded logo/favicon SVG placeholders, falling back
+     * to text-only brand rendering. The placeholders are useful in the
+     * POC because they keep the visual story coherent when GeoWealth is
+     * unreachable; production deployments typically want a stark
+     * "something is broken" signal (logo-less login + the amber fallback
+     * banner) instead of a misleading "everything is fine" rectangle.
+     *
+     * <p>Defaults to {@code true} — placeholders on — so existing
+     * deployments keep the current behavior until they explicitly opt
+     * out. Read once at class load; toggle requires a Keycloak restart.</p>
+     */
+    static final boolean PLACEHOLDERS_ENABLED = readPlaceholdersEnabled();
+
+    private static boolean readPlaceholdersEnabled() {
+        String raw = System.getenv("KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_REGISTRY_PLACEHOLDERS");
+        if (raw == null || raw.isBlank()) return true;
+        return !raw.trim().equalsIgnoreCase("false");
+    }
+
     // Tiny SVG placeholders so the registry-fallback path still shows
     // *something* on the login page. Pre-base64-encoded at build time;
     // identical shape to what the fake serves at /asset/logo-login, so
@@ -84,7 +106,8 @@ public final class BrandRegistry {
         changepath.put("--pf-v5-global--active-color--100",     "#155e8f");
         brandsByCode.put("changepath",
             new Brand("changepath", "ChangePath", changepath,
-                LOGO_CHANGEPATH, FAVICON_CHANGEPATH,
+                PLACEHOLDERS_ENABLED ? LOGO_CHANGEPATH    : null,
+                PLACEHOLDERS_ENABLED ? FAVICON_CHANGEPATH : null,
                 "supportemail@changepath.com", "888.798.2360", "http://www.changepath.com/"));
 
         // GeoWealth default — distinctive orange/teal so the difference vs
@@ -102,7 +125,8 @@ public final class BrandRegistry {
         geowealth.put("--pf-v5-global--active-color--100",      "#c8482a");
         brandsByCode.put(DEFAULT_CODE,
             new Brand(DEFAULT_CODE, "GeoWealth", geowealth,
-                LOGO_CCA, FAVICON_CCA,
+                PLACEHOLDERS_ENABLED ? LOGO_CCA    : null,
+                PLACEHOLDERS_ENABLED ? FAVICON_CCA : null,
                 "support@geowealth.com", null, "https://www.geowealth.com/"));
     }
 }

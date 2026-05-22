@@ -41,6 +41,40 @@ public final class BrandingService {
         this.fallback = fallback;
     }
 
+    /**
+     * Drop the cached brand for a specific firm code. The next render that
+     * needs that code refetches from the GeoWealth branding API.
+     *
+     * <p>Wired up to the {@code /realms/{realm}/branding-cache/invalidate}
+     * REST endpoint (see {@code BrandingCacheResourceProviderFactory}) so
+     * the GeoWealth admin can poke Keycloak after a WHITELABEL_TBL row
+     * update — without this, a brand change is invisible for up to the
+     * cache TTL (default 60 s).</p>
+     *
+     * <p>Also drops every {@code hostCache} entry whose cached code
+     * matches — keeps host→code lookups consistent after a brand swap.
+     * Callers typically pass the cleaned brand code; pass {@code null}
+     * to wipe the whole cache (admin "reset" use case).</p>
+     */
+    public void invalidate(String code) {
+        if (code == null || code.isBlank()) {
+            hostCache.clear();
+            brandCache.clear();
+            LOG.info("BrandingService cache fully invalidated");
+            return;
+        }
+        brandCache.invalidate(code);
+        hostCache.removeWhereValueEquals(code);
+        LOG.infof("BrandingService cache invalidated for code=%s", code);
+    }
+
+    /** For ops visibility — exposed so the REST endpoint can answer GET /branding-cache/stats. */
+    public CacheStats stats() {
+        return new CacheStats(hostCache.size(), brandCache.size());
+    }
+
+    public record CacheStats(int hostCacheSize, int brandCacheSize) {}
+
     public Brand lookupByHost(String host) {
         return lookupByHostResolved(host).brand();
     }
@@ -70,19 +104,39 @@ public final class BrandingService {
         boolean skipBrandApi = "host_derived".equals(code.source()) && apiClient != null;
         Resolved<CachedBrand> resolved = resolveBrand(code.value(), skipBrandApi);
         long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
-        // One line per template render with everything an operator needs to
-        // grep for: did the cache help, did the API succeed, did we fall
-        // back. INFO so it's visible without enabling DEBUG; cheap because
-        // a login render is already orders of magnitude more expensive.
-        LOG.infof(
-            "Branding: host=%s code=%s code_src=%s brand_src=%s latency_ms=%d",
-            host == null ? "-" : host,
-            resolved.value().brand().getCode(),
-            code.source(),
-            resolved.source(),
-            elapsedMs
-        );
-        return new BrandResolution(resolved.value().brand(), resolved.value().fallback());
+        // Per-render trace: one line with everything an operator needs to
+        // grep — cache hit vs API hit vs fallback, plus latency. Logged
+        // at DEBUG by default to keep log volume sane at scale (one line
+        // per login render times a busy realm = a lot of bytes/day);
+        // operators who need full per-render visibility flip the logger
+        // category to DEBUG.
+        //
+        // Fallback renders stay loud — anytime the cache_hit / api_hit
+        // happy path didn't fire, surface at WARN so a downed backend or
+        // bad seed shows up in the default log stream without requiring
+        // DEBUG to be enabled. fallback path is per-cache-TTL, not
+        // per-render, so volume stays bounded.
+        boolean isFallback = resolved.value().fallback();
+        if (isFallback) {
+            LOG.warnf(
+                "Branding fallback: host=%s code=%s code_src=%s brand_src=%s latency_ms=%d",
+                host == null ? "-" : host,
+                resolved.value().brand().getCode(),
+                code.source(),
+                resolved.source(),
+                elapsedMs
+            );
+        } else if (LOG.isDebugEnabled()) {
+            LOG.debugf(
+                "Branding: host=%s code=%s code_src=%s brand_src=%s latency_ms=%d",
+                host == null ? "-" : host,
+                resolved.value().brand().getCode(),
+                code.source(),
+                resolved.source(),
+                elapsedMs
+            );
+        }
+        return new BrandResolution(resolved.value().brand(), isFallback);
     }
 
     /**

@@ -65,6 +65,23 @@ public final class BrandingCache<V> {
         map.remove(key);
     }
 
+    /** Drop every entry. Used by the admin cache-invalidation endpoint. */
+    public void clear() {
+        map.clear();
+    }
+
+    /**
+     * Drop every entry whose cached value equals {@code value}. Used to
+     * keep host→code resolutions consistent after a brand row change:
+     * if {@code BrandingService.invalidate("c1wealth")} fires, every
+     * cached {@code host → "c1wealth"} mapping should also drop so the
+     * next request re-asks the API which host owns the code.
+     */
+    public void removeWhereValueEquals(V value) {
+        if (value == null) return;
+        map.entrySet().removeIf(e -> value.equals(e.getValue().value));
+    }
+
     public int size() {
         return map.size();
     }
