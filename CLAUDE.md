@@ -124,6 +124,9 @@ If you're using `podman compose` directly, two things to know:
 | New realm role needed for a running demo | POST `/admin/realms/demo-realm/roles` with admin token; also add to `realm-export.json` for future fresh installs |
 | `EmailOtpAuthenticator` / `ResendClient` source | `podman compose build keycloak && podman compose up -d --force-recreate keycloak` — same as any SPI change |
 | Auth flow edit in `realm-export.json` | wipe postgres volume (`down -v`) OR patch live flow via admin API — see note above |
+| `geowealth-keycloak/` SPI source (LoginFormsProvider, BrandingService, BrandCss, theme assets) | `podman compose build keycloak && podman compose up -d --force-recreate keycloak`. The shadow JAR is rebuilt by `Dockerfile.keycloak` alongside the existing `keycloak-provider/`; both providers ship in the same image, both invalidate together. |
+| `keycloak/geowealth-realm-export.json` | takes effect on fresh DB only (`down -v` wipes the demo realm too); otherwise patch the live `geowealth-realm` via admin API on port 8898 |
+| White-labeling branding-API contract (`contracts/branding-api.openapi.yaml`) | hand-written contract, no code generation yet; bump the fake at `dev-branding-api/server.py` AND the client at `geowealth-keycloak/src/main/java/com/geowealth/keycloak/branding/BrandingApiClient.java` in lockstep, then rebuild keycloak |
 
 ## Dev workflows (Level 1 / 2 / 3)
 
