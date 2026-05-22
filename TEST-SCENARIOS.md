@@ -38,8 +38,8 @@ All but `mca` and `code` carry LOGIN_LOGO_BIG + FAVICON BLOBs (SVGs with the fir
 | 2 | `FIRM.CLIENT_PORTAL_BASE_URL` substring | `c1wealthclient.geowealth.int` | `c1wealth` | navy/gold | Client portal subdomain |
 | 2 | same | `bcjclient.geowealth.int` | `bcj` | forest/cream | |
 | 2 | same | `smithandcoxclient.geowealth.int` | `smithandcox` | plum/blush | |
-| 3 | `EMPLOYEE.SYSTEM_BASE_URL` + cpWhitelabelKeyword override | (not seeded yet — requires EMPLOYEE row) | — | — | Defer; complex schema |
-| 4 | `EMPLOYEE.CLIENT_PORTAL_BASE_URL` | (same) | — | — | Defer |
+| 3 | `EMPLOYEE.SYSTEM_BASE_URL` + cpWhitelabelKeyword override | `wisewealthkcadv.geowealth.com` | (would be) `c1wealth` | (would be) navy/gold | **Seed infrastructure ready, runtime blocked** — see "Pass 3/4 dev blocker" below |
+| 4 | `EMPLOYEE.CLIENT_PORTAL_BASE_URL` | `wisewealthkcadvclient.geowealth.int` | (would be) `c1wealth` | (would be) navy/gold | Same blocker |
 | 5 | `topSubDomain` equals `FIRM.CODE` | `bcj.localhost` | `bcj` | forest/cream | Fallback for any subdomain matching an active firm's code |
 | 5 | same | `c1wealth.localhost` | `c1wealth` | navy/gold | |
 | default | nothing matched | `unknown.foo.com` | `cca` | orange/teal | GeoWealth default firm |
@@ -91,6 +91,28 @@ Three production-aligned paths to bind a whitelabel to a URL:
 3. **Existing firm's URL alignment:** rename the WL row's CODE to match an existing FIRM.CODE (e.g., rename `changepath` to one of the active firms' codes). Pass-1/5 matches by firm. Not recommended — clobbers data semantics.
 
 None of these are seeded today. Test rounds with `mca.localhost` / `changepath.localhost` will continue to fall through to the GeoWealth default until one of the above is added.
+
+## Pass 3 / 4 dev blocker — advisor seeding
+
+The seed for advisor-level URL overrides:
+
+```sql
+INSERT INTO gp.ENTITY_TBL (
+    ENTITY_ID, ENTITY_TYPE_CD, ENTITY_ACTIVE_FLAG, FIRM_CD,
+    SYSTEM_BASE_URL, CLIENT_PORTAL_BASE_URL, CP_WHITELABEL_KEYWORD, NICKNAME
+) VALUES (
+    'ADV0001000000000000000000ADV0001', 4, 1, 7,
+    'wisewealthkcadv.geowealth.com', 'wisewealthkcadvclient.geowealth.int',
+    'c1wealth', 'Test Override Advisor'
+);
+INSERT INTO gp.USER_DETAIL_TBL (ENTITY_ID, HIDE_DISABLED_WORKFLOWS)
+VALUES ('ADV0001000000000000000000ADV0001', 0);
+COMMIT;
+```
+
+After this seed, `/lookup?host=wisewealthkcadv.geowealth.com` *should* return `c1wealth` (the firm's keyword override). Instead it returns `cca` plus an `identifyFirmByUrl failed` WARN — and worse, **every host that doesn't match passes 1 or 2 fails the same way** (so `bcj.localhost`, `c1wealth.localhost`, etc. start returning `cca` even though pass-5 would otherwise resolve them correctly). The Akka actor for `IdentifyFirmByUrlMsg` raises `ServiceException: null` whose inner cause never surfaces in `catalina.out` — suspected NPE inside `Firm.toDTO` (similar shape to the pre-restart `FirmSSO.getEnforcementType().isOff()` NPE we saw on a different code path), but the actor swallows it before `logAndThrow`.
+
+Until that's debugged on the GeoWealth side, the advisor row stays **deleted** so it doesn't break the rest of the matrix. The two affected tests in `WhitelabelScenariosIT.Pass3And4Lookup` are `@Disabled` with the seed and blocker documented; drop the annotation once the actor surfaces the underlying cause and the NPE is fixed.
 
 ## Caveat: Tomcat class reload
 

@@ -134,6 +134,44 @@ class WhitelabelScenariosIT {
     }
 
     // -------------------------------------------------------------
+    //  Pass 3 / Pass 4 — advisor-level URL overrides
+    //
+    //  Seed (ENTITY_TBL + USER_DETAIL_TBL):
+    //    ENTITY_ID                 = ADV0001000000000000000000ADV0001
+    //    ENTITY_TYPE_CD            = 4   (NEmployeeDetail discriminator)
+    //    FIRM_CD                   = 7   (wisewealthkc, no WL row of its own)
+    //    SYSTEM_BASE_URL           = wisewealthkcadv.geowealth.com
+    //    CLIENT_PORTAL_BASE_URL    = wisewealthkcadvclient.geowealth.int
+    //    CP_WHITELABEL_KEYWORD     = c1wealth   (override)
+    //
+    //  Disabled in this suite for a Tomcat-side reason: the Akka actor
+    //  serving IdentifyFirmByUrlMsg throws a ServiceException whose
+    //  inner cause never surfaces in catalina.out for advisor matches
+    //  in dev (suspected NPE in Firm.toDTO when SSO config is partial,
+    //  but the actor swallows it before logAndThrow). Once that blocker
+    //  is sorted on the geowealth side, drop @Disabled and these tests
+    //  validate passes 3 + 4 end-to-end against the same SPI / Keycloak
+    //  pipeline as the rest of the matrix.
+    // -------------------------------------------------------------
+
+    @Nested
+    @org.junit.jupiter.api.Disabled("Advisor seed in place; pending fix for ServiceException in IdentifyFirmByUrlMsg advisor branch — see ENTITY_TBL/USER_DETAIL_TBL seed comment above")
+    @DisplayName("Pass 3 / 4 — advisor URL overrides (DB seed ready, dev blocker)")
+    class Pass3And4Lookup {
+        @org.junit.jupiter.api.Test
+        @DisplayName("advisor SYSTEM_BASE_URL → cpWhitelabelKeyword override (c1wealth)")
+        void advisorSystemBaseUrlOverridesFirm() {
+            assertThat(lookup("wisewealthkcadv.geowealth.com")).isEqualTo("c1wealth");
+        }
+
+        @org.junit.jupiter.api.Test
+        @DisplayName("advisor CLIENT_PORTAL_BASE_URL → cpWhitelabelKeyword override (c1wealth)")
+        void advisorClientPortalUrlOverridesFirm() {
+            assertThat(lookup("wisewealthkcadvclient.geowealth.int")).isEqualTo("c1wealth");
+        }
+    }
+
+    // -------------------------------------------------------------
     //  Default — unmatched URL falls through to GeoWealth (cca)
     // -------------------------------------------------------------
 
