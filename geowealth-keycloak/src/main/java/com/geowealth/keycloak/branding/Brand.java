@@ -41,23 +41,47 @@ public final class Brand {
         "^data:image/(?:svg\\+xml|png|jpeg);base64,[A-Za-z0-9+/]{1,200000}={0,2}$"
     );
 
+    /** Email per RFC 5322 lite — enough to keep an `href="mailto:"` honest. */
+    private static final Pattern SAFE_EMAIL = Pattern.compile(
+        "^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\\.[A-Za-z]{2,24}$"
+    );
+
+    /** Allow {@code http://} and {@code https://} URLs only — never javascript:, data:, file:. */
+    private static final Pattern SAFE_HTTP_URL = Pattern.compile(
+        "^https?://[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]{1,2048}$"
+    );
+
+    /** Phone display string: digits, spaces, +, -, (, ), . — short. */
+    private static final Pattern SAFE_PHONE = Pattern.compile(
+        "^[0-9 +().-]{3,32}$"
+    );
+
     private final String code;
     private final String displayName;
     private final Map<String, String> cssVariables;
     private final String loginLogoDataUri; // nullable
     private final String faviconDataUri;   // nullable
+    private final String supportEmail;     // nullable
+    private final String phone;            // nullable
+    private final String website;          // nullable
 
     public Brand(String code, String displayName, Map<String, String> cssVariables) {
-        this(code, displayName, cssVariables, null, null);
+        this(code, displayName, cssVariables, null, null, null, null, null);
     }
 
     public Brand(String code, String displayName, Map<String, String> cssVariables,
                  String loginLogoDataUri) {
-        this(code, displayName, cssVariables, loginLogoDataUri, null);
+        this(code, displayName, cssVariables, loginLogoDataUri, null, null, null, null);
     }
 
     public Brand(String code, String displayName, Map<String, String> cssVariables,
                  String loginLogoDataUri, String faviconDataUri) {
+        this(code, displayName, cssVariables, loginLogoDataUri, faviconDataUri, null, null, null);
+    }
+
+    public Brand(String code, String displayName, Map<String, String> cssVariables,
+                 String loginLogoDataUri, String faviconDataUri,
+                 String supportEmail, String phone, String website) {
         if (code == null || code.isEmpty()) {
             throw new IllegalArgumentException("brand code must be non-empty");
         }
@@ -67,6 +91,17 @@ public final class Brand {
             filterUnsafe(code, cssVariables == null ? Map.of() : cssVariables));
         this.loginLogoDataUri = sanitizeImageUri(code, loginLogoDataUri, "login-logo");
         this.faviconDataUri = sanitizeImageUri(code, faviconDataUri, "favicon");
+        this.supportEmail = sanitizeAgainst(code, supportEmail, SAFE_EMAIL, "support-email");
+        this.phone        = sanitizeAgainst(code, phone,        SAFE_PHONE, "phone");
+        this.website      = sanitizeAgainst(code, website,      SAFE_HTTP_URL, "website");
+    }
+
+    private static String sanitizeAgainst(String code, String value, Pattern pattern, String kind) {
+        if (value == null || value.isEmpty()) return null;
+        if (pattern.matcher(value).matches()) return value;
+        LOG.warnf("Brand[%s]: dropping unsafe %s value (prefix: '%s')",
+            code, kind, truncate(value));
+        return null;
     }
 
     private static String sanitizeImageUri(String code, String value, String kind) {
@@ -112,4 +147,7 @@ public final class Brand {
     public Map<String, String> getCssVariables() { return cssVariables; }
     public String getLoginLogoDataUri() { return loginLogoDataUri; }
     public String getFaviconDataUri() { return faviconDataUri; }
+    public String getSupportEmail() { return supportEmail; }
+    public String getPhone() { return phone; }
+    public String getWebsite() { return website; }
 }

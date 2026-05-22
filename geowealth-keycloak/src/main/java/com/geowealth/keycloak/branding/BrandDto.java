@@ -24,6 +24,9 @@ public final class BrandDto {
 
     public String code;
     public String displayName;
+    public String supportEmail;
+    public String phone;
+    public String website;
     public Map<String, String> cssVariables;
     public Assets assets;
 
@@ -49,7 +52,8 @@ public final class BrandDto {
         if (code == null || code.isEmpty()) return null;
         if (cssVariables == null || cssVariables.isEmpty()) return null;
         return new Brand(code, displayName != null ? displayName : code, cssVariables,
-            loginLogoDataUri, faviconDataUri);
+            loginLogoDataUri, faviconDataUri,
+            supportEmail, phone, website);
     }
 
     /**

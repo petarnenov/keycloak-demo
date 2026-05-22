@@ -83,7 +83,9 @@ public final class BrandRegistry {
         changepath.put("--pf-v5-global--link--Color--hover",    "#0e4e79");
         changepath.put("--pf-v5-global--active-color--100",     "#155e8f");
         brandsByCode.put("changepath",
-            new Brand("changepath", "ChangePath", changepath, LOGO_CHANGEPATH, FAVICON_CHANGEPATH));
+            new Brand("changepath", "ChangePath", changepath,
+                LOGO_CHANGEPATH, FAVICON_CHANGEPATH,
+                "supportemail@changepath.com", "888.798.2360", "http://www.changepath.com/"));
 
         // GeoWealth default — distinctive orange/teal so the difference vs
         // ChangePath is unmistakable in a side-by-side demo.
@@ -99,6 +101,8 @@ public final class BrandRegistry {
         geowealth.put("--pf-v5-global--link--Color--hover",     "#a83a20");
         geowealth.put("--pf-v5-global--active-color--100",      "#c8482a");
         brandsByCode.put(DEFAULT_CODE,
-            new Brand(DEFAULT_CODE, "GeoWealth", geowealth, LOGO_CCA, FAVICON_CCA));
+            new Brand(DEFAULT_CODE, "GeoWealth", geowealth,
+                LOGO_CCA, FAVICON_CCA,
+                "support@geowealth.com", null, "https://www.geowealth.com/"));
     }
 }

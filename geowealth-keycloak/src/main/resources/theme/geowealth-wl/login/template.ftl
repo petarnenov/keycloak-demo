@@ -128,6 +128,29 @@ img.geowealth-brand-logo {
     height: auto;
     margin: 0 auto;
 }
+/* Per-firm contact strip below the login card. Light translucent
+   background so it reads against the gradient body. */
+#geowealth-brand-contact {
+    margin: 16px auto 0;
+    padding: 8px 16px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.7);
+    color: #1d1f21;
+    font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    text-align: center;
+    max-width: 480px;
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+#geowealth-brand-contact a {
+    color: var(--theme-link-color, #155e8f);
+    text-decoration: none;
+}
+#geowealth-brand-contact a:hover {
+    text-decoration: underline;
+}
 <#-- Fallback banner styling. Rendered only when brandFallback is true
      (set by GeoWealthLoginFormsProvider when BrandingService returned a
      registry_fallback path). Amber so it's visible against either the
@@ -345,6 +368,20 @@ img.geowealth-brand-logo {
         <#nested "socialProviders">
       </div>
     </main>
+
+    <#-- Per-firm contact strip. Renders below the login card when the
+         brand carries any of supportEmail / phone / website. Each value
+         is regex-validated on the SPI side (see Brand.java) so the
+         href= contexts are safe; plain ${...} auto-escapes the visible
+         text. Items not provided by the brand are quietly omitted —
+         the strip shrinks to nothing if none are present. -->
+    <#if brand?? && (brand.supportEmail?? || brand.phone?? || brand.website??)>
+    <div id="geowealth-brand-contact" class="pf-v5-c-login__main-footer-band">
+      <#if brand.supportEmail??><a href="mailto:${brand.supportEmail}">${brand.supportEmail}</a></#if>
+      <#if brand.phone??><span>${brand.phone}</span></#if>
+      <#if brand.website??><a href="${brand.website}" rel="noopener noreferrer" target="_blank">${brand.website}</a></#if>
+    </div>
+    </#if>
 
     <@loginFooter.content/>
   </div>
