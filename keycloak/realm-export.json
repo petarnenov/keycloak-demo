@@ -202,5 +202,115 @@
         "description": "Client role"
       }
     ]
-  }
+  },
+
+  "identityProviders": [
+    {
+      "alias": "p1",
+      "displayName": "P1",
+      "providerId": "saml",
+      "enabled": true,
+      "updateProfileFirstLoginMode": "on",
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "authenticateByDefault": false,
+      "linkOnly": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "singleSignOnServiceUrl": "http://host.docker.internal:8080/saml/idp/sso.do",
+        "singleLogoutServiceUrl": "http://host.docker.internal:8080/saml/idp/slo.do",
+        "nameIDPolicyFormat": "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
+        "principalType": "SUBJECT",
+        "postBindingResponse": "true",
+        "postBindingAuthnRequest": "true",
+        "postBindingLogout": "true",
+        "wantAssertionsSigned": "true",
+        "wantAuthnRequestsSigned": "false",
+        "validateSignature": "true",
+        "signingCertificate": "PLACEHOLDER_REPLACED_WITH_P1_IDP_X509_AT_PHASE_2",
+        "signatureAlgorithm": "RSA_SHA256",
+        "xmlSigKeyInfoKeyNameTransformer": "NONE",
+        "guiOrder": "10",
+        "syncMode": "FORCE",
+        "hideOnLoginPage": "false"
+      }
+    }
+  ],
+
+  "identityProviderMappers": [
+    {
+      "name": "email-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "email",
+        "user.attribute": "email"
+      }
+    },
+    {
+      "name": "first-name-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "firstName",
+        "user.attribute": "firstName"
+      }
+    },
+    {
+      "name": "last-name-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "lastName",
+        "user.attribute": "lastName"
+      }
+    },
+    {
+      "name": "firm-cd-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "firmCd",
+        "user.attribute": "firmCd"
+      }
+    },
+    {
+      "name": "roles-user-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "user",
+        "role": "user"
+      }
+    },
+    {
+      "name": "roles-client-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "client",
+        "role": "client"
+      }
+    },
+    {
+      "name": "roles-admin-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "admin",
+        "role": "admin"
+      }
+    }
+  ]
 }
