@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 6c/6d — FBL flow serialized, prod docs |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `daf87cb7e1d` Phase 6a/6b — sig validation + replay protection |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 7 — E2E unblock (realm-export client attr) |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `3f368ef4948` Phase 7 — IdP-init E2E unblock chain |
 
 ## Done
 
@@ -88,6 +88,35 @@ package. See `~/geowealth/src/main/resources/struts-tiles.xml`.
 by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
+
+## Phase 7 — E2E IdP-init unblock (2026-05-23)
+
+Phase 6 hardening + Phase 1-5 fixes left the basic IdP-init flow
+itself broken end-to-end. Discovered when manual E2E was attempted
+post-Phase-6: clicking "Demo MFE-BFF" → Keycloak "Invalid Request" /
+"Invalid redirect uri" / "Client not found". Four root causes,
+four fixes (all live):
+
+| # | Symptom | Root cause | Fix |
+|---|---|---|---|
+| 1 | `invalidRequestMessage` | `Audience` pointed at ACS URL, Keycloak expects realm root | `audienceUriOverride` added to `AbstractSamlAuthenticationResponseBuilder`; `KeycloakSamlResponseBuilder.deriveRealmRoot` strips `/broker/*` suffix |
+| 2 | `invalidRequestMessage` (cont.) | Random `InResponseTo` on `Response` + `SubjectConfirmationData` | 7-arg `createSamlAuthorizationResponse` with `inResponseTo=null` + `fakeResponseId=false` |
+| 3 | `invalidRequestMessage` (cont.) | Wrong broker endpoint (SP-init path) | Switch to `/broker/p1/endpoint/clients/mfe-shell-client` (env-overridable) |
+| 4 | `Invalid redirect uri` | `RelayState=keycloak-demo` was being interpreted as OIDC `redirect_uri` | Drop `RelayState` from outbound form; Keycloak falls back to `client.baseUrl` |
+| 5 | `Client not found` | Keycloak's `/clients/{name}` lookup uses `saml_idp_initiated_sso_url_name` attribute, not `clientId` | Set the attribute on `mfe-shell-client` (both live realm and in `realm-export.json`) |
+
+Commits:
+- geowealth `3f368ef4948` — code + sidebar
+- keycloak-demo (this commit) — realm-export.json client attribute + WIP refresh
+
+Open follow-ups (not blocking):
+- Rename `fakeResponseId` field to
+  `includeSubjectConfirmationInResponseTo` (misleading after fix #2).
+- Wire signed-payload variant of the Phase 6e E2E test now that SP
+  cert enforcement is on by default.
+- Production: pull the OIDC client `redirect_uri` from a config
+  attribute instead of relying on Keycloak's baseUrl fallback (more
+  explicit + testable).
 
 ## Phase 6 — DONE (2026-05-23)
 

@@ -309,7 +309,10 @@
             "access.token.claim": "true"
           }
         }
-      ]
+      ],
+      "attributes": {
+        "saml_idp_initiated_sso_url_name": "mfe-shell-client"
+      }
     },
     {
       "clientId": "app1-client",
