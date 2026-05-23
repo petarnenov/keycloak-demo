@@ -69,7 +69,7 @@ body#keycloak-bg {
 .pf-v5-c-login__container {
   background: transparent !important;
   --pf-v5-c-login--BackgroundColor: transparent !important;
-  --pf-v5-c-login__container--MaxWidth: 600px !important;
+  --pf-v5-c-login__container--MaxWidth: 720px !important;
 }
 
 .pf-v5-c-login {
@@ -103,10 +103,10 @@ body#keycloak-bg {
 #kc-header,
 .pf-v5-c-login__header {
   display: block !important;
-  background: transparent url('../img/geowealth-logo.png') no-repeat center / 383px 111px !important;
-  height: 111px !important;
+  background: transparent url('../img/geowealth-logo.png') no-repeat center top / 250px auto !important;
+  height: 72px !important;
   width: 100% !important;
-  margin: 0 auto 24px !important;
+  margin: 0 auto 32px !important;
   padding: 0 !important;
   font-size: 0 !important;
   color: transparent !important;
@@ -120,9 +120,9 @@ body#keycloak-bg {
   border: 1px solid var(--p1-card-border) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  padding: 56px 64px !important;
-  max-width: 509px !important;
-  width: 509px !important;
+  padding: 56px 80px !important;
+  max-width: 720px !important;
+  width: 100% !important;
   margin: 0 auto 80px !important;
 }
 
@@ -165,6 +165,39 @@ body#keycloak-bg {
 .pf-v5-c-form__group {
   background: transparent !important;
   --pf-v5-c-form--m-horizontal__group-label--md--GridColumnWidth: 0 !important;
+}
+
+/* Center the entire form body  P1 centers labels + inputs + button
+   on a single column inside the card. Constrain max-width so wide
+   cards do not stretch inputs to the edges. */
+#kc-form,
+#kc-form-wrapper,
+#kc-form-login,
+form#kc-form-login,
+.pf-v5-c-login__main-body > form,
+.pf-v5-c-login__main-body {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+#kc-form-login .pf-v5-c-form__group {
+  width: 100% !important;
+  max-width: 480px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+#kc-form-login .pf-v5-c-form__group-label,
+.pf-v5-c-form__group-label {
+  text-align: center !important;
+}
+
+#kc-form-buttons {
+  width: 100% !important;
+  max-width: 480px !important;
+  margin: 28px auto 0 !important;
 }
 
 .pf-v5-c-form__label,
@@ -250,14 +283,14 @@ input[type="submit"],
   border: 1px solid var(--p1-accent) !important;
   color: #ffffff !important;
   border-radius: 0 !important;
-  padding: 0 12px !important;
-  font-size: 12px !important;
+  padding: 0 24px !important;
+  font-size: 14px !important;
   font-family: var(--p1-font) !important;
   font-weight: 700 !important;
   letter-spacing: normal !important;
-  height: 30px !important;
-  width: 200px !important;
-  min-width: 200px !important;
+  height: 40px !important;
+  width: 100% !important;
+  max-width: 480px !important;
   text-transform: none !important;
   box-shadow: none !important;
   cursor: pointer;
@@ -323,7 +356,10 @@ a:hover {
   text-decoration: underline !important;
 }
 
-/* ---------- errors and feedback ---------- */
+/* ---------- errors and feedback ----------
+   P1 surfaces login errors as plain red text centered above the form
+   (no banner box, no left-aligned icon). Override Keycloak's alert
+   chrome to match  bold red, no background, no border, centered. */
 
 .kc-feedback-text,
 #input-error,
@@ -331,12 +367,65 @@ a:hover {
 .pf-v5-c-alert.pf-m-danger,
 .pf-v5-c-form__helper-text.pf-m-error {
   color: var(--p1-danger) !important;
-  --pf-v5-c-alert--BackgroundColor: rgba(185, 28, 28, 0.06) !important;
-  font-size: 12px !important;
   font-family: var(--p1-font) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+  text-align: center !important;
+  background: transparent !important;
+  --pf-v5-c-alert--BackgroundColor: transparent !important;
+  border: none !important;
   border-radius: 0 !important;
-  padding: 8px 12px !important;
-  margin: 8px 0 12px !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 auto 20px !important;
+  max-width: 480px !important;
+  width: 100% !important;
+}
+
+/* PF5 alert + form-control error states inject a FontAwesome exclamation
+   icon (.fa-exclamation-circle) that visually clashes with P1's plain
+   centered red text. Hide every error-state icon  alert title icons,
+   helper-text icons, and the in-input red exclamation badge. */
+.pf-v5-c-alert .pf-v5-c-alert__icon,
+.pf-v5-c-alert .pf-v5-c-alert__title::before,
+.pf-v5-c-helper-text__item-icon,
+.pf-v5-c-helper-text__item .pf-v5-c-helper-text__item-icon,
+.pf-v5-c-form__helper-text .pf-v5-c-helper-text__item-icon,
+.pf-v5-c-form-control.pf-m-error i,
+.pf-v5-c-form-control.pf-m-error .fas,
+.fa-exclamation-circle,
+.fa-exclamation-triangle,
+i.fa-exclamation-circle,
+i.fa-exclamation-triangle {
+  display: none !important;
+}
+
+/* Helper-text item containers (used for field-level error messages)
+   become block-level so the message centers correctly and does not
+   sit in a flex row next to a missing icon. */
+.pf-v5-c-helper-text__item.pf-m-error,
+.pf-v5-c-helper-text__item {
+  display: block !important;
+  text-align: center !important;
+  color: var(--p1-danger) !important;
+}
+
+.pf-v5-c-helper-text__item-text {
+  color: var(--p1-danger) !important;
+  font-family: var(--p1-font) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  text-align: center !important;
+}
+
+.pf-v5-c-alert .pf-v5-c-alert__title,
+.pf-v5-c-alert__title {
+  color: var(--p1-danger) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  font-family: var(--p1-font) !important;
+  text-align: center !important;
 }
 
 #input-error,
