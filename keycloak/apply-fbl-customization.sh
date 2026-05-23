@@ -1,16 +1,29 @@
 #!/usr/bin/env bash
-# Apply demo-realm "first broker login" customization for the P1 SAML IdP.
+# DEPRECATED as of SSO Phase 6c (2026-05-23).
 #
-# The default Keycloak flow is REQUIRED on Review Profile, Confirm Link
-# Existing Account, and Account Verification — which together break the
-# silent SSO contract (the user sees confirmation prompts that defeat
-# the point of brokered auth). We disable those three steps so that
-# federated P1 logins resolve to the existing Keycloak user (or
-# auto-create) without intermediate forms.
+# The silent first-broker-login behavior this script applied at runtime
+# is now baked into keycloak/realm-export.json as the custom flow
+# "p1-first-broker-login" (with its six nested sub-flows + two
+# authenticatorConfig entries), and the p1 IdP config's
+# firstBrokerLoginFlowAlias points at it. A fresh `down -v && up`
+# imports the realm-export and the custom flow comes up correctly with
+# Review Profile / Confirm Link / Account Verification = DISABLED,
+# with no runtime patching needed.
 #
-# Run this after every `down -v && up` (fresh import) until the
-# customization is serialized into realm-export.json proper. See
-# SSO-MIGRATION-PLAN.md § Phase 4 and WIP-SSO.md.
+# Kept in tree for one release cycle as a fallback in case the import
+# path regresses. To verify the import is healthy:
+#
+#   curl -s -H "Authorization: Bearer $TOKEN" \
+#     http://localhost:8898/admin/realms/demo-realm/authentication/flows/p1-first-broker-login/executions \
+#     | python3 -c 'import json,sys; e=json.load(sys.stdin); print(*[(x["displayName"],x["requirement"]) for x in e if x["displayName"] in ("Review Profile","Confirm link existing account","Account verification options")],sep="\n")'
+#
+# Expect all three to read DISABLED. If they read REQUIRED, run this
+# script to repair without re-importing the realm.
+#
+# Background (kept verbatim from the original docstring): The default
+# Keycloak first-broker-login flow is REQUIRED on Review Profile,
+# Confirm Link Existing Account, and Account Verification  which
+# together break the silent SSO contract.
 
 set -euo pipefail
 

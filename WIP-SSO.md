@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | `c0af254` Phase 4 — silent FBL + role mapper |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `63671a70511` Phase 5a/5b — signed LogoutResponse + audit |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 6c/6d — FBL flow serialized, prod docs |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `daf87cb7e1d` Phase 6a/6b — sig validation + replay protection |
 
 ## Done
 
@@ -88,6 +88,49 @@ package. See `~/geowealth/src/main/resources/struts-tiles.xml`.
 by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
+
+## Phase 6 — DONE (2026-05-23)
+
+Five production-hardening items shipped (see
+[`PHASE6-HARDENING-PLAN.md`](PHASE6-HARDENING-PLAN.md) for the full
+plan + verification recipe).
+
+| # | Item | Status |
+|---|---|---|
+| 6a | Inbound `LogoutRequest` signature validation | ✅ live (`geowealth/daf87cb7e1d`) — `KeycloakSpCert` + `SignatureValidator.validate`; unsigned/wrong-sig → 403 with `SECURITY_EVENT: SAML_LOGOUT_UNSIGNED` / `SAML_LOGOUT_SIG_REJECT` |
+| 6b | Replay protection on inbound IDs | ✅ live (`geowealth/daf87cb7e1d`) — `SamlRequestIdCache` (TTL-bounded `ConcurrentHashMap`, 10 min, 10k cap); replayed `LogoutRequest` → 409 with `SAML_REPLAY_REJECT` |
+| 6c | Serialize custom FBL flow into realm-export | ✅ live — `p1-first-broker-login` + 6 sub-flows + 2 authenticatorConfig entries in `keycloak/realm-export.json`; verified against fresh `down -v && up`; `apply-fbl-customization.sh` retired (kept with deprecation header) |
+| 6d | TLS topology + secrets-manager interface | ✅ docs — [`docs/PROD-TLS-TOPOLOGY.md`](docs/PROD-TLS-TOPOLOGY.md) covers the four legs + cert provisioning; [`docs/PROD-KEYSTORE-PROVISIONING.md`](docs/PROD-KEYSTORE-PROVISIONING.md) covers Bamboo/Vault wiring + rotation cadence |
+| 6e | JUnit E2E suite scaffold | ✅ live (`geowealth`, `SamlIdpEndpointsIT`) — 4 tests: 2 pass against running Tomcat, 2 self-skip when Phase 6a enforcement is on (need signed payload, Phase 6e continuation work) |
+
+### Phase 6 verification matrix (live results)
+
+```
+metadata.do                     → 200, valid <EntityDescriptor>, X509 embeds   ✅
+sso.do (no session)             → "Not logged into P1" text                    ✅
+slo.do unsigned (cert set)      → 403 "logout-request must be signed"          ✅ (SAML_LOGOUT_UNSIGNED)
+slo.do bad-sig (cert set)       → 403 "logout-request signature mismatch"     (covered by code; live test deferred)
+slo.do signed first hit         → 200, signed LogoutResponse                   (works when cert off)
+slo.do signed replay            → 409 "logout-request replay rejected"        ✅ (SAML_REPLAY_REJECT)
+fresh `down -v && up`           → p1-first-broker-login imports cleanly,
+                                  3 target steps DISABLED, IdP wired           ✅
+./gradlew test --tests SamlIdpEndpointsIT
+                                → 4 tests: 2 PASSED, 2 SKIPPED (documented)    ✅
+```
+
+### Phase 6 continuation (not blocking POC)
+
+- Signed-LogoutRequest test variant. Build a real signed payload in
+  `SamlIdpEndpointsIT` so the 6b replay test passes with Phase 6a
+  enforcement active. Needs the SP private key (the keycloak-side
+  half of `P1_IDP_KC_SP_CERT`), which the test would have to load
+  from a fixture keystore.
+- AuthnRequest replay protection on `IdpSsoAction`. Today's demo
+  IdP-init flow doesn't take external AuthnRequests; once SP-init
+  flow is exercised, wire the same `SamlRequestIdCache` check.
+- Keycloak realm-side: configure the broker SP to actually sign its
+  outbound LogoutRequests (today `AuthnRequestsSigned="false"` and
+  no SP signing key — Phase 6a's enforcement is a one-sided contract).
 
 ## Phase 5 partial — DONE (2026-05-23)
 
