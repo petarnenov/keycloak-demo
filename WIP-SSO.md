@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | `5a176d5` SSO Phase 1: register P1 SAML IdP on demo-realm |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `efebf820ae3` GEO-99999 SSO Phase 2: P1 SAML IdP scaffold |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 2 finalize — real cert in realm-export, WIP refreshed |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | Phase 2 finalize — `/saml/idp/*` namespace fix |
 
 ## Done
 
@@ -40,32 +40,45 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
   `sso-dev-keystore.sh` in this repo (uncommitted) generates the dev
   PKCS#12 keystore.
 
-## Next — Phase 2 finalize (cert + smoke test)
+## Phase 2 finalize — DONE (2026-05-23)
 
-1. **Generate dev keystore.** From `~/keycloak-demo`:
-   ```bash
-   ./sso-dev-keystore.sh /tmp/p1-idp-dev.p12
-   ```
-   Capture the base64 cert it prints.
-2. **Set Tomcat env.** Append to `~/tools/tomcat9/bin/setenv.sh`:
-   ```bash
-   export P1_IDP_KEYSTORE_PATH="/tmp/p1-idp-dev.p12"
-   export P1_IDP_KEYSTORE_PASSWORD="changeit"
-   export P1_IDP_KEYSTORE_ENTITY="p1-idp"
-   ```
-   Restart Tomcat: `~/tools/tomcat9/bin/shutdown.sh && sleep 3 && ~/tools/tomcat9/bin/startup.sh`.
-3. **Smoke-test endpoints.**
-   - `curl -i http://localhost:8080/saml/idp/metadata.do` → 200,
-     `application/samlmetadata+xml`, embedded `<X509Certificate>`.
-   - `curl -i http://localhost:8080/saml/idp/sso.do` →
-     401 (no P1 session) or 503 (keystore not loaded).
-   - With an active P1 session in browser, hit
-     `http://localhost:8080/saml/idp/sso.do?RelayState=demo` →
-     auto-submit HTML form POSTing to keycloak broker ACS.
-4. **Swap Keycloak placeholder cert.** Either:
-   - patch `keycloak/realm-export.json` and `docker compose down -v && up`, **or**
-   - PATCH `/admin/realms/demo-realm/identity-provider/instances/p1`
-     with the real `signingCertificate` value (preserves sessions).
+All four steps from the original plan have landed:
+
+1. **Dev keystore generated.** `/tmp/p1-idp-dev.p12` (alias `p1-idp`,
+   RSA 2048, 365-day validity; CN=`p1-idp-dev`). Generator is
+   `sso-dev-keystore.sh` in this repo.
+2. **Tomcat env wired.** `~/tools/tomcat9/bin/setenv.sh` now exports
+   `P1_IDP_KEYSTORE_PATH` / `_PASSWORD` / `_ENTITY`. Tomcat restarted
+   and picked them up.
+3. **Smoke tests pass.**
+   - `GET /saml/idp/metadata.do` → 200,
+     `application/samlmetadata+xml`, full `<EntityDescriptor>` with
+     embedded `<X509Certificate>` (2349 bytes).
+   - `GET /saml/idp/sso.do` (no session) → action returns the
+     "Not logged into P1" text; gate logic works.
+   - `GET /saml/idp/slo.do` → 200 `p1-slo-acknowledged`.
+   - **Known follow-up:** Struts `httpheader` result type rewrites the
+     status to 200 even when the action sets 401 inside `writeText()`.
+     Functionally correct but cosmetic; cleanup is to switch to a
+     `stream` result or set status via header earlier in the chain.
+4. **Keycloak realm cert swapped.**
+   - Live realm patched via admin API
+     (`PUT /admin/realms/demo-realm/identity-provider/instances/p1`)
+     with the real signing cert (HTTP 204; verify-read confirms 1132-char
+     cert in place of placeholder).
+   - `keycloak/realm-export.json` updated so fresh imports
+     (`down -v && up`) get the same cert without re-patching.
+
+### Struts namespace fix (not in original plan, caught by smoke test)
+
+Struts2 was parsing action names containing slashes as namespace+name —
+`saml/idp/metadata` became `namespace=/`, `actionName=metadata`. That
+fell through to the default action, which redirected unauthenticated
+callers to `/react/indexReact.do` (HTTP 302). Fix: move the three
+actions into a new `samlIdpTiles` package with `namespace="/saml/idp"`
+and bare `sso`/`metadata`/`slo` names. The original inline mapping in
+`frontOfficeTiles` was replaced with a comment pointing at the new
+package. See `~/geowealth/src/main/resources/struts-tiles.xml`.
 
 ## Then — Phase 3 (sidebar)
 
@@ -102,8 +115,7 @@ Plan section 3 in `SSO-MIGRATION-PLAN.md`.
 
 Then prompt:
 
-> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. We finished Phase 1
-> + Phase 2 scaffold. Pick up at Phase 2 finalize: generate the dev
-> keystore, export `P1_IDP_*` env in Tomcat, smoke-test the three
-> `/saml/idp/*.do` endpoints, swap the Keycloak realm placeholder
-> cert, then move to Phase 3 sidebar entry.
+> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. Phase 1 + Phase 2
+> are done — endpoints live, cert in place. Pick up at Phase 3:
+> add the "Demo MFE-BFF" sidebar entry in P1 and verify the IdP-init
+> flow ends in the keycloak-demo shell with a federated user.
