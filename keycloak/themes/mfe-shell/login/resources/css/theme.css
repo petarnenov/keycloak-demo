@@ -187,6 +187,19 @@ form#kc-form-login,
   max-width: 480px !important;
   margin-left: auto !important;
   margin-right: auto !important;
+  /* Treat each form group as a flex column so the (label, input, helper)
+     children can be reordered  P1 paints the error message ABOVE the
+     input, not below it. Putting helper-text at order:-1 lifts it to
+     the top of the group, sitting between the heading and the label
+     of whichever field triggered the error (typically username). */
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#kc-form-login .pf-v5-c-form__group > .pf-v5-c-form__helper-text,
+#kc-form-login .pf-v5-c-form__group .pf-v5-c-form__helper-text {
+  order: -1 !important;
+  margin: 0 auto 16px !important;
 }
 
 #kc-form-login .pf-v5-c-form__group-label,
