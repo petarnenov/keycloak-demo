@@ -88,6 +88,15 @@ public class UserController {
         body.put("source", source);
         Object email = authentication.getAttributes().get("email");
         body.put("email", email != null ? email : "");
+        // firmCd is the whitelabel transmission anchor: P1 emits it as a
+        // SAML attribute, Keycloak's saml-user-attribute-idp-mapper writes
+        // it to the federated user record, and a protocol mapper on
+        // mfe-shell-client puts it in the JWT as a top-level "firmCd"
+        // claim. The shell uses it to call P1's branding API and apply
+        // per-firm theming. Default to "" when absent so the shell can
+        // still render (anonymous brand path).
+        Object firmCd = authentication.getAttributes().get("firmCd");
+        body.put("firmCd", firmCd != null ? String.valueOf(firmCd) : "");
         return body;
     }
 

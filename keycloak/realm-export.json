@@ -312,6 +312,23 @@
             "id.token.claim": "true",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "firmCd",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "aggregate.attrs": "false",
+            "introspection.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false",
+            "user.attribute": "firmCd",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "firmCd",
+            "jsonType.label": "String"
+          }
         }
       ],
       "attributes": {
