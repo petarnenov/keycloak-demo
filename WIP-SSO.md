@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | `b8dd72f` Phase 3 done refresh |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `22cc161edf5` Phase 4 — real role mapping |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | `c0af254` Phase 4 — silent FBL + role mapper |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `63671a70511` Phase 5a/5b — signed LogoutResponse + audit |
 
 ## Done
 
@@ -89,6 +89,107 @@ by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
 
+## Phase 5 partial — DONE (2026-05-23)
+
+Two highest-impact Phase 5 items landed; the rest are deferred with
+rationale to keep POC scope honest.
+
+### 5a — `SECURITY_EVENT` audit routing (DONE)
+
+Both `IdpSsoAction` and `IdpSloAction` now tag their lines with the
+`SECURITY_EVENT:` prefix and the same structured field shape the
+existing P1 actions (`LoginAction`, `LogOutAction`,
+`GeowealthSessionListener`) use. Lines carry user / firm / remote IP
+(honoring `X-Forwarded-For` first hop) / RelayState plus the
+domain-specific tail (roles emitted on SSO, InResponseTo on SLO).
+Operational tooling that already watches `SECURITY_EVENT:` picks up
+the SAML traffic without any extra wiring.
+
+### 5b — signed `<samlp:LogoutResponse>` (DONE)
+
+`IdpSloAction` no longer returns a bare 200. It now:
+
+1. Parses the inbound base64 `SAMLRequest` with OpenSAML's
+   unmarshaller (fail-soft — malformed payloads log and continue;
+   "session is gone" is the user contract, the SAML loop is a side
+   effect).
+2. Extracts the `LogoutRequest` ID for the `InResponseTo` echo.
+3. Clears the three `LoginAction` session keys.
+4. Builds a `LogoutResponse` with our IdP issuer + `Status` SUCCESS.
+5. Signs with the keystore credential (new
+   `IdpKeyStore.getSigningCredential()` accessor).
+6. Marshals + base64 + returns an HTML auto-submit form posting to
+   the Keycloak broker SLO endpoint
+   (`P1_IDP_KEYCLOAK_SLO_URL`, default
+   `http://localhost:8898/realms/demo-realm/broker/p1/endpoint`).
+
+Static initializer mirrors the OpenSAML bootstrap from
+`AbstractSamlAuthenticationResponseBuilder` so SLO can fire on a JVM
+where the AuthN-Response side has never run.
+
+### 5c — full FBL flow serialization into realm-export (DEFERRED)
+
+Keycloak's built-in `first broker login` flow is opaque to
+`realm-export.json` — when the DB is wiped (`down -v`) the import
+recreates the default flow with default REQUIRED requirements,
+ignoring any customization stored only in the live realm. Two paths
+considered:
+
+- **Override the built-in.** Putting a flow with `alias: first broker
+  login` into `authenticationFlows` and re-importing risks collision
+  with Keycloak's own bootstrap of that built-in flow; behavior is
+  version-dependent and brittle.
+- **Custom alias.** Add a sibling flow `p1-first-broker-login` and
+  point the IdP config's `firstBrokerLoginFlowAlias` at it. Cleaner
+  but requires serializing five nested sub-flows correctly
+  (`User creation or linking`, `Handle Existing Account`,
+  `Account verification options`, `First broker login - Conditional
+  OTP`, `First Broker Login - Conditional Organization`) with the
+  exact authenticator config and priorities Keycloak validates on
+  import.
+
+For the POC scope the script
+`keycloak/apply-fbl-customization.sh` is the working contract:
+re-apply after every `down -v && up`. A proper override is Phase 5
+continuation work.
+
+### 5d — InResponseTo replay protection (DEFERRED)
+
+Today `IdpSsoAction` accepts any inbound SP-init `AuthnRequest`
+without tracking IDs, so a replayed request could in theory mint a
+duplicate Response. Mitigations:
+
+- Add Caffeine to the geowealth runtime classpath.
+- Cache `AuthnRequest.getID()` keys with TTL ≤ the SAML
+  `IssueInstant` window (5 min).
+- Reject duplicates with HTTP 400 + an audit `SECURITY_EVENT:
+  SAML_REPLAY_REJECTED user=… reqId=…` line.
+
+Not blocking the POC since the demo IdP-init flow doesn't take
+external AuthnRequests at all (RelayState=keycloak-demo is sidebar
+traffic only). Phase 5 continuation.
+
+### 5e — E2E JUnit suite (DEFERRED)
+
+Should mirror the whitelabel suite at
+`com.geowealth.poc.whitelabel.WhitelabelE2E*Tests` — drive the C1
+(IdP-init) and C2 (SP-init) flows end-to-end against the running
+Tomcat + Keycloak stack:
+
+- Hit `/saml/idp/metadata.do`, validate the `<EntityDescriptor>`
+  schema, assert the cert in the metadata matches
+  `IdpKeyStore.getCertificateBase64()`.
+- Build a synthetic AuthnRequest, POST to `/saml/idp/sso.do` with a
+  pre-authenticated test session cookie, assert the auto-submit form
+  posts to Keycloak's ACS with a valid signed Response.
+- POST a synthetic LogoutRequest to `/saml/idp/slo.do`, assert the
+  emitted LogoutResponse signature verifies and `InResponseTo`
+  echoes.
+
+Requires standing up the Keycloak container fixture from the
+keycloak-demo side or stubbing Keycloak's ACS — both are non-trivial
+setup work. Phase 5 continuation.
+
 ## Phase 4 — DONE (2026-05-23)
 
 Real role mapping replaces the Phase 2 `List.of("user")` placeholder.
@@ -145,27 +246,25 @@ Watch the logs while you click:
 - `tail -f ~/tools/tomcat9/logs/catalina.out | grep SAML_ISSUED`
 - `docker logs -f keycloak-demo-keycloak-1 | grep -iE 'broker|saml'`
 
-## Then — Phase 5
+## Phase 5 continuation (not yet landed)
 
-Production hardening — picks up everything intentionally deferred
-during the POC track:
+The items above (5c / 5d / 5e) plus the original Phase 5 stretch
+goals that haven't been touched:
 
-- TLS everywhere (browser ↔ shell, shell ↔ Keycloak, browser ↔ P1,
-  Keycloak ↔ P1 back-channel SLO)
-- Dedicated IdP signing key with 60-day rotation; `IdpKeyStore` wired
-  through Bamboo secrets-manager rather than env vars + `/tmp` PKCS#12
-- InResponseTo replay protection — track AuthnRequest IDs in a
-  short-lived cache (Caffeine?) and reject duplicates within the
-  IssueInstant window
-- Front-channel SLO with a proper signed `<samlp:LogoutResponse>`
-  (today `IdpSloAction` returns a bare 200)
-- Audit log routing — SAML_ISSUED events into the existing P1
-  `SECURITY_EVENT` pipeline, including remote IP, target ACS, RelayState
-- E2E JUnit 5 suite mirroring the whitelabel one: drives C1 (IdP-init)
-  and C2 (SP-init) flows end-to-end against a real Keycloak + Tomcat
-- Serialize the customized `first broker login` flow into
-  `realm-export.json` proper so fresh installs don't need
-  `apply-fbl-customization.sh`
+- **TLS everywhere.** Browser ↔ shell, shell ↔ Keycloak,
+  browser ↔ P1, Keycloak ↔ P1 back-channel SLO. Requires cert
+  provisioning + a reverse proxy in front of Tomcat / Keycloak.
+- **Dedicated signing key with rotation.** Today the env-var keystore
+  points at `/tmp/p1-idp-dev.p12`. Production needs the keystore
+  mounted from a secrets manager (Bamboo / Vault) with a 60-day
+  rotation pipeline and metadata that advertises both the old and the
+  new cert during the transition window.
+- **Inbound LogoutRequest signature validation.** `IdpSloAction`
+  parses the inbound request but trusts it. Reuse the existing
+  `SamlValidator` for proper signature verification.
+- **Front-channel multiframe SLO.** Keycloak's broker SLO loop
+  works once the user reaches Keycloak; multi-SP fan-out is a
+  Keycloak realm concern not implemented here.
 
 ## Files of interest
 
@@ -185,10 +284,9 @@ during the POC track:
 
 Then prompt:
 
-> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. Phases 1–4 done.
-> Pick up at Phase 5 production hardening (TLS, key rotation,
-> InResponseTo replay protection, signed LogoutResponse,
-> SECURITY_EVENT audit routing, E2E JUnit suite, full flow
-> serialization into realm-export). Or, before Phase 5, run the
-> manual end-to-end smoke documented in this file to confirm
-> Phases 1–4 land cleanly.
+> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. Phases 1–4 done,
+> Phase 5a (audit routing) + 5b (signed LogoutResponse) done.
+> Continuation work: 5c (full FBL flow serialization), 5d (InResponseTo
+> replay protection), 5e (E2E JUnit), inbound LogoutRequest signature
+> validation, TLS, dedicated key rotation. Or run the manual end-to-end
+> smoke documented in this file first.
