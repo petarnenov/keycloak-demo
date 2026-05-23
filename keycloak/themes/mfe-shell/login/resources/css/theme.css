@@ -1,260 +1,368 @@
 /* ============================================================
-   MFE Shell login theme
-   Matches the React shell's Theme A design tokens
-   (frontend/apps/shell/src/styles.css :root). The same cream
-   background, teal accent, Inter body, Instrument Serif title
-   that the shell uses for its hero. The OTP form ships with the
-   email-OTP SPI (keycloak-provider/src/main/resources/theme-resources/
-   templates/email-otp.ftl) and inherits this CSS automatically
-   because it renders inside the realm's login theme.
+   mfe-shell login theme — P1 1:1 visual parity.
+
+   Targets Keycloak 26's keycloak.v2 base (PatternFly v5) classes
+   AND fights its hard-coded dark-mode class
+   (html.pf-v5-theme-dark, applied via inline script in template.ftl).
+
+   Matches the P1 (geowealth) login page captured at
+   http://localhost:8888/ on 2026-05-23:
+     - light gray page background
+     - GeoWealth logo (383x111 PNG) above the card via header swap
+     - white card, subtle 1px gray border, no rounded corners
+     - "Sign in" heading: Lato Regular 24px, gray rgb(113,113,113)
+     - inputs: light gray border, no border-radius, 12px Lato
+     - primary button: solid teal rgb(48,116,146), white text,
+       Lato Bold, no border-radius
+     - "Forgot password?" / "Or sign in with" links in teal accent
+
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif&family=JetBrains+Mono:wght@500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap');
 
-:root {
-  --bg: #fbf9f4;
-  --surface: #ffffff;
-  --fg: #1c1917;
-  --fg-muted: #78716c;
-  --accent: #0d9488;
-  --accent-hover: #0f766e;
-  --border: #e7e5e4;
-  --border-strong: #d6d3d1;
-  --danger: #b91c1c;
-  --shadow: 0 1px 3px rgba(28, 25, 23, 0.05), 0 12px 32px rgba(28, 25, 23, 0.06);
-  --shadow-lg: 0 4px 24px rgba(28, 25, 23, 0.08);
-  --radius: 14px;
-  --radius-sm: 8px;
-  --font-base: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+:root,
+html.pf-v5-theme-dark {
+  --pf-v5-global--BackgroundColor--100: #f0f0f0;
+  --pf-v5-global--BackgroundColor--200: #ffffff;
+  --pf-v5-global--Color--100: rgb(113, 113, 113);
+  --pf-v5-global--Color--200: rgb(60, 60, 60);
+  --pf-v5-global--link--Color: rgb(48, 116, 146);
+  --pf-v5-global--link--Color--hover: rgb(36, 92, 117);
+  --pf-v5-global--primary-color--100: rgb(48, 116, 146);
+  --pf-v5-global--primary-color--200: rgb(36, 92, 117);
+
+  --p1-bg: #f0f0f0;
+  --p1-card-bg: #ffffff;
+  --p1-card-border: #c8c8c8;
+  --p1-fg: rgb(113, 113, 113);
+  --p1-fg-strong: rgb(60, 60, 60);
+  --p1-input-border: #d6d6d6;
+  --p1-accent: rgb(48, 116, 146);
+  --p1-accent-hover: rgb(36, 92, 117);
+  --p1-danger: #b91c1c;
+  --p1-font: 'Lato', 'Helvetica Neue', Arial, sans-serif;
 }
 
-/* ---------- page background ---------- */
+/* ---------- force light scheme regardless of OS preference ---------- */
 
-html, body,
-.login-pf,
-.login-pf-page,
-body.login-pf {
-  background: var(--bg) !important;
-  background-image:
-    radial-gradient(1100px 520px at 85% -10%, rgba(13, 148, 136, 0.06), transparent 60%),
-    radial-gradient(900px 460px at -10% 110%, rgba(13, 148, 136, 0.04), transparent 60%) !important;
-  background-attachment: fixed !important;
-  color: var(--fg);
-  font-family: var(--font-base) !important;
+html,
+html.pf-v5-theme-dark,
+body,
+body.login-pf,
+body#keycloak-bg {
+  background: var(--p1-bg) !important;
+  background-image: none !important;
+  color: var(--p1-fg) !important;
+  font-family: var(--p1-font) !important;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  color-scheme: light !important;
 }
 
-body.login-pf { background-image: none !important; }
+/* keycloak.v2 hangs a #keycloak-bg id on body with the background image  blank it */
+#keycloak-bg {
+  background-image: none !important;
+}
 
-/* ---------- hide the stock PF header, inject our own eyebrow ---------- */
+/* ---------- top-level login layout ---------- */
 
-#kc-header,
-#kc-header-wrapper {
+.pf-v5-c-login,
+.pf-v5-c-login__container {
+  background: transparent !important;
+  --pf-v5-c-login--BackgroundColor: transparent !important;
+  --pf-v5-c-login__container--MaxWidth: 600px !important;
+}
+
+.pf-v5-c-login {
+  padding-top: 80px !important;
+  min-height: 100vh;
+}
+
+/* PF5 makes .pf-v5-c-login__container a CSS grid that places the header in
+   a side track  zero width on mobile-first layouts. Flatten it to a normal
+   block flow so header (logo) stacks above main (card). */
+.pf-v5-c-login__container {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  grid-template-columns: none !important;
+  grid-template-rows: none !important;
+  grid-template-areas: none !important;
+}
+
+/* ---------- header: swap Keycloak realm name for P1 logo ---------- */
+
+/* IMPORTANT: #kc-header AND .pf-v5-c-login__header are the same <header>
+   element. Only hide the children (the brand text), keep the wrapper visible
+   so it can host the logo background. */
+#kc-header > *,
+#kc-header-wrapper,
+.pf-v5-c-brand {
   display: none !important;
 }
 
-.login-pf-page::before {
-  content: 'Microfrontend SSO Demo';
-  display: block;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--accent);
-  margin: 1.5rem auto 0.5rem;
+#kc-header,
+.pf-v5-c-login__header {
+  display: block !important;
+  background: transparent url('../img/geowealth-logo.png') no-repeat center / 383px 111px !important;
+  height: 111px !important;
+  width: 100% !important;
+  margin: 0 auto 24px !important;
+  padding: 0 !important;
+  font-size: 0 !important;
+  color: transparent !important;
 }
 
 /* ---------- card ---------- */
 
-.login-pf-page .card-pf {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 2.25rem 2rem 1.75rem;
-  max-width: 460px;
-  margin: 0.75rem auto 1.5rem;
+.pf-v5-c-login__main {
+  background: var(--p1-card-bg) !important;
+  --pf-v5-c-login__main--BackgroundColor: var(--p1-card-bg) !important;
+  border: 1px solid var(--p1-card-border) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 56px 64px !important;
+  max-width: 509px !important;
+  width: 509px !important;
+  margin: 0 auto 80px !important;
 }
 
-/* ---------- title + subtitle ---------- */
+.pf-v5-c-login__main-header,
+.pf-v5-c-login__main-body,
+.pf-v5-c-login__main-footer,
+.pf-v5-c-login__main-footer-band {
+  background: var(--p1-card-bg) !important;
+  --pf-v5-c-login__main-footer-band--BackgroundColor: var(--p1-card-bg) !important;
+  border: none !important;
+  padding: 0 !important;
+}
 
+.pf-v5-c-login__main-footer-band {
+  margin-top: 24px !important;
+  padding-top: 16px !important;
+  border-top: 1px solid var(--p1-card-border) !important;
+}
+
+/* ---------- title ---------- */
+
+.pf-v5-c-title,
+.pf-v5-c-title.pf-m-3xl,
 #kc-page-title,
-.login-pf-header h1,
-.pf-c-title,
-h1#kc-page-title {
-  font-family: var(--font-display) !important;
+.pf-v5-c-login__main-header h1 {
+  font-family: var(--p1-font) !important;
   font-weight: 400 !important;
-  font-size: 2rem !important;
-  line-height: 1.15 !important;
-  color: var(--fg) !important;
-  letter-spacing: -0.02em !important;
-  margin: 0 0 0.25rem 0 !important;
-  text-align: left !important;
-}
-
-#kc-page-title::after {
-  content: 'Sign in to continue.';
-  display: block;
-  font-family: var(--font-base);
-  font-size: 0.95rem;
-  font-weight: 400;
-  color: var(--fg-muted);
-  letter-spacing: normal;
-  margin-top: 0.35rem;
-}
-
-/* The email-OTP step sets the title to "Enter email code" — swap the
-   subtitle line in that case so the second-factor screen reads naturally. */
-#kc-otp-login-form ~ * #kc-page-title::after,
-body:has(#kc-otp-login-form) #kc-page-title::after {
-  content: 'A 6-digit code was sent to your email. Valid for 10 minutes.';
+  font-size: 24px !important;
+  line-height: 1.2 !important;
+  color: var(--p1-fg) !important;
+  letter-spacing: normal !important;
+  margin: 0 0 32px 0 !important;
+  text-align: center !important;
+  text-transform: none !important;
 }
 
 /* ---------- form fields ---------- */
 
-label,
-.pf-c-form__label {
-  color: var(--fg) !important;
-  font-weight: 500 !important;
-  font-size: 0.9rem !important;
-  margin-bottom: 0.4rem;
+.pf-v5-c-form,
+.pf-v5-c-form__group {
+  background: transparent !important;
+  --pf-v5-c-form--m-horizontal__group-label--md--GridColumnWidth: 0 !important;
 }
 
-input.pf-c-form-control,
+.pf-v5-c-form__label,
+.pf-v5-c-form__label-text,
+label {
+  color: var(--p1-fg-strong) !important;
+  font-weight: 400 !important;
+  font-size: 12px !important;
+  font-family: var(--p1-font) !important;
+  margin-bottom: 6px !important;
+  --pf-v5-c-form__label--FontSize: 12px !important;
+}
+
+/* PF5 wraps the <input> in a <span class="pf-v5-c-form-control">; the SPAN
+   carries the visible border via custom-prop driven box-shadow, the input
+   itself sits transparent inside. We have to neutralize the span's
+   pseudo-element border AND style the input. */
+span.pf-v5-c-form-control {
+  background: #ffffff !important;
+  --pf-v5-c-form-control--BackgroundColor: #ffffff !important;
+  border: 1px solid var(--p1-input-border) !important;
+  border-radius: 0 !important;
+  --pf-v5-c-form-control--BorderColor: var(--p1-input-border) !important;
+  --pf-v5-c-form-control--BorderBottomColor: var(--p1-input-border) !important;
+  --pf-v5-c-form-control--BorderRadius: 0 !important;
+  height: 32px !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  display: block !important;
+}
+
+/* Kill the PF5 inset box-shadow that mimics the border */
+span.pf-v5-c-form-control::after,
+span.pf-v5-c-form-control::before {
+  display: none !important;
+  content: none !important;
+}
+
+span.pf-v5-c-form-control > input,
 input[type="text"],
 input[type="password"],
 input[type="email"] {
-  background: #fff !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius-sm) !important;
-  padding: 0.7rem 0.85rem !important;
-  font-size: 0.95rem !important;
-  color: var(--fg) !important;
-  font-family: var(--font-base) !important;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
-  width: 100%;
-}
-
-input.pf-c-form-control:focus,
-input:focus {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  color: var(--p1-fg-strong) !important;
+  font-family: var(--p1-font) !important;
+  height: 30px !important;
+  width: 100% !important;
+  box-shadow: none !important;
   outline: none !important;
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.18) !important;
 }
 
-/* OTP input — monospace, large, spaced so all six digits feel like one chip */
-input#otp,
-input[name="otp"] {
-  font-family: var(--font-mono) !important;
-  font-size: 1.6rem !important;
-  letter-spacing: 0.45em !important;
-  text-align: center !important;
-  padding: 0.85rem 0.5rem 0.85rem 1rem !important;
+span.pf-v5-c-form-control:focus-within {
+  border-color: var(--p1-accent) !important;
+  --pf-v5-c-form-control--BorderColor: var(--p1-accent) !important;
+  box-shadow: 0 0 0 2px rgba(48, 116, 146, 0.12) !important;
+}
+
+/* password-visibility eye button — make it match */
+.pf-v5-c-input-group__item .pf-v5-c-button {
+  background: #ffffff !important;
+  border: 1px solid var(--p1-input-border) !important;
+  border-left: none !important;
+  border-radius: 0 !important;
+  height: 32px !important;
+  color: var(--p1-fg) !important;
 }
 
 /* ---------- primary action button ---------- */
 
-.pf-c-button.pf-m-primary,
+.pf-v5-c-button.pf-m-primary,
+.pf-v5-c-button.pf-m-primary.pf-m-block,
+button.pf-v5-c-button.pf-m-primary,
 input[type="submit"],
-button.pf-c-button.pf-m-primary,
 #kc-login {
-  background: var(--accent) !important;
-  border: 1px solid var(--accent) !important;
-  color: #fff !important;
-  border-radius: var(--radius-sm) !important;
-  padding: 0.75rem 1.2rem !important;
-  font-weight: 500 !important;
-  font-family: var(--font-base) !important;
-  letter-spacing: 0.01em !important;
-  transition: background 120ms ease, box-shadow 120ms ease;
+  background: var(--p1-accent) !important;
+  --pf-v5-c-button--m-primary--BackgroundColor: var(--p1-accent) !important;
+  --pf-v5-c-button--m-primary--hover--BackgroundColor: var(--p1-accent-hover) !important;
+  --pf-v5-c-button--m-primary--Color: #ffffff !important;
+  border: 1px solid var(--p1-accent) !important;
+  color: #ffffff !important;
+  border-radius: 0 !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  font-family: var(--p1-font) !important;
+  font-weight: 700 !important;
+  letter-spacing: normal !important;
+  height: 30px !important;
+  width: 200px !important;
+  min-width: 200px !important;
+  text-transform: none !important;
+  box-shadow: none !important;
   cursor: pointer;
-  width: 100%;
+  margin: 0 auto !important;
+  display: block !important;
 }
 
-.pf-c-button.pf-m-primary:hover,
+.pf-v5-c-button.pf-m-primary:hover,
+button.pf-v5-c-button.pf-m-primary:hover,
 input[type="submit"]:hover,
-button.pf-c-button.pf-m-primary:hover,
 #kc-login:hover {
-  background: var(--accent-hover) !important;
-  border-color: var(--accent-hover) !important;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25) !important;
+  background: var(--p1-accent-hover) !important;
+  border-color: var(--p1-accent-hover) !important;
 }
 
-/* ---------- links ---------- */
+/* center the button row */
+.pf-v5-c-form__actions {
+  text-align: center !important;
+  margin-top: 28px !important;
+  justify-content: center !important;
+  display: flex !important;
+}
+
+/* ---------- "Or sign in with" footer + IdP buttons ---------- */
+
+.pf-v5-c-login__main-footer-band-item {
+  color: var(--p1-fg) !important;
+  font-size: 12px !important;
+  font-family: var(--p1-font) !important;
+  text-align: center !important;
+}
+
+.pf-v5-c-login__main-footer-links {
+  justify-content: center !important;
+}
+
+.pf-v5-c-login__main-footer-links-item-link,
+#social-p1 .kc-social-provider-name {
+  color: var(--p1-accent) !important;
+  font-family: var(--p1-font) !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  text-decoration: none !important;
+}
+
+.pf-v5-c-login__main-footer-links-item-link:hover {
+  color: var(--p1-accent-hover) !important;
+  text-decoration: underline !important;
+}
+
+/* ---------- generic links (Forgot password?) ---------- */
 
 a,
 a:visited {
-  color: var(--accent);
-  text-decoration: none;
+  color: var(--p1-accent) !important;
+  font-family: var(--p1-font) !important;
+  font-weight: 700 !important;
+  text-decoration: none !important;
 }
 
 a:hover {
-  color: var(--accent-hover);
-  text-decoration: underline;
+  color: var(--p1-accent-hover) !important;
+  text-decoration: underline !important;
 }
 
 /* ---------- errors and feedback ---------- */
 
 .kc-feedback-text,
 #input-error,
-.alert,
-.alert-error,
-.pf-c-alert {
-  color: var(--danger) !important;
-  font-size: 0.875rem !important;
-  font-family: var(--font-base) !important;
-  background: rgba(185, 28, 28, 0.06) !important;
-  border: 1px solid rgba(185, 28, 28, 0.18) !important;
-  border-radius: var(--radius-sm) !important;
-  padding: 0.6rem 0.85rem !important;
-  margin: 0.5rem 0 1rem !important;
+.pf-v5-c-alert,
+.pf-v5-c-alert.pf-m-danger,
+.pf-v5-c-form__helper-text.pf-m-error {
+  color: var(--p1-danger) !important;
+  --pf-v5-c-alert--BackgroundColor: rgba(185, 28, 28, 0.06) !important;
+  font-size: 12px !important;
+  font-family: var(--p1-font) !important;
+  border-radius: 0 !important;
+  padding: 8px 12px !important;
+  margin: 8px 0 12px !important;
 }
 
-/* When the alert is a plain inline error text (no .alert wrapper), keep it
-   simple — no border/background. */
 #input-error,
 .kc-feedback-text {
   background: transparent !important;
   border: none !important;
   padding: 0 !important;
-  margin-top: 0.3rem !important;
-}
-
-/* ---------- footer / extra links ("Forgot password?", "Register", etc) ---------- */
-
-#kc-info,
-.login-pf-actions {
-  text-align: center;
-  margin-top: 1rem;
-  font-size: 0.875rem;
-  color: var(--fg-muted);
-}
-
-#kc-info a {
-  font-weight: 500;
+  margin-top: 4px !important;
 }
 
 /* ---------- form spacing ---------- */
 
-.pf-c-form__group,
-.form-group,
-#kc-form-buttons {
-  margin-bottom: 1.1rem !important;
+.pf-v5-c-form__group {
+  margin-bottom: 12px !important;
+  --pf-v5-c-form--GridGap: 12px !important;
 }
 
-#kc-form-buttons {
-  margin-top: 1.3rem !important;
-}
+/* ---------- OTP input (email-OTP step) ---------- */
 
-/* ---------- "stay signed in" / checkbox row ---------- */
-
-.checkbox label,
-#kc-form-options .checkbox label {
-  color: var(--fg-muted) !important;
-  font-weight: 400 !important;
-  font-size: 0.875rem !important;
+input#otp,
+input[name="otp"] {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace !important;
+  font-size: 18px !important;
+  letter-spacing: 0.35em !important;
+  text-align: center !important;
+  height: auto !important;
+  padding: 10px 8px !important;
+  width: 100% !important;
 }
