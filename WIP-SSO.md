@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 10 — realm broker SP signs outbound (wantAuthnRequestsSigned) |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `1a928a995e1` rename `fakeResponseId` to `includeSubjectConfirmationInResponseTo` |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 14 — broker AuthnRequest on Redirect binding → no HTML splash between click and P1 landing |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | Phase 12 — `IdpSsoAction.redirectToLogin` stashes SAML state in `REDIRECT_MAPPING`; ReactIndexAction already ships it back as `metaData` |
 
 ## Done
 
@@ -88,6 +88,226 @@ package. See `~/geowealth/src/main/resources/struts-tiles.xml`.
 by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
+
+## Phase 14 — Eliminate Keycloak broker splash (Redirect binding) (2026-05-23)
+
+After Phase 13 forced the shell click through P1, the user still saw
+a momentary blank flash between Sign in and landing at `:8888/#login`.
+Cause: P1 IdP was configured for `postBindingAuthnRequest=true`, so
+Keycloak's broker emitted its standard HTML auto-submit form to POST
+the signed `<samlp:AuthnRequest>` to P1 — that page rendered
+visually for the duration of one paint cycle before the JS
+auto-submit fired.
+
+### Change
+
+Flipped `postBindingAuthnRequest` to `false` on the P1 IdP
+(realm-export.json + live admin API patch). Keycloak's broker now
+DEFLATE-compresses + base64-encodes + signs the AuthnRequest and
+attaches it as `?SAMLRequest=&SigAlg=&Signature=` query parameters
+on a clean 302 to `/saml/idp/sso.do`. No body, no JS, no flash.
+
+### Compatibility
+
+`IdpSsoAction.parseAuthnRequest()` (Phase 8 code) already handles
+both bindings: it first tries plain base64 XML, then falls through
+to DEFLATE decompression (`Inflater(true)` for nowrap) on
+parse failure. So flipping the binding doesn't need any P1-side
+change — the existing `try { plain } catch { DEFLATE }` path takes
+over.
+
+### Verified end-to-end (chrome-devtools network trace)
+
+| # | Request | Response |
+|---|---|---|
+| 40 | `:8898/.../auth?...kc_idp_hint=p1` | 303 |
+| 41 | `:8898/.../broker/p1/login?session_code=…` | **302** (was the HTML auto-submit page before) |
+| 42 | `:8080/saml/idp/sso.do?SAMLRequest=…&SigAlg=…&Signature=…` | **302** (Redirect binding, signed query params) |
+| 43 | `:8888/#login` | React app loads (final destination) |
+
+All four steps are pure 302/303 — no HTML body painted between
+click and the destination. The remaining `:8888` React preloader is
+the destination's own boot UI (the GeoWealth-themed dark overlay
+inside `indexReact.jsp`), not a splash in our chain.
+
+### Files touched
+
+| Repo / File | Change |
+|---|---|
+| `~/keycloak-demo/keycloak/realm-export.json` | `identityProviders[p1].config.postBindingAuthnRequest = "false"` |
+| live demo-realm (admin API) | same flag patched on the running realm |
+
+### Side note — LogoutRequest binding
+
+`postBindingLogout` stays `true` because Phase 10 specifically
+hardened the LogoutRequest signing under POST binding (Keycloak's
+broker signs the body of the POST). Switching SLO to Redirect
+binding would need re-checking the Phase 6a signature validation
+path on the P1 side. Out of scope for this phase.
+
+## Phase 13 — Shell-initiated login forced through P1 (2026-05-23)
+
+After Phase 12 closed the SP-init no-session gap, the shell's Sign-in
+button still landed users on the Keycloak login form (username +
+password + "Sign in with P1" link side-by-side). Demo-realm is now
+P1-only by intent — the User Storage SPI's `democlient` /
+`demouser` / `demoadmin` users exist as a development fallback, not
+as a parallel UX.
+
+### Change
+
+`apps/shell/src/auth/AuthProvider.tsx` line 117 — `keycloak.login()`
+now passes `idpHint: 'p1'`, mirroring the `kc_idp_hint=p1` pattern
+the P1 sidebar entry (Phase 8) already uses for SP-init. Keycloak
+sees the hint and **skips its own login form**, sending the browser
+directly to the P1 broker. From there:
+
+  click Sign in (shell)
+    → /realms/demo-realm/protocol/openid-connect/auth?kc_idp_hint=p1
+    → /realms/demo-realm/broker/p1/login (no form shown)
+    → POST SAMLRequest to /saml/idp/sso.do (P1 IdP)
+    → Phase 12 no-session branch stashes SAML state, 302 to :8888/#login
+    → P1 React login form (the only login form the user ever sees)
+
+On the realm side, `authenticateByDefault=true` was set on the P1
+IdP (live + `realm-export.json`). It's not the mechanism that
+actually drives the bypass today — the `demo-browser` flow has no
+`Identity Provider Redirector` step to consume the flag — but it
+documents the realm's intent and would auto-activate if anyone adds
+the Redirector step later.
+
+### Edge cases (form still reachable)
+
+- Keycloak Account console at `/realms/demo-realm/account/` —
+  username/password form still shown (no `kc_idp_hint` in the URL).
+- Direct navigation to the auth URL without the hint — same.
+- Admin emergency access — `master` realm is unaffected.
+
+If a future iteration needs to hide the form *everywhere* (not just
+shell-initiated), the move is to add an `Identity Provider
+Redirector` execution to the `demo-browser` flow with
+`defaultProvider=p1` and requirement `ALTERNATIVE` (placed before
+the username-password execution). `authenticateByDefault=true`
+would then take effect across all entry points.
+
+### Files touched
+
+| Repo / File | Change |
+|---|---|
+| `~/keycloak-demo/frontend/apps/shell/src/auth/AuthProvider.tsx` | `keycloak.login({ ..., idpHint: 'p1' })` |
+| `~/keycloak-demo/keycloak/realm-export.json` | `identityProviders[p1].authenticateByDefault = true` |
+| live realm (admin API) | same flag patched on the running realm |
+
+### Verified end-to-end (chrome-devtools automation)
+
+| Step | Result |
+|---|---|
+| `localhost:5173` shows "Sign in required" + Sign in button | ✅ |
+| Click Sign in | ✅ browser hops Keycloak silently, lands at `localhost:8888/#login` |
+| P1 React login form rendered | ✅ (no Keycloak login form between) |
+| Network tab path | shell → `:8898/.../auth?...kc_idp_hint=p1` → `:8898/.../broker/p1/login` → `:8080/saml/idp/sso.do` (no-session) → 302 → `:8888/#login` |
+
+## Phase 12 — SP-init recovery when user has no P1 session (2026-05-23)
+
+Closes the gap identified in
+[`p1-sp-init-no-session-report.md`](p1-sp-init-no-session-report.md):
+clicking "Sign in with P1" on Keycloak while not logged into P1 used to
+land on a bare HTTP 401 text page (`Not logged into P1. Visit
+/react/login.do then retry.`). The Javadoc for `IdpSsoAction` always
+promised the redirect-to-login dance; the inline scaffold just returned
+401 with a TODO comment. Phase 12 implements that promise.
+
+### Change
+
+`IdpSsoAction.execute()` no-session branch now calls a new
+`redirectToLogin(HttpServletResponse)` helper that:
+
+1. Stashes the inbound `SAMLRequest` and `RelayState` into the existing
+   P1 post-login redirect slots:
+   `BasicAction.REDIRECT_MAPPING="sso"`, `REDIRECT_NAMESPACE="/saml/idp"`,
+   `REDIRECT_PARAMS={SAMLRequest:[..], RelayState:[..]}`.
+2. Emits an audit line
+   `SECURITY_EVENT: SAML_LOGIN_REQUIRED remote=… relayState=… hasSAMLRequest=…`.
+3. Issues a 302 to `P1_IDP_LOGIN_REDIRECT_URL` (default
+   `http://localhost:8888/#login`).
+
+The default targets webpack-dev-server, not Tomcat, because in dev the
+React bundle is served only by webpack-dev-server (port 8888) — Tomcat
+8080 hosts `indexReact.jsp` but the `/react/build/{js,css}/...` paths
+that JSP references 404 on Tomcat (the bundle lives in webpack's
+in-memory FS). Redirecting to `/react/indexReact.do#login` on Tomcat
+directly loads the JSP shell with dead bundle URLs → white screen.
+Webpack-dev-server reverse-proxies all non-bundle requests back to
+Tomcat (`cookieDomainRewrite: ''`, `cookiePathRewrite: '/'`), and
+JSESSIONID is scoped by hostname (port-agnostic), so the
+`REDIRECT_MAPPING` session stash set on `localhost:8080` is visible
+to the React login flow served from `localhost:8888`.
+
+Override `P1_IDP_LOGIN_REDIRECT_URL` for prod
+(`/react/indexReact.do#login` when Tomcat ships the bundle baked in).
+
+The resume hop reuses code that was already in place — no LoginAction
+modification needed:
+
+- After successful authentication `ReactIndexAction.login()` reads
+  `REDIRECT_MAPPING` (lines 65-81), wraps it in a `DownloadMetaDataJTO`,
+  and returns it inside the JSON login response.
+- `WebContent/react/app/src/app/_services/appService.js` (line 168)
+  picks up `metaData.downloadActionName / namespace / params`, builds
+  `${namespace}/${downloadActionName}.do?<params>`, and calls
+  `FileDownload.getFile(url, '_self')`. `getFile()` opens the URL in a
+  new tab (`_blank`) — the SAML resume completes there. Keycloak's
+  broker correlates the InResponseTo via its own per-browser session
+  cookie, so the response landing in a sibling tab still completes the
+  flow.
+
+### Files touched
+
+| Repo / File | Change |
+|---|---|
+| `~/geowealth/src/main/java/com/geowealth/saml/idp/IdpSsoAction.java` | new `LOGIN_REDIRECT_URL` env-overridable constant, new `redirectToLogin()` helper, Javadoc rewrite, no-session branch swap |
+| `~/geowealth/src/test/java/com/geowealth/saml/idp/SamlIdpEndpointsIT.java` | flipped `ssoWithoutSessionExplainsItself` → `ssoWithoutSessionRedirectsToLogin`; asserts 302 + Location ending with `/react/indexReact.do#login` |
+| `~/keycloak-demo/WIP-SSO.md` | this entry + verification-matrix row update |
+| `~/keycloak-demo/p1-sp-init-no-session-report.md` | status line + post-implementation note |
+
+### Deploy
+
+```bash
+cd ~/geowealth && ./gradlew compileJava -x test --offline
+cp build/classes/java/main/com/geowealth/saml/idp/IdpSsoAction*.class \
+   ~/tools/tomcat9/webapps/ROOT/WEB-INF/classes/com/geowealth/saml/idp/
+~/tools/tomcat9/bin/shutdown.sh && ~/tools/tomcat9/bin/startup.sh
+```
+
+### Verify
+
+| Step | Expected |
+|---|---|
+| `curl -i http://localhost:8080/saml/idp/sso.do` | 302 + `Location: http://localhost:8888/#login` (was 401 text before) |
+| Open Keycloak login → click "Sign in with P1" while not signed into P1 | browser lands on the P1 React login page served by webpack-dev-server at 8888 |
+| Sign in to P1 normally | the React login JSON response carries `metaData.downloadActionName=sso, namespace=/saml/idp, params={SAMLRequest, RelayState}` |
+| Watch network tab | a new tab opens at `/saml/idp/sso.do?SAMLRequest=…&RelayState=…`; that tab POSTs the SAML Response to Keycloak ACS and the user lands at the mfe-shell |
+| Tomcat logs | grep `SECURITY_EVENT: SAML_LOGIN_REQUIRED` on the first hit, then `SAML_ISSUED` on the resume |
+
+### Side considerations
+
+- **AuthnRequest tolerance window.** If the user lingers on the P1 login
+  page past Keycloak's ~5 min `IssueInstant` tolerance, the resumed
+  `InResponseTo` is stale and Keycloak's broker rejects with
+  `invalid_saml_response`. Acceptable for the POC; production should
+  either drop the stashed state or refresh it on a long-lived gate.
+- **Open-redirect.** `LOGIN_REDIRECT_URL` is a configured constant (env
+  var or compile-time default), not pulled from request input — no
+  attacker-controlled redirect target is reachable.
+- **Replay protection (Phase 6b).** `SamlRequestIdCache` is currently
+  wired only on the SLO path. Once Phase 6 continuation lands the same
+  cache on inbound AuthnRequests, the resume hop must not re-insert the
+  ID (record only on the first pass; the resume already has it).
+- **`FileDownload.getFile` ignores the second arg** (always `_blank`).
+  This is fine for the POC — the new tab completes the SAML flow and
+  the original tab is orphaned. If a future iteration wants in-tab
+  resume, switch `appService.js` to `window.location.assign(...)` for
+  SAML resumes specifically (detect by `downloadActionName === "sso"`).
 
 ## Phase 11 — Keycloak login 1:1 P1 visual parity + whitelabel verification (2026-05-23)
 
@@ -317,7 +537,12 @@ plan + verification recipe).
 
 ```
 metadata.do                     → 200, valid <EntityDescriptor>, X509 embeds   ✅
-sso.do (no session)             → "Not logged into P1" text                    ✅
+sso.do (no session)             → 302 → http://localhost:8888/#login;          ✅ (Phase 12; was 401 text)
+                                  SAML state stashed in REDIRECT_MAPPING/NAMESPACE/PARAMS
+                                  default targets webpack-dev-server, not Tomcat —
+                                  bundle isn't on Tomcat in dev; override
+                                  P1_IDP_LOGIN_REDIRECT_URL for prod
+                                  audit: SECURITY_EVENT: SAML_LOGIN_REQUIRED
 slo.do unsigned (cert set)      → 403 "logout-request must be signed"          ✅ (SAML_LOGOUT_UNSIGNED)
 slo.do bad-sig (cert set)       → 403 "logout-request signature mismatch"     (covered by code; live test deferred)
 slo.do signed first hit         → 200, signed LogoutResponse                   (works when cert off)

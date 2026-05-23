@@ -114,7 +114,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Land on the home page after auth; the Nav will show whichever MFE links
     // the user's roles unlock. The redirect matches the client's redirectUris
     // pattern in realm-export.json.
-    login: () => keycloak.login({ redirectUri: window.location.origin + '/' }),
+    //
+    // idpHint='p1' forces Keycloak to skip its own login form and redirect
+    // straight to the P1 SAML broker — demo-realm is P1-only auth, the local
+    // username/password form would only ever be hit as an edge-case fallback.
+    // Matches the SP-init kc_idp_hint=p1 pattern that the P1 sidebar entry
+    // (Phase 8) uses; here we add it to the shell-initiated path too.
+    login: () => keycloak.login({ redirectUri: window.location.origin + '/', idpHint: 'p1' }),
     logout: () => keycloak.logout(),
     getToken: getFreshToken,
     loadProfile

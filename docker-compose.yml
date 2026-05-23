@@ -171,6 +171,33 @@ services:
     ports:
       - "5183:5183"
 
+  # ---- standalone: demo-billing -----------------------------------------------
+  # Plain white React app at billing.geowealth.int:5184 (requires
+  # /etc/hosts entry: `127.0.0.1 billing.geowealth.int`). P1-only auth via
+  # demo-realm + kc_idp_hint=p1. Pairs with bff-billing (8084) for JWT
+  # validation; "Under construction" content for now.
+  demo-billing:
+    <<: *mfe-common
+    command: sh -c "npm install && npm run -w demo-billing build && npm run -w demo-billing preview"
+    ports:
+      - "5184:5184"
+    volumes:
+      - ./frontend:/workspace
+      - /workspace/node_modules
+      # Mount the mkcert-issued certificate read-only. Vite preview reads
+      # the paths via env vars (HTTPS_CERT_PATH / HTTPS_KEY_PATH) and serves
+      # https:// on 5184. The certs are locally trusted because mkcert
+      # installs a CA into the host's keychain on first run.
+      - ./proxy/certs/billing.geowealth.int.crt:/certs/billing.crt:ro
+      - ./proxy/certs/billing.geowealth.int.key:/certs/billing.key:ro
+    environment:
+      VITE_KEYCLOAK_URL: http://localhost:8898
+      VITE_KEYCLOAK_REALM: demo-realm
+      VITE_KEYCLOAK_CLIENT_ID: demo-billing-client
+      BFF_BILLING_URL: http://bff-billing:8080
+      HTTPS_CERT_PATH: /certs/billing.crt
+      HTTPS_KEY_PATH: /certs/billing.key
+
   # ---- POC: GeoWealth white-labeling demo app --------------------------------
   # Standalone Vite dev server at :5174, isolated from the MFE shell. Entered
   # via subdomains (changepath.localhost:5174, default.localhost:5174) so the
@@ -221,6 +248,20 @@ services:
       APP_SOURCE: bff-admin
       APP_ALLOWED_ROLES: "admin"
       CORS_ORIGIN: http://localhost:5173
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+
+  # BFF for demo-billing. APP_ALLOWED_ROLES intentionally unset — bff-billing
+  # accepts any authenticated user (the role gate in UserController.java
+  # short-circuits when the list is empty). CORS_ORIGIN allows the billing
+  # subdomain plus localhost direct access.
+  bff-billing:
+    <<: *bff-common
+    ports:
+      - "8084:8080"
+    environment:
+      MICRONAUT_APPLICATION_NAME: bff-billing
+      APP_SOURCE: bff-billing
+      CORS_ORIGIN: http://billing.geowealth.int:5184
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
 
 volumes:

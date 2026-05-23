@@ -5,6 +5,14 @@
 node_modules/
 *.tsbuildinfo
 
+# Frontend build output (each Vite workspace emits its own dist/)
+frontend/apps/*/dist/
+
+# Private keys (mkcert-issued or otherwise). Regenerate locally with mkcert
+# per the demo-billing setup notes in CLAUDE.md.
+proxy/certs/*.key
+*.pem
+
 # Gradle
 .gradle/
 build/

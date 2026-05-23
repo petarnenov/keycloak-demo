@@ -336,6 +336,57 @@
       }
     },
     {
+      "clientId": "demo-billing-client",
+      "enabled": true,
+      "name": "Demo Billing Client",
+      "description": "Public OIDC client for the demo-billing standalone app at https://billing.geowealth.int:5184. P1-only auth via kc_idp_hint=p1.",
+      "publicClient": true,
+      "bearerOnly": false,
+      "webOrigins": [
+        "https://billing.geowealth.int:5184",
+        "http://localhost:5184",
+        "http://127.0.0.1:5184"
+      ],
+      "redirectUris": [
+        "https://billing.geowealth.int:5184",
+        "https://billing.geowealth.int:5184/",
+        "https://billing.geowealth.int:5184/*",
+        "http://localhost:5184",
+        "http://localhost:5184/",
+        "http://localhost:5184/*",
+        "http://127.0.0.1:5184",
+        "http://127.0.0.1:5184/",
+        "http://127.0.0.1:5184/*"
+      ],
+      "baseUrl": "https://billing.geowealth.int:5184/",
+      "rootUrl": "https://billing.geowealth.int:5184",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm-roles-flat",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "app1-client",
       "enabled": false,
       "name": "App1 Client",
@@ -488,7 +539,7 @@
       "trustEmail": true,
       "storeToken": false,
       "addReadTokenRoleOnCreate": false,
-      "authenticateByDefault": false,
+      "authenticateByDefault": true,
       "linkOnly": false,
       "firstBrokerLoginFlowAlias": "p1-first-broker-login",
       "config": {
@@ -497,7 +548,7 @@
         "nameIDPolicyFormat": "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
         "principalType": "SUBJECT",
         "postBindingResponse": "true",
-        "postBindingAuthnRequest": "true",
+        "postBindingAuthnRequest": "false",
         "postBindingLogout": "true",
         "wantAssertionsSigned": "true",
         "wantAuthnRequestsSigned": "true",
