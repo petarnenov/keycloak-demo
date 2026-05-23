@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | `75a284a` Phase 2 finalize — real cert + WIP refresh |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `32de5d0d281` Phase 3 — P1 sidebar Demo MFE-BFF entry |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | `b8dd72f` Phase 3 done refresh |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `22cc161edf5` Phase 4 — real role mapping |
 
 ## Done
 
@@ -89,6 +89,45 @@ by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
 
+## Phase 4 — DONE (2026-05-23)
+
+Real role mapping replaces the Phase 2 `List.of("user")` placeholder.
+`IdpSsoAction.derivePocRoles(LoggedUser)` projects the active P1
+session onto the demo realm's `client` / `user` / `admin` set:
+
+- `client` — every authenticated P1 user.
+- `user` — added when `LoggedUser.isAdvisor()` is true.
+- `admin` — added when `LoggedUser.canLoggedUserAccessBackOffice()`
+  returns true (back-office permission). The check is wrapped in
+  try/catch so a permission-service failure logs and degrades to the
+  lower-privilege set rather than 500-ing the SAML Response.
+
+The realm role mappers (`saml-role-idp-mapper` × 3) in
+`realm-export.json` consume the lowercase attribute values and bind
+them to the matching realm roles — no Keycloak-side change needed
+beyond the flow tweaks below.
+
+**Silent first-broker-login.** Three `first broker login` flow steps
+disabled (live, via admin API):
+
+- `Review Profile` → DISABLED (no confirmation page)
+- `Confirm link existing account` → DISABLED (auto-link by email)
+- `Account verification options` → DISABLED (we trust the P1 email
+  because `trustEmail=true` on the IdP config)
+
+Combined effect: a P1 user whose email matches an existing realm
+user federates silently; a new email auto-creates the realm user
+silently. Both paths land in the keycloak-demo shell with no extra
+clicks.
+
+`updateProfileFirstLoginMode` flipped to `off` in
+`keycloak/realm-export.json` so fresh imports get the
+silent-link disposition. The three flow tweaks are not yet
+serialized into `realm-export.json` (Keycloak's built-in flow is
+default-recreated on every import), so the new script
+`keycloak/apply-fbl-customization.sh` re-applies them via admin API
+after a `down -v && up`. Run once after a wipe.
+
 ## Next — manual end-to-end smoke
 
 With both stacks up (`./start.sh` + Tomcat + webpack-dev-server):
@@ -106,15 +145,27 @@ Watch the logs while you click:
 - `tail -f ~/tools/tomcat9/logs/catalina.out | grep SAML_ISSUED`
 - `docker logs -f keycloak-demo-keycloak-1 | grep -iE 'broker|saml'`
 
-## Then — Phase 4 / 5
+## Then — Phase 5
 
-- Phase 4: real role-mapping (P1 → realm roles), wire `IdpKeyStore`
-  through Bamboo secrets-manager path, replace placeholder cert
-  end-to-end.
-- Phase 5: production hardening — TLS, dedicated key rotation,
-  InResponseTo replay protection, front-channel SLO with signed
-  LogoutResponse, audit-log routing to SECURITY_EVENT pipeline,
-  E2E JUnit 5 suite mirroring the whitelabel one.
+Production hardening — picks up everything intentionally deferred
+during the POC track:
+
+- TLS everywhere (browser ↔ shell, shell ↔ Keycloak, browser ↔ P1,
+  Keycloak ↔ P1 back-channel SLO)
+- Dedicated IdP signing key with 60-day rotation; `IdpKeyStore` wired
+  through Bamboo secrets-manager rather than env vars + `/tmp` PKCS#12
+- InResponseTo replay protection — track AuthnRequest IDs in a
+  short-lived cache (Caffeine?) and reject duplicates within the
+  IssueInstant window
+- Front-channel SLO with a proper signed `<samlp:LogoutResponse>`
+  (today `IdpSloAction` returns a bare 200)
+- Audit log routing — SAML_ISSUED events into the existing P1
+  `SECURITY_EVENT` pipeline, including remote IP, target ACS, RelayState
+- E2E JUnit 5 suite mirroring the whitelabel one: drives C1 (IdP-init)
+  and C2 (SP-init) flows end-to-end against a real Keycloak + Tomcat
+- Serialize the customized `first broker login` flow into
+  `realm-export.json` proper so fresh installs don't need
+  `apply-fbl-customization.sh`
 
 ## Files of interest
 
@@ -134,9 +185,10 @@ Watch the logs while you click:
 
 Then prompt:
 
-> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. Phases 1, 2, and 3
-> are done. Either: (a) do the manual end-to-end smoke documented
-> in WIP-SSO.md and capture any issues, then start Phase 4
-> role-mapping; or (b) jump straight to Phase 5 production hardening
-> (TLS, key rotation, InResponseTo replay, front-channel SLO, audit
-> routing, E2E JUnit suite).
+> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. Phases 1–4 done.
+> Pick up at Phase 5 production hardening (TLS, key rotation,
+> InResponseTo replay protection, signed LogoutResponse,
+> SECURITY_EVENT audit routing, E2E JUnit suite, full flow
+> serialization into realm-export). Or, before Phase 5, run the
+> manual end-to-end smoke documented in this file to confirm
+> Phases 1–4 land cleanly.
