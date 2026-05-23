@@ -56,14 +56,29 @@ public final class Brand {
         "^[0-9 +().-]{3,32}$"
     );
 
+    /** Plain-text safe pattern: letters, digits, common punctuation, spaces. */
+    private static final Pattern SAFE_PLAIN_TEXT = Pattern.compile(
+        "^[\\p{L}\\p{N} .,'\\-&()/#:+]{1,512}$"
+    );
+
     private final String code;
     private final String displayName;
+    private final String firmShortName;        // nullable
     private final Map<String, String> cssVariables;
-    private final String loginLogoDataUri; // nullable
-    private final String faviconDataUri;   // nullable
-    private final String supportEmail;     // nullable
-    private final String phone;            // nullable
-    private final String website;          // nullable
+    private final String loginLogoDataUri;     // nullable
+    private final String loginLogoSmallDataUri;// nullable
+    private final String faviconDataUri;       // nullable
+    private final String logoIconDataUri;      // nullable
+    private final String supportEmail;         // nullable
+    private final String phone;                // nullable
+    private final String website;              // nullable
+    private final String streetAddress1;       // nullable
+    private final String streetAddress2;       // nullable
+    private final String city;                 // nullable
+    private final String state;                // nullable
+    private final String zipCode;              // nullable
+    private final String country;              // nullable
+    private final String footerText;           // nullable
 
     public Brand(String code, String displayName, Map<String, String> cssVariables) {
         this(code, displayName, cssVariables, null, null, null, null, null);
@@ -82,18 +97,51 @@ public final class Brand {
     public Brand(String code, String displayName, Map<String, String> cssVariables,
                  String loginLogoDataUri, String faviconDataUri,
                  String supportEmail, String phone, String website) {
+        this(code, displayName, null, cssVariables,
+            loginLogoDataUri, null, faviconDataUri, null,
+            supportEmail, phone, website,
+            null, null, null, null, null, null,
+            null);
+    }
+
+    /**
+     * Full-fidelity constructor mirroring every WhitelabelDTO field that
+     * affects the login surface. Optional fields default to {@code null}
+     * which the FreeMarker template treats as "fall back to the static
+     * theme default". Each scalar is run through its allowlist regex; a
+     * value that fails validation is dropped + logged at WARN, never
+     * threaded into rendered HTML/CSS.
+     */
+    public Brand(String code, String displayName, String firmShortName,
+                 Map<String, String> cssVariables,
+                 String loginLogoDataUri, String loginLogoSmallDataUri,
+                 String faviconDataUri, String logoIconDataUri,
+                 String supportEmail, String phone, String website,
+                 String streetAddress1, String streetAddress2,
+                 String city, String state, String zipCode, String country,
+                 String footerText) {
         if (code == null || code.isEmpty()) {
             throw new IllegalArgumentException("brand code must be non-empty");
         }
         this.code = code;
         this.displayName = displayName == null ? code : displayName;
+        this.firmShortName = sanitizeAgainst(code, firmShortName, SAFE_PLAIN_TEXT, "firm-short-name");
         this.cssVariables = Collections.unmodifiableMap(
             filterUnsafe(code, cssVariables == null ? Map.of() : cssVariables));
-        this.loginLogoDataUri = sanitizeImageUri(code, loginLogoDataUri, "login-logo");
-        this.faviconDataUri = sanitizeImageUri(code, faviconDataUri, "favicon");
-        this.supportEmail = sanitizeAgainst(code, supportEmail, SAFE_EMAIL, "support-email");
-        this.phone        = sanitizeAgainst(code, phone,        SAFE_PHONE, "phone");
-        this.website      = sanitizeAgainst(code, website,      SAFE_HTTP_URL, "website");
+        this.loginLogoDataUri      = sanitizeImageUri(code, loginLogoDataUri,      "login-logo");
+        this.loginLogoSmallDataUri = sanitizeImageUri(code, loginLogoSmallDataUri, "login-logo-small");
+        this.faviconDataUri        = sanitizeImageUri(code, faviconDataUri,        "favicon");
+        this.logoIconDataUri       = sanitizeImageUri(code, logoIconDataUri,       "logo-icon");
+        this.supportEmail   = sanitizeAgainst(code, supportEmail,   SAFE_EMAIL,     "support-email");
+        this.phone          = sanitizeAgainst(code, phone,          SAFE_PHONE,    "phone");
+        this.website        = sanitizeAgainst(code, website,        SAFE_HTTP_URL,  "website");
+        this.streetAddress1 = sanitizeAgainst(code, streetAddress1, SAFE_PLAIN_TEXT,"street1");
+        this.streetAddress2 = sanitizeAgainst(code, streetAddress2, SAFE_PLAIN_TEXT,"street2");
+        this.city           = sanitizeAgainst(code, city,           SAFE_PLAIN_TEXT,"city");
+        this.state          = sanitizeAgainst(code, state,          SAFE_PLAIN_TEXT,"state");
+        this.zipCode        = sanitizeAgainst(code, zipCode,        SAFE_PLAIN_TEXT,"zip");
+        this.country        = sanitizeAgainst(code, country,        SAFE_PLAIN_TEXT,"country");
+        this.footerText     = sanitizeAgainst(code, footerText,     SAFE_PLAIN_TEXT,"footer-text");
     }
 
     private static String sanitizeAgainst(String code, String value, Pattern pattern, String kind) {
@@ -144,10 +192,47 @@ public final class Brand {
 
     public String getCode() { return code; }
     public String getDisplayName() { return displayName; }
+    public String getFirmShortName() { return firmShortName; }
     public Map<String, String> getCssVariables() { return cssVariables; }
     public String getLoginLogoDataUri() { return loginLogoDataUri; }
+    public String getLoginLogoSmallDataUri() { return loginLogoSmallDataUri; }
     public String getFaviconDataUri() { return faviconDataUri; }
+    public String getLogoIconDataUri() { return logoIconDataUri; }
     public String getSupportEmail() { return supportEmail; }
     public String getPhone() { return phone; }
     public String getWebsite() { return website; }
+    public String getStreetAddress1() { return streetAddress1; }
+    public String getStreetAddress2() { return streetAddress2; }
+    public String getCity() { return city; }
+    public String getState() { return state; }
+    public String getZipCode() { return zipCode; }
+    public String getCountry() { return country; }
+    public String getFooterText() { return footerText; }
+
+    /**
+     * Single-line composed address suitable for a one-line footer slot.
+     * Returns {@code null} if no address parts are present. Components
+     * are joined with comma-space; empty parts are skipped.
+     */
+    public String getAddressLine() {
+        StringBuilder sb = new StringBuilder();
+        appendPart(sb, streetAddress1);
+        appendPart(sb, streetAddress2);
+        appendPart(sb, city);
+        // State + zip share a slot ("CA 94025") so they read naturally
+        if (state != null || zipCode != null) {
+            if (sb.length() > 0) sb.append(", ");
+            if (state != null) sb.append(state);
+            if (state != null && zipCode != null) sb.append(' ');
+            if (zipCode != null) sb.append(zipCode);
+        }
+        appendPart(sb, country);
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    private static void appendPart(StringBuilder sb, String part) {
+        if (part == null || part.isBlank()) return;
+        if (sb.length() > 0) sb.append(", ");
+        sb.append(part);
+    }
 }
