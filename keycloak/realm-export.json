@@ -483,14 +483,15 @@
         "postBindingAuthnRequest": "true",
         "postBindingLogout": "true",
         "wantAssertionsSigned": "true",
-        "wantAuthnRequestsSigned": "false",
+        "wantAuthnRequestsSigned": "true",
         "validateSignature": "true",
         "signingCertificate": "MIIDTTCCAjWgAwIBAgIIOa8M+519W4UwDQYJKoZIhvcNAQEMBQAwVTELMAkGA1UEBhMCVVMxCzAJBgNVBAgTAkdBMRAwDgYDVQQHEwdBdGxhbnRhMRIwEAYDVQQKEwlHZW9XZWFsdGgxEzARBgNVBAMTCnAxLWlkcC1kZXYwHhcNMjYwNTIzMDUxNzQ3WhcNMjcwNTIzMDUxNzQ3WjBVMQswCQYDVQQGEwJVUzELMAkGA1UECBMCR0ExEDAOBgNVBAcTB0F0bGFudGExEjAQBgNVBAoTCUdlb1dlYWx0aDETMBEGA1UEAxMKcDEtaWRwLWRldjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKFRJC4ScIlymF3igAV1Acl6tPu5qfAtdPysajkKOfAkx2SfS5JdUn0PLH7DZTkym1vRffiD8OQST6IUXzCBOhXc6pJPcLFTikshRBnOJohExGym4AP4VL8AeEF0H6Xx86v+ml9OoaFIz3TGv11ieWmQne0RhNgrhqDp/KoFpt5lk8gk4oXZNUs5CKta3ZkRaNu2h9SihzPIpDP9TxfYI6xBtMTiD2nJ90732mvRCSruaSUIXpx6eVSvhWCzSzzzmZe/YlpfZ1JFxWwN+j7+I72gcQCR/RU8EdTsxZdetOr3Q8jzic572nPrbU6aXSRX8HhIZ0Jub1e+t+owA8pMSQECAwEAAaMhMB8wHQYDVR0OBBYEFCl1I5T2eUxWFOIYKMJF+VP+tIylMA0GCSqGSIb3DQEBDAUAA4IBAQBmikIuTB+dnv3tPbHWb6kB8OPc0TGVhIJDfDz6H9ubrGH42dw2n3+/K2ZiBBHV28qoKPhOgy3idESKdCo7zJOvFoJYh9qnDp9nVHszGcB12W2UnRAG7Q8BRVJVGLlEQ9Y5LtIB7oVlNPe6ZYR1j+8r3Mn+72iS8Ev3eUgAA3aOXcf/ud0flGIMGw+X3IUgqlyHsiXhpEBCBGEV9REKTusgaFzxbEKOSbZ8knMgZ0N7flVt8LqJhwNbF+zjrJMndFWdLpttaeqqLvO1TCkFgns/2yhSws19cm4IUQjJJJGRTXaBleB/Auoj8olI0yLXNLynAvKqXr9Y6otMjf6RZrkt",
         "signatureAlgorithm": "RSA_SHA256",
         "xmlSigKeyInfoKeyNameTransformer": "NONE",
         "guiOrder": "10",
         "syncMode": "FORCE",
-        "hideOnLoginPage": "false"
+        "hideOnLoginPage": "false",
+        "signSpMetadata": "true"
       }
     }
   ],

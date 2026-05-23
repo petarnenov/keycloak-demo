@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 8 — realm IdP URLs flipped to localhost |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `74616969d33` Phase 8 — SP-init via `kc_idp_hint`, full E2E |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 10 — realm broker SP signs outbound (wantAuthnRequestsSigned) |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `1a928a995e1` rename `fakeResponseId` to `includeSubjectConfirmationInResponseTo` |
 
 ## Done
 
@@ -88,6 +88,55 @@ package. See `~/geowealth/src/main/resources/struts-tiles.xml`.
 by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
+
+## Phase 10 — Federated SLO end-to-end (2026-05-23)
+
+After Phase 8 landed login + landing flow, Sign out from the shell
+still failed silently — Keycloak fired the LogoutRequest to P1's
+`/saml/idp/slo.do` but P1 returned 403 "logout-request must be
+signed" because Phase 6a enforcement was on and Keycloak's broker
+SP was emitting unsigned LogoutRequests (`wantAuthnRequestsSigned`
+was `false` by default).
+
+### Fix
+
+1. **Keycloak side**: `wantAuthnRequestsSigned=true` and
+   `signSpMetadata=true` on the `p1` IdP config. Live realm patched
+   via admin API + persisted in `keycloak/realm-export.json` so
+   fresh imports pick it up. With this flag the broker SP signs
+   outbound AuthnRequest **and** LogoutRequest with the realm's
+   default signing key (`CN=demo-realm`).
+2. **P1 side**: `P1_IDP_KC_SP_CERT` env var in `setenv.sh` updated
+   from the stand-in (P1's own dev cert) to the actual Keycloak SP
+   signing cert. Extracted from
+   `/realms/demo-realm/broker/p1/endpoint/descriptor`'s
+   `<KeyDescriptor use="signing"><ds:X509Certificate>`. Tomcat
+   restarted; `KeycloakSpCert` init log confirms `loaded SP cert
+   subject=CN=demo-realm`.
+
+### Verified end-to-end (chrome-devtools automation)
+
+| Step | Result |
+|---|---|
+| Logged in via SP-init (Phase 8 flow) | ✅ shell shows tim1@geowealth.com |
+| Click Sign out in shell | ✅ keycloak-js triggers Keycloak logout endpoint |
+| Keycloak posts signed LogoutRequest to /saml/idp/slo.do | ✅ HTTP 200 (was 403 before) |
+| P1 audit: `SECURITY_EVENT: SAML_LOGOUT user=tim1 inResponseTo=ID_…` | ✅ |
+| P1 session keys cleared (LOGGED_USER, LOGGED_ADVISER, LOGGED_USER_LOGIN_KEY) | ✅ |
+| P1 emits signed LogoutResponse back to Keycloak broker SLO endpoint | ✅ |
+| Browser lands somewhere sensible | ✅ Keycloak silent-check-sso returns login_required |
+| P1 login page on next navigation to `http://localhost:8888/` | ✅ redirected to `#login` |
+
+Both sessions cleared in one Sign-out click — the federation loop
+closes properly now.
+
+### Open follow-up
+
+The `apply-fbl-customization.sh` was retired in Phase 6c but the
+realm-export tail still mentions it; verify the fresh-import path
+works end-to-end (`docker compose down -v && up`) since the
+Phase 10 admin-API patches now overlap with what should be reproduced
+from realm-export alone. Quick re-verification will catch any drift.
 
 ## Phase 8 — Full E2E works via SP-init through `kc_idp_hint` (2026-05-23)
 
