@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 7 — E2E unblock (realm-export client attr) |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `3f368ef4948` Phase 7 — IdP-init E2E unblock chain |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 8 — realm IdP URLs flipped to localhost |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `74616969d33` Phase 8 — SP-init via `kc_idp_hint`, full E2E |
 
 ## Done
 
@@ -88,6 +88,72 @@ package. See `~/geowealth/src/main/resources/struts-tiles.xml`.
 by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
+
+## Phase 8 — Full E2E works via SP-init through `kc_idp_hint` (2026-05-23)
+
+After Phase 7's IdP-init chain still hit `Invalid redirect uri` /
+`Client not found` / `invalid_saml_response`, root cause turned out
+to be that Keycloak's SAML broker doesn't cleanly support unsolicited
+Response to OIDC clients (either path is broken: plain `/endpoint`
+demands SP-init correlation, `/endpoint/clients/{id}` only works
+with SAML protocol clients). **Switched to SP-initiated SSO via
+`kc_idp_hint=p1`** — same one-click UX, supported flow.
+
+### What changed
+
+1. **Sidebar entry** now points at Keycloak's OIDC authorize endpoint:
+   ```
+   http://localhost:8898/realms/demo-realm/protocol/openid-connect/auth
+     ?client_id=mfe-shell-client
+     &response_type=code
+     &scope=openid
+     &redirect_uri=http%3A%2F%2Flocalhost%3A5173%2F
+     &kc_idp_hint=p1
+     &state=demo-mfe-bff
+   ```
+2. **`IdpSsoAction` parses inbound `SAMLRequest`**. POST binding (plain
+   base64) and Redirect binding (DEFLATE-compressed) both supported.
+   `inResponseTo` echoes the AuthnRequest ID — Keycloak correlates
+   with its stored AuthnRequest and accepts.
+3. **Email fallback synthesizes `${uuid}@p1.local`** when the P1
+   user record has no email — Keycloak's `VERIFY_PROFILE`
+   required-action would otherwise interrupt silent sign-on.
+4. **`RelayState` forwarded only on SP-init traffic** (when SAMLRequest
+   was inbound). IdP-init still drops it.
+5. **Realm IdP URLs flipped from `host.docker.internal:8080` to
+   `localhost:8080`** so browser-led redirects resolve (the original
+   value only resolves inside docker network).
+
+### Verified end-to-end (chrome-devtools automation)
+
+| Step | Result |
+|---|---|
+| P1 login (`tim1` / `c0w&ch1k3n`) | ✅ |
+| Sidebar → Integrations → Demo MFE-BFF | ✅ |
+| Landing in shell at `localhost:5173/client` as `tim1@p1.local` | ✅ |
+| Realm roles applied: `[client, user, default-roles-demo-realm, offline_access, uma_authorization]` | ✅ |
+| Allowed MFEs computed: `[client, ops]` | ✅ |
+| `/client` MFE accessible | ✅ |
+| `/ops` MFE accessible | ✅ |
+| `/admin` denied (no admin role) | ✅ |
+| BFF `whoami` validates JWT (200) | ✅ |
+| Per-MFE `bff-ops/user` call (200) | ✅ |
+
+Commits:
+- geowealth `74616969d33` — Phase 8 SP-init code
+- keycloak-demo (this commit) — realm-export URL fix
+
+### Side-effect from debug session
+
+While iterating I spun up a separate `kc-debug` container to capture
+broker TRACE logging. When it was running, the compose `keycloak`
+service was stopped and the in-network alias `keycloak` was missing
+from the docker network — BFFs couldn't fetch JWKS and JWT
+signature verification returned `Found 0 matching JWKs`. Resolved by
+stopping `kc-debug` and `docker compose up -d keycloak`. Lesson for
+the runbook: never replace the compose keycloak with a sidecar; if
+DEBUG is needed, restart compose with `KC_LOG_LEVEL` override
+instead.
 
 ## Phase 7 — E2E IdP-init unblock (2026-05-23)
 
