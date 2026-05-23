@@ -487,3 +487,109 @@ input[name="otp"] {
   padding: 10px 8px !important;
   width: 100% !important;
 }
+
+/* ---------- Phase 14-pixel: compress vertical spacing in the form ----------
+   PF5's .pf-v5-c-form uses display:grid with a generous RowGap; we want
+   the Login button to sit directly under the password input (P1 style),
+   not float in a row track of its own. We override the grid sizing
+   variables and tighten the per-group margin. */
+#kc-form-login.pf-v5-c-form {
+  --pf-v5-c-form--RowGap: 12px !important;
+  --pf-v5-c-form--GridTemplateRows: auto !important;
+  grid-auto-rows: auto !important;
+  row-gap: 12px !important;
+  display: block !important;
+}
+#kc-form-login .pf-v5-c-form__group {
+  margin: 0 0 12px 0 !important;
+}
+#kc-form-login .pf-v5-c-form__group:has(.pf-v5-c-form__actions) {
+  margin-top: 6px !important;
+  margin-bottom: 0 !important;
+}
+#kc-form-login .pf-v5-c-form__group.geowealth-form-row + .pf-v5-c-form__group.geowealth-form-row {
+  margin-top: 0 !important;
+}
+
+/* ---------- Phase 14-pixel: 1:1 GeoWealth parity overrides ----------
+   The login.ftl override (this theme's own copy, not keycloak.v2's stock)
+   already strips the visible labels by adding pf-v5-u-screen-reader to
+   them; the rules below back that up for any descendant theme path that
+   still emits a visible label, and pin all the surrounding chrome that
+   diverged from the GeoWealth source. */
+
+/* Screen-reader-only labels  visually removed but kept in the DOM so
+   AT users still get a name. PatternFly ships pf-v5-u-screen-reader as
+   the canonical utility, but Keycloak's PF5 build occasionally strips
+   the utilities CSS; we redeclare the same recipe locally to be sure.
+   Plus belt-and-suspenders: any visible .pf-v5-c-form__label inside the
+   username/password rows is collapsed too. */
+.pf-v5-u-screen-reader,
+.geowealth-form-row > .pf-v5-c-form__label,
+#kc-form-login .pf-v5-c-form__group.geowealth-form-row > .pf-v5-c-form__label {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+/* GeoWealth shows lowercase placeholder hints; ensure the colour is
+   subtly lighter than entered text, matching P1. */
+.geowealth-form-row input::placeholder,
+input#username::placeholder,
+input#password::placeholder {
+  color: #b3b3b3 !important;
+  opacity: 1 !important;
+  font-size: 12px !important;
+  font-family: var(--p1-font) !important;
+}
+
+/* Forgot Password link  centred under the Login button, no underline
+   until hover, GeoWealth teal. */
+#kc-form-options.geowealth-form-options {
+  margin-top: 14px !important;
+  text-align: center !important;
+  display: block !important;
+}
+#kc-form-options.geowealth-form-options a,
+#forgot-password {
+  color: var(--p1-accent) !important;
+  font-family: var(--p1-font) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+}
+#kc-form-options.geowealth-form-options a:hover,
+#forgot-password:hover {
+  text-decoration: underline !important;
+}
+
+/* Hide the social/IdP providers list  the demo realm carries the
+   p1 broker for SP-init flows, but on the IdP-init/local-user side we
+   don't want users to click into the broker accidentally. */
+#kc-social-providers,
+.kc-social-section,
+.pf-v5-c-login__main-footer ul.pf-v5-c-login__main-footer-links {
+  display: none !important;
+}
+
+/* The stock pf-v5-c-login__main-footer-band ships above our injected
+   brand-contact strip and is empty by default  collapse it so the
+   brand contact line sits directly under the form. */
+.pf-v5-c-login__main-footer > .pf-v5-c-login__main-footer-band:not(#geowealth-brand-contact) {
+  display: none !important;
+}
+
+/* Brand-contact band  template.ftl still emits the markup (so the
+   Phase 14 brand pipeline keeps fetching the firm contact data and we
+   can re-enable it without touching the SPI), but the GeoWealth target
+   page doesn't show it on the login screen  hide here. To re-enable,
+   delete the rule below. */
+#geowealth-brand-contact {
+  display: none !important;
+}

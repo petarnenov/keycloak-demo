@@ -600,5 +600,9 @@
         "update.profile.on.first.login": "missing"
       }
     }
-  ]
+  ],
+  "attributes": {
+    "geowealthBrandingProvider": "true"
+  },
+  "resetPasswordAllowed": true
 }

@@ -79,10 +79,12 @@ public final class BrandingApiClient {
         // backend doesn't dominate cold-cache login latency. A failing
         // asset is just absent — Brand.java tolerates nulls, and the
         // template falls back to displayName / theme favicon.
-        String loginLogoDataUri = fetchAssetAsDataUri(dto.assets != null ? dto.assets.loginLogo : null, "login-logo");
-        String faviconDataUri   = fetchAssetAsDataUri(dto.assets != null ? dto.assets.favicon   : null, "favicon");
+        String loginLogoDataUri      = fetchAssetAsDataUri(dto.assets != null ? dto.assets.loginLogo      : null, "login-logo");
+        String loginLogoSmallDataUri = fetchAssetAsDataUri(dto.assets != null ? dto.assets.loginLogoSmall : null, "login-logo-small");
+        String faviconDataUri        = fetchAssetAsDataUri(dto.assets != null ? dto.assets.favicon        : null, "favicon");
+        String logoIconDataUri       = fetchAssetAsDataUri(dto.assets != null ? dto.assets.logoIcon       : null, "logo-icon");
 
-        Brand brand = dto.toBrand(loginLogoDataUri, faviconDataUri);
+        Brand brand = dto.toBrand(loginLogoDataUri, loginLogoSmallDataUri, faviconDataUri, logoIconDataUri);
         if (brand == null) {
             // 200 OK but the payload is missing fields the Keycloak side
             // can't render with. That's a contract violation — distinct

@@ -124,9 +124,19 @@ BRANDS = {
         "code": "changepath",
         "firmCd": 4,
         "displayName": "ChangePath",
+        "firmShortName": "ChangePath",
         "supportEmail": "supportemail@changepath.com",
         "phone": "888.798.2360",
         "website": "http://www.changepath.com/",
+        "footerText": "ChangePath, LLC. All rights reserved.",
+        "address": {
+            "street1": "433 Plaza Real",
+            "street2": "Suite 275",
+            "city": "Boca Raton",
+            "state": "FL",
+            "zipCode": "33432",
+            "country": "USA",
+        },
         "cssVariables": {
             "--theme-link-color":            "#155e8f",
             "--theme-gradient-start":        "#0e4e79",
@@ -145,7 +155,19 @@ BRANDS = {
         "code": "cca",
         "firmCd": 1,
         "displayName": "GeoWealth",
+        "firmShortName": "GeoWealth",
         "supportEmail": "support@geowealth.com",
+        "phone": "(312) 219-0905",
+        "website": "https://www.geowealth.com/",
+        "footerText": "GeoWealth Management, LLC. All rights reserved.",
+        "address": {
+            "street1": "444 W. Lake Street",
+            "street2": "Suite 1900",
+            "city": "Chicago",
+            "state": "IL",
+            "zipCode": "60606",
+            "country": "USA",
+        },
         "cssVariables": {
             "--theme-link-color":            "#c8482a",
             "--theme-gradient-start":        "#1f4d3f",
@@ -368,10 +390,20 @@ class Handler(BaseHTTPRequestHandler):
                             "url": f"{base}/logo-login",
                             "contentType": ASSET_CONTENT_TYPES.get("logo-login", "application/octet-stream"),
                         }
+                    if "logo-login-small" in code_assets:
+                        asset_refs["loginLogoSmall"] = {
+                            "url": f"{base}/logo-login-small",
+                            "contentType": ASSET_CONTENT_TYPES.get("logo-login-small", "application/octet-stream"),
+                        }
                     if "favicon" in code_assets:
                         asset_refs["favicon"] = {
                             "url": f"{base}/favicon",
                             "contentType": ASSET_CONTENT_TYPES.get("favicon", "application/octet-stream"),
+                        }
+                    if "logo-icon" in code_assets:
+                        asset_refs["logoIcon"] = {
+                            "url": f"{base}/logo-icon",
+                            "contentType": ASSET_CONTENT_TYPES.get("logo-icon", "application/octet-stream"),
                         }
                     if asset_refs:
                         response["assets"] = asset_refs
