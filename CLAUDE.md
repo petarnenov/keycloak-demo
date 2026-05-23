@@ -51,7 +51,7 @@ Role → MFE mapping in `bff/UserController.java#whoami`:
 
 | Lives in | Persists across | Wiped only by |
 |---|---|---|
-| Keycloak realms, native users, federated identities, sessions, role mappings, live admin-API edits | `docker compose restart`, `docker compose down` + `up`, `./start.sh`, image rebuild + `--force-recreate` | `docker compose down -v` or **`./start.sh --reset`** |
+| Keycloak realms, native users, federated identities, sessions, role mappings, live admin-API edits | `docker compose restart`, `docker compose down` + `up`, `./start.sh`, `./stop.sh` then `./start.sh`, image rebuild + `--force-recreate` | `docker compose down -v`, **`./start.sh --reset`**, or **`./stop.sh --wipe`** |
 | Postgres data backing all of the above | same | same |
 | `keycloak/data` (import sources, KeyStore, exported state) | same | same |
 | `user-service` user store (the `democlient` / `demouser` / `demoadmin` map) | always  it's a hardcoded `Map.of(...)` in `UserController.java` | source edit + rebuild |
@@ -61,7 +61,7 @@ Practical consequences:
 - **A SAML-brokered login through P1 writes a federated identity to Keycloak's Postgres on first sign-in.** That identity survives every routine `restart` / `down+up` / image rebuild. The next time the same P1 user lands on the broker flow, Keycloak finds the existing record and skips the first-broker-login flow.
 - **A user created through the admin UI or self-registration** is a native user in the realm's Postgres tables. Same persistence guarantees as brokered identities.
 - **The three `user-service` demo users** are not persisted because they don't need to be  they're code-defined and re-appear on every container start. To add a new demo user, edit `user-service/src/main/java/demo/userservice/UserController.java`, then `podman compose up -d --build --force-recreate user-service`. The Keycloak side picks the change up on the next login (the SPI is `NO_CACHE`).
-- **`./start.sh` is non-destructive.** It runs `down` (without `-v`) before rebuilding images, so the Postgres volume stays in place. Use `./start.sh --reset` for an explicit, opt-in wipe  it's the only path in the repo that destroys user data.
+- **`./start.sh` and `./stop.sh` are non-destructive.** Both run `down` (without `-v`) so the Postgres volume stays in place. Destructive escape hatches are explicit, opt-in flags: `./start.sh --reset` and `./stop.sh --wipe`  the only two paths in the repo that destroy user data.
 
 To verify persistence end-to-end:
 
