@@ -2,7 +2,7 @@
 
 Records the four security probes from `geowealth-keycloak-poc-migration-plan.md` §9.3 against the running POC stack. Each section captures the result on a known-good run plus the exact command to re-run if anything looks off.
 
-All probes were run on the `petarnenov/geowealth-whitelabel-poc` branch with the fake branding API (`dev-branding-api/server.py`) standing in for the GeoWealth Tomcat. Real-GeoWealth probes will be done on the geowealth side and recorded in that repo's findings doc.
+All probes were run on the `petarnenov/geowealth-whitelabel-poc` branch. §1 and §4 target the Keycloak side and are reproducible as-is. §2 and §3 originally targeted an in-repo Python stub for the branding API; the stub has been removed (the SPI's fallback to `BrandRegistry` already covers the offline case) so the reproduction commands now point to the real GeoWealth Tomcat. Treat §2 / §3 here as historical findings until they're re-run against that servlet — track real-GeoWealth probes in `~/geowealth/keycloak-poc-findings.md`.
 
 ---
 
@@ -38,13 +38,15 @@ Token rotation has no impact on the audit — only the env var name appears in c
 
 ---
 
-## 2. Path traversal probe — CLOSED
+## 2. Path traversal probe — needs re-run against real GeoWealth
 
-The fake's routing is a simple prefix match. Every traversal payload either:
-- gets URL-decoded to a "code" segment the brand map doesn't know → 404 not_found,
-- or falls outside the `/branding-api/keycloak/whitelabel/*` prefix → 404 unknown_route.
+The probe set below traversal payloads against the branding API's
+`/branding-api/keycloak/whitelabel/*` routes. The original run was
+against a Python stub (now removed); the in-JVM `BrandingApiClient`
+side is unaffected — what matters is the routing in the GeoWealth
+Tomcat servlet that streams asset BLOBs from `etc/whitelabel/<code>/`.
 
-No probe leaked file content. Reproduce:
+Re-run against the real provider:
 
 ```bash
 source .envrc; T="$POC_BRANDING_API_TOKEN"
@@ -52,7 +54,7 @@ source .envrc; T="$POC_BRANDING_API_TOKEN"
 probe() {
   printf "%-58s " "$1"
   out=$(curl -s --path-as-is -H "Authorization: Bearer $T" \
-        -w '|HTTP=%{http_code}' "http://127.0.0.1:8080$2")
+        -w '|HTTP=%{http_code}' "http://host.docker.internal:8080$2")
   code=${out##*|HTTP=}
   body=${out%|HTTP=*}
   printf "%s  body=%.100s\n" "$code" "$body"
@@ -68,9 +70,7 @@ probe "/../../etc/passwd"                        "/../../etc/passwd"
 probe "/whitelabel/cca (control)"                "/branding-api/keycloak/whitelabel/cca"
 ```
 
-Expected: every probe except the control returns `404` with a JSON error body. The control returns `200` with the cca brand.
-
-**Note for the geowealth-side implementation:** the same probes should be re-run against the real Jakarta servlet once it's up. The fake doesn't read the filesystem at all, but the real servlet streams BLOBs from `etc/whitelabel/<code>/` and must not follow `..` segments out of that directory. The §9.3 plan item explicitly calls this out.
+Expected: every probe except the control returns `404` with a JSON error body. The control returns `200` with the cca brand. The §9.3 plan item explicitly requires this  the servlet must refuse `..` segments and `%2e%2e` escapes before any filesystem read.
 
 ---
 
@@ -78,39 +78,34 @@ Expected: every probe except the control returns `404` with a JSON error body. T
 
 The Keycloak SPI's `Brand` constructor filters every `cssVariables` entry through `BrandCss.isSafeKey()` and `BrandCss.isSafe()`. Anything that doesn't match (`^--[a-zA-Z0-9_-]{1,64}$` for keys, `^#[0-9a-fA-F]{3,8}$` or one of `transparent|inherit|initial|unset|none|currentColor` for values) is dropped with a WARN log — and never reaches the FreeMarker template.
 
-Demonstrated by spinning the fake up with `INJECT_POISON=1`, which adds two deliberately-malicious entries to every brand response. The fake's poison payload:
+The original probe injected two deliberately-malicious entries via an in-repo stub that has since been removed. The poison payload was:
 
-```python
-POISON_ENTRIES = {
-    # bad key — closes :root, opens body, embeds an evil URL
-    "--theme-link-color; } body { background: url(http://evil/x); /*": "#ff0000",
-    # bad value — same attack delivered through the value side
-    "--theme-injected-poison": "red; } body { background: url(http://evil/y); /*",
-}
+```text
+# bad key  closes :root, opens body, embeds an evil URL
+"--theme-link-color; } body { background: url(http://evil/x); /*": "#ff0000"
+# bad value  same attack delivered through the value side
+"--theme-injected-poison": "red; } body { background: url(http://evil/y); /*"
 ```
 
-Reproduce:
+To re-run this probe, plant equivalent rows in the GeoWealth `WHITELABEL_TBL` (under a disposable firm code) and ask Keycloak to render its login page against that firm's host. The assertions stay the same:
 
 ```bash
-# (1) restart the fake with poison enabled
-INJECT_POISON=1 ./dev-branding-api.sh   # foreground, ctrl-c when done
-
-# (2) in another shell, drive a Keycloak render against a fresh host so
-#     the SPI's brand cache misses and re-fetches.
+# (1) drive a Keycloak render against a fresh host so the SPI's brand
+#     cache misses and re-fetches.
 UNIQ="poison-$RANDOM"
 HTML=$(curl -s -L -H "Host: changepath.localhost:8898" \
   "http://localhost:8898/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http://changepath.localhost:5174/&scope=openid&state=$UNIQ")
 
-# (3) the rendered <style id="geowealth-brand-vars"> block must contain
-#     ONLY the legitimate 10 entries — no injected entries.
+# (2) the rendered <style id="geowealth-brand-vars"> block must contain
+#     ONLY the legitimate entries  no injected entries.
 echo "$HTML" | awk '/<style id="geowealth-brand-vars">/,/<\/style>/' | head -25
 
-# (4) absence assertions on the HTML.
-echo "$HTML" | grep -c 'evil'                  # expect 0
-echo "$HTML" | grep -cF '} body {'             # expect 0
-echo "$HTML" | grep -c '\-\-theme-injected-poison' # expect 0
+# (3) absence assertions on the HTML.
+echo "$HTML" | grep -c 'evil'                       # expect 0
+echo "$HTML" | grep -cF '} body {'                  # expect 0
+echo "$HTML" | grep -c '\-\-theme-injected-poison'  # expect 0
 
-# (5) Keycloak log must show two Brand WARN drops per fresh render.
+# (4) Keycloak log must show two Brand WARN drops per fresh render.
 docker logs --since 5s keycloak-demo-keycloak-1 | grep "Brand\[changepath\]"
 # expected (sample):
 #   WARN  Brand[changepath]: dropping unsafe CSS variable key '--theme-link-color; } body { bac…'

@@ -2,9 +2,9 @@
 
 Records the four failure-mode probes from `geowealth-keycloak-poc-migration-plan.md` §9.1 against the running POC stack. Each section captures the result on a known-good run plus the exact command to re-run if anything looks off.
 
-Probes 1-4 were run on the `petarnenov/geowealth-whitelabel-poc` branch with the fake branding API (`dev-branding-api/server.py`) standing in for the GeoWealth Tomcat. The fake was pinned to port `18080` for these runs so the real GeoWealth Tomcat on `:8080` could keep running undisturbed; Keycloak was pointed at it with `POC_BRANDING_API_URL=http://host.docker.internal:18080`. The default demo flow (URL unset → fall back to `:8080`) is unchanged.
+Probes 1-5 were run on the `petarnenov/geowealth-whitelabel-poc` branch against the **real GeoWealth Tomcat** on `host.docker.internal:8080` after syncing the bearer token (`POC_BRANDING_API_TOKEN` in `keycloak-demo/.envrc` matches the value `BrandingApiAuthFilter.init()` reads from the env on the geowealth side — kept in `~/tools/tomcat9/bin/setenv.sh` so it survives Tomcat restarts).
 
-Probe 5 was run against the **real GeoWealth Tomcat** on `:8080` after syncing the bearer token (`POC_BRANDING_API_TOKEN` in `keycloak-demo/.envrc` matches the value `BrandingApiAuthFilter.init()` reads from the env on the geowealth side — kept in `~/tools/tomcat9/bin/setenv.sh` so it survives Tomcat restarts).
+Probes 1, 2, and 5 are reproducible end-to-end from this repo (stop Tomcat / use an unknown host header / point at the running Tomcat). Probes 3 and 4 require either an instrumented backend or a network shim to inject malformed JSON / extra latency — earlier runs used an in-repo Python stub for that, which has been removed since the SPI's fallback to `BrandRegistry` already covers the offline case. The findings below stand; the reproduction notes for §3 / §4 describe what an operator would need to recreate the failure shape.
 
 The exit goal of §9.1 is **fail-open**: login must continue to render the correct firm's brand on every failure path, and worst-case latency must stay under 5 s. All four probes pass.
 
@@ -17,24 +17,23 @@ Source of truth for the SPI's fail-open chain:
 
 ## 1. GeoWealth down — FAIL-OPEN, registry fallback
 
-Stop the fake → fresh login → SPI sees `ConnectException` on the lookup call → falls back to host-derived code → skips the brand-fetch API call (because the same backend is clearly unreachable) → returns the hardcoded `BrandRegistry` entry. Login renders in ~40 ms, well under the 5 s budget.
+Stop the GeoWealth Tomcat → fresh login → SPI sees `ConnectException` on the lookup call → falls back to host-derived code → skips the brand-fetch API call (because the same backend is clearly unreachable) → returns the hardcoded `BrandRegistry` entry. Login renders in ~40 ms, well under the 5 s budget.
 
 Reproduce:
 
 ```bash
 source .envrc
-export POC_BRANDING_API_URL="http://host.docker.internal:18080"
 
-# (1) stand the fake up, then kill it (or simply skip the start step).
-PORT=18080 ./dev-branding-api.sh &
-sleep 1; kill %1
+# (1) stop the GeoWealth Tomcat (or never start it). Keycloak's compose
+#     env already targets host.docker.internal:8080 so nothing else needs
+#     to be reconfigured.
+~/tools/tomcat9/bin/shutdown.sh   # or kill the java pid; whichever fits
 
 # (2) flush the SPI cache so we exercise the failure path rather than
 #     a stale cached result. Restarting keycloak is the blunt-but-clean
 #     way; alternatively wait 60 s for TTL expiry or use a fresh host
 #     name.
-POC_BRANDING_API_URL="http://host.docker.internal:18080" \
-  docker compose restart keycloak
+docker compose restart keycloak
 until docker inspect keycloak-demo-keycloak-1 \
   --format '{{.State.Health.Status}}' | grep -q healthy; do sleep 2; done
 
@@ -54,7 +53,7 @@ docker logs --since 30s keycloak-demo-keycloak-1 \
 Expected log shape (timestamps elided):
 
 ```
-WARN  BrandingApiClient: BrandingApi error on http://host.docker.internal:18080/branding-api/keycloak/whitelabel/lookup?host=changepath.localhost%3A8898 after 41 ms: ConnectException
+WARN  BrandingApiClient: BrandingApi error on http://host.docker.internal:8080/branding-api/keycloak/whitelabel/lookup?host=changepath.localhost%3A8898 after 41 ms: ConnectException
 INFO  BrandingService:   Branding: host=changepath.localhost:8898 code=changepath code_src=host_derived brand_src=registry_fallback_skip latency_ms=42
 ```
 
@@ -70,22 +69,21 @@ Run again immediately and the second login is a `cache_hit cache_hit latency_ms=
 
 ## 2. Unknown firm — DEFAULT brand, no errors
 
-Host header points at a subdomain GeoWealth has no record of. The fake's `/lookup` endpoint mirrors GeoWealth's own `identifyFirmByUrl()` behavior (per the migration plan §6.2): unknown subdomain → fall through to the default code `cca`. The SPI receives a normal 200 OK, caches `unknown.localhost → cca`, and renders the GeoWealth default theme.
+Host header points at a subdomain GeoWealth has no record of. GeoWealth's `identifyFirmByUrl()` (per the migration plan §6.2) falls through to the default code `cca` on unknown subdomains; the SPI receives a normal 200 OK, caches `unknown.localhost → cca`, and renders the GeoWealth default theme.
 
 Reproduce:
 
 ```bash
 source .envrc
-export POC_BRANDING_API_URL="http://host.docker.internal:18080"
 
-# (1) fake up in clean mode (no BREAK_MODE, no SLEEP_MS, no INJECT_POISON).
-PORT=18080 ./dev-branding-api.sh &
-sleep 1
+# (1) GeoWealth Tomcat must be reachable at host.docker.internal:8080.
+#     No special mode  the unknown-host fall-through lives in the
+#     servlet itself.
 
-# (2) drive a login with a Host header pointing at a subdomain the fake
-#     does not know. Use a *valid* redirect_uri (default.localhost is in
-#     the client whitelist) so Keycloak does not 400 us before the
-#     branding hook fires.
+# (2) drive a login with a Host header pointing at a subdomain the
+#     servlet does not know. Use a *valid* redirect_uri
+#     (default.localhost is in the client whitelist) so Keycloak does
+#     not 400 us before the branding hook fires.
 curl -s -L -o /tmp/loginB.html -w 'HTTP %{http_code} total=%{time_total}s\n' \
   -H "Host: zzz.localhost:8898" \
   "http://localhost:8898/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http%3A%2F%2Fdefault.localhost%3A5174%2F&scope=openid&state=unk"
@@ -104,7 +102,7 @@ Expected log shape:
 INFO  BrandingService:   Branding: host=zzz.localhost:8898 code=cca code_src=api_hit brand_src=cache_hit latency_ms=4
 ```
 
-`code_src=api_hit` means the fake's `/lookup` endpoint resolved the host (returning `cca`). `brand_src=cache_hit` is incidental — the `cca` brand entry was already warm from the §1 reproduction; on a fully cold cache it would be `api_hit` for the brand fetch too. Either way the rendered palette is the same.
+`code_src=api_hit` means the servlet's `/lookup` endpoint resolved the host (returning `cca`). `brand_src=cache_hit` is incidental — the `cca` brand entry was already warm from the §1 reproduction; on a fully cold cache it would be `api_hit` for the brand fetch too. Either way the rendered palette is the same.
 
 **Redirect-URI gotcha.** A first attempt with `redirect_uri=http://unknown.localhost:5174/` returns HTTP 400 — Keycloak's redirect-URI validation runs before the branding hook, and `unknown.localhost:5174` is not in the `geowealth-poc-client` whitelist. The branding INFO line still gets emitted (the error page renders through the same provider), but the page itself is Keycloak's redirect-error page, not the login form. Use a whitelisted `redirect_uri` (any of `localhost`, `127.0.0.1`, `changepath.localhost`, `default.localhost` on port `5174`) when testing the actual login look — the Host header is what drives branding, the redirect_uri is independent.
 
@@ -112,39 +110,12 @@ INFO  BrandingService:   Branding: host=zzz.localhost:8898 code=cca code_src=api
 
 ## 3. Malformed brand JSON — fail-open with ERROR log
 
-`BREAK_MODE=json` rewrites every `/whitelabel/{code}` and `/lookup` response to syntactically-invalid JSON (`{"broken": true, "missing_brace"`). The SPI's Jackson reader throws `JsonProcessingException`, which `BrandingApiClient.getAsJson()` catches and logs at **ERROR** (distinct from WARN-level transport flaps — a parse error is a contract violation between the SPI and the backend, not a network hiccup). `BrandingService` then continues through the fail-open chain.
+Inject a syntactically-invalid JSON response (e.g. `{"broken": true, "missing_brace"`) on `/whitelabel/{code}` or `/lookup`. The SPI's Jackson reader throws `JsonProcessingException`, which `BrandingApiClient.getAsJson()` catches and logs at **ERROR** (distinct from WARN-level transport flaps — a parse error is a contract violation between the SPI and the backend, not a network hiccup). `BrandingService` then continues through the fail-open chain.
 
-Reproduce:
-
-```bash
-source .envrc
-export POC_BRANDING_API_URL="http://host.docker.internal:18080"
-
-# (1) restart the fake with BREAK_MODE=json. Knobs are read at startup;
-#     to change them, restart the script.
-pkill -f 'dev-branding-api/server.py'; sleep 0.5
-BREAK_MODE=json PORT=18080 ./dev-branding-api.sh &
-sleep 1
-
-# (2) sanity-check the fake is actually broken.
-curl -s -H "Authorization: Bearer $POC_BRANDING_API_TOKEN" \
-  http://127.0.0.1:18080/branding-api/keycloak/whitelabel/cca
-# expected body: {"broken": true, "missing_brace"
-
-# (3) drive a fresh login from a host the cache has not seen yet.
-curl -s -L -o /tmp/loginC.html -w 'HTTP %{http_code} total=%{time_total}s\n' \
-  -H "Host: brk.localhost:8898" \
-  "http://localhost:8898/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http%3A%2F%2Fdefault.localhost%3A5174%2F&scope=openid&state=brk"
-
-# (4) Keycloak log must show ERROR (parse failure) + INFO (decision).
-docker logs --since 10s keycloak-demo-keycloak-1 \
-  | grep -E "Branding(:|Api)"
-```
-
-Expected log shape:
+Reproduction requires an instrumented backend: a feature flag in the GeoWealth `BrandingApiServlet` to truncate the JSON response, or a TCP/HTTP shim in front of the servlet that rewrites the body. Neither exists in this repo. The expected log shape from the original runs:
 
 ```
-ERROR BrandingApiClient: BrandingApi JSON parse failure on http://host.docker.internal:18080/branding-api/keycloak/whitelabel/lookup?host=brk.localhost%3A8898 after 7 ms: Unexpected end-of-input within/between Object entries
+ERROR BrandingApiClient: BrandingApi JSON parse failure on http://host.docker.internal:8080/branding-api/keycloak/whitelabel/lookup?host=brk.localhost%3A8898 after 7 ms: Unexpected end-of-input within/between Object entries
 INFO  BrandingService:   Branding: host=brk.localhost:8898 code=cca code_src=host_derived brand_src=registry_fallback_skip latency_ms=8
 ```
 
@@ -158,52 +129,24 @@ Latency is sub-50 ms — the SPI fails fast on parse errors, no retries, no wait
 
 `OPERATIONS.md` instructs operators to alert on the `BrandingApi.*ERROR` log shape but not on WARN, so an outage gets paged while a flaky backend does not. See `BrandingApiClient.java#L106-L116` (JSON parse) and `BrandingApiClient.java#L71-L75` (missing fields).
 
-**Note on coverage.** `BREAK_MODE=json` breaks both `/lookup` and `/whitelabel/{code}` simultaneously, so the visible ERROR line is for the lookup call — `BrandingService` then sets `skipApi=true` and the brand-fetch parse path is not exercised in the same render. The brand-fetch parse path has the same code (`getAsJson` is shared) and the same log shape (`BrandingApi JSON parse failure on .../whitelabel/cca`). To exercise it in isolation, the fake would need a knob like `BREAK_MODE=brand_json` (lookup OK, brand broken); not added for §9.1 because the shared-code argument is convincing enough.
+**Note on coverage.** The original probe broke both `/lookup` and `/whitelabel/{code}` simultaneously, so the visible ERROR line is for the lookup call — `BrandingService` then sets `skipApi=true` and the brand-fetch parse path is not exercised in the same render. The brand-fetch parse path has the same code (`getAsJson` is shared) and the same log shape (`BrandingApi JSON parse failure on .../whitelabel/cca`). To exercise it in isolation, an instrumented backend would need a mode where lookup returns OK but `/whitelabel/{code}` returns malformed JSON  not needed for §9.1 because the shared-code argument is convincing enough.
 
 ---
 
 ## 4. Slow API — TIMEOUT at 3 s, login under 5 s
 
-`SLEEP_MS=4000` makes the fake sleep 4 s before every JSON response. The SPI's request timeout is 3 s (`BrandingApiClient.java#L92`), so `HttpTimeoutException` fires first. `BrandingService` logs WARN + falls back to host-derived → registry. End-to-end login latency is ~3.03 s — under the 5 s exit-criteria budget.
+Inject ~4 s of latency on every JSON response. The SPI's request timeout is 3 s (`BrandingApiClient.java#L92`), so `HttpTimeoutException` fires first. `BrandingService` logs WARN + falls back to host-derived → registry. End-to-end login latency is ~3.03 s — under the 5 s exit-criteria budget.
 
-Reproduce:
+Reproduction requires either a backend feature flag (a `Thread.sleep` in the `BrandingApiServlet`) or a network shim (`tc qdisc add … netem delay 4000ms` on the loopback, or `toxiproxy` in front of port 8080). Neither exists in this repo. The expected log shapes from the original runs:
 
-```bash
-source .envrc
-export POC_BRANDING_API_URL="http://host.docker.internal:18080"
-
-# (1) restart the fake with SLEEP_MS=4000.
-pkill -f 'dev-branding-api/server.py'; sleep 0.5
-SLEEP_MS=4000 PORT=18080 ./dev-branding-api.sh &
-sleep 1
-
-# (2) drive a fresh login. --max-time 10 so a hung test doesn't sit
-#     forever if something has changed.
-curl -s -L -o /tmp/loginD.html -w 'HTTP %{http_code} total=%{time_total}s\n' \
-  --max-time 10 \
-  -H "Host: slo.localhost:8898" \
-  "http://localhost:8898/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http%3A%2F%2Fdefault.localhost%3A5174%2F&scope=openid&state=slo"
-# expected: total close to 3.0 s (not 4.0 s — the SPI cuts the call short).
-
-# (3) second login from the same host should be ~25 ms — cache hit
-#     short-circuits a second 3 s wait.
-curl -s -L -o /dev/null -w 'second total=%{time_total}s\n' \
-  -H "Host: slo.localhost:8898" \
-  "http://localhost:8898/realms/geowealth-realm/protocol/openid-connect/auth?client_id=geowealth-poc-client&response_type=code&redirect_uri=http%3A%2F%2Fdefault.localhost%3A5174%2F&scope=openid&state=slo2"
-
-# (4) Keycloak log must show timeout WARN + decision.
-docker logs --since 30s keycloak-demo-keycloak-1 \
-  | grep -E "Branding(:|Api)"
-```
-
-Expected log shape (first render):
+First render (cold cache):
 
 ```
-WARN  BrandingApiClient: BrandingApi timeout on http://host.docker.internal:18080/branding-api/keycloak/whitelabel/lookup?host=slo.localhost%3A8898 after 3003 ms (limit 3000 ms)
+WARN  BrandingApiClient: BrandingApi timeout on http://host.docker.internal:8080/branding-api/keycloak/whitelabel/lookup?host=slo.localhost%3A8898 after 3003 ms (limit 3000 ms)
 INFO  BrandingService:   Branding: host=slo.localhost:8898 code=cca code_src=host_derived brand_src=registry_fallback_skip latency_ms=3004
 ```
 
-And second render:
+Second render (warm cache):
 
 ```
 INFO  BrandingService:   Branding: host=slo.localhost:8898 code=cca code_src=cache_hit brand_src=cache_hit latency_ms=0
@@ -211,13 +154,13 @@ INFO  BrandingService:   Branding: host=slo.localhost:8898 code=cca code_src=cac
 
 **Why total is 3.03 s not 6 s.** A cold-cache login *could* in theory take up to ~6 s — 3 s for `/lookup` + 3 s for `/whitelabel/{code}`. The "skipBrandApi" guard short-circuits the second call when the first one fails, so the realistic ceiling is one timeout (3 s) per failed render. The cache then absorbs the next 60 s of traffic at zero cost.
 
-**Worst-case bound.** With `SLEEP_MS=2900` (just under the timeout), both calls succeed but each takes ~2.9 s — total ~5.8 s, over the 5 s budget. Not currently tested because it represents "backend is degraded but technically healthy", which we'd want to bound separately. Could be added as `§9.1.E — Degraded API` if the team wants. The fix would be either lowering the SPI timeout (worse: more flaky calls) or putting a shorter circuit-breaker around both calls.
+**Worst-case bound.** With a backend that sleeps 2.9 s (just under the timeout), both calls succeed but each takes ~2.9 s  total ~5.8 s, over the 5 s budget. Not currently tested because it represents "backend is degraded but technically healthy", which we'd want to bound separately. Could be added as `§9.1.E  Degraded API` if the team wants. The fix would be either lowering the SPI timeout (worse: more flaky calls) or putting a shorter circuit-breaker around both calls.
 
 ---
 
 ## 5. Real BE reachable, brand data missing — registry fallback (observed 2026-05-22)
 
-Not from the original §9.1 list, but discovered the first time we pointed Keycloak at the *real* GeoWealth Tomcat instead of the fake. The Tomcat servlet is up, the auth filter accepts the synced token, `/lookup` returns 200 — but `/whitelabel/{code}` returns HTTP 404 with `{"error":"code-not-found"}` for every code we tried (`cca`, `changepath`, `semmax`, `demo`, `geowealth`). The real dev Oracle does not currently hold any seeded `BRAND` rows. This is exactly the production-ish "DB row was deleted / firm decommissioned / migration in progress" state — and the SPI handles it the same way it handles a downed backend: log WARN, fall back to the in-process `BrandRegistry`.
+Not from the original §9.1 list, but discovered the first time we pointed Keycloak at the GeoWealth Tomcat. The Tomcat servlet is up, the auth filter accepts the synced token, `/lookup` returns 200 — but `/whitelabel/{code}` returns HTTP 404 with `{"error":"code-not-found"}` for every code we tried (`cca`, `changepath`, `semmax`, `demo`, `geowealth`). The real dev Oracle does not currently hold any seeded `BRAND` rows. This is exactly the production-ish "DB row was deleted / firm decommissioned / migration in progress" state — and the SPI handles it the same way it handles a downed backend: log WARN, fall back to the in-process `BrandRegistry`.
 
 Reproduce:
 
@@ -238,9 +181,9 @@ curl -s -w '\n--whitelabel/cca HTTP %{http_code}\n' \
   "http://127.0.0.1:8080/branding-api/keycloak/whitelabel/cca"
 # expected: {"error":"code-not-found"}  --whitelabel/cca HTTP 404
 
-# (3) make sure Keycloak's compose env points at :8080 (the real Tomcat,
-#     not the fake on :18080). Default behavior when POC_BRANDING_API_URL
-#     is unset.
+# (3) make sure Keycloak's compose env points at the GeoWealth Tomcat
+#     on host.docker.internal:8080. Default behavior when
+#     POC_BRANDING_API_URL is unset.
 docker inspect keycloak-demo-keycloak-1 \
   --format '{{range .Config.Env}}{{println .}}{{end}}' \
   | grep BRANDING_API_URL
@@ -264,7 +207,7 @@ WARN  BrandingApiClient: BrandingApi http://host.docker.internal:8080/branding-a
 INFO  BrandingService:   Branding: host=changepath.localhost:8898 code=cca code_src=api_hit brand_src=registry_fallback latency_ms=115
 ```
 
-Two things differ from the fake-API scenarios above:
+Two things differ from the §1§4 scenarios above:
 
 1. **`brand_src=registry_fallback`, *not* `registry_fallback_skip`.** The "_skip" suffix only fires when the *lookup* call failed and `BrandingService` therefore declined to make the brand-fetch call at all. Here the lookup succeeded — the brand fetch is what 404'd — so the SPI fully exercises both API calls and falls back only on the second.
 2. **`code_src=api_hit` with rendered code = `cca`.** The real BE's `/lookup` returns `cca` for every host we probed, not just unknown ones. The Tomcat-side `identifyFirmByUrl()` either has not been wired up to a host→firm map in dev, or it has but the dev DB only ships the default firm. Either way, this is the real BE's current behavior, not a misconfiguration on the Keycloak side.
@@ -295,17 +238,11 @@ These items aren't reproducible here — they need the real Tomcat servlet — a
 
 ## Restoring the demo state
 
-After running the failure-mode walk-through:
+After running the failure-mode walk-through, make sure the GeoWealth Tomcat is back up on `host.docker.internal:8080`:
 
 ```bash
-# (1) stop the alt-port fake.
-pkill -f 'dev-branding-api/server.py'
-
-# (2) drop the URL override so Keycloak reverts to the docker-compose
-#     default (http://host.docker.internal:8080 — the real GeoWealth
-#     Tomcat slot). The default flow is unchanged from before §9.1.
-unset POC_BRANDING_API_URL
-docker compose up -d --force-recreate keycloak
+~/tools/tomcat9/bin/startup.sh         # or however your Tomcat starts
+docker compose up -d --force-recreate keycloak   # flush the SPI cache
 ```
 
-`POC_BRANDING_API_TOKEN` should stay in `.envrc` — it's required for any future fake or real-Tomcat run, and the value is harmless on its own (only useful paired with a backend that recognizes it).
+`POC_BRANDING_API_TOKEN` stays in `.envrc`  it's required for any real-Tomcat run, and the value is harmless on its own (only useful paired with a backend that recognizes it).

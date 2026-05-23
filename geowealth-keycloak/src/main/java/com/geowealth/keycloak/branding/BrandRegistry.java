@@ -78,7 +78,6 @@ public final class BrandRegistry {
 
     // Tiny SVG placeholders so the registry-fallback path still shows
     // *something* on the login page. Pre-base64-encoded at build time;
-    // identical shape to what the fake serves at /asset/logo-login, so
     // a registry-fallback render and an api-hit render look visually
     // similar (same rectangle + firm name in firm-primary color).
     private static final String LOGO_CHANGEPATH =

@@ -90,7 +90,7 @@ Looked up once at startup:
 docker compose logs keycloak | grep -E 'GeoWealth branding API (enabled|not configured)'
 # enabled state (good):
 #   INFO  GeoWealth branding API enabled: http://host.docker.internal:8080 (cache TTL 60s)
-# disabled state (the demo without the fake):
+# disabled state (the demo without an upstream branding API):
 #   INFO  GeoWealth branding API not configured — using hardcoded registry fallback only
 ```
 

@@ -70,40 +70,10 @@ From the repo root:
 
 The Keycloak SPI in `geowealth-keycloak/` will try to reach the GeoWealth
 branding API at `http://host.docker.internal:8080` (compose env, already
-wired). One of two states is acceptable for the demo:
-
-| State | Behavior | When to use |
-|---|---|---|
-| **Fake branding API up** (`./dev-branding-api.sh`) | Full cache/lookup/fetch path exercised; theme variables sourced from the fake's brand map. | Default — closest to production shape. |
-| **Nothing on `:8080`** | SPI's HTTP call fails; falls back to the hardcoded `BrandRegistry` (`changepath`, `cca`, `default`). | Quick demo without spinning up a second shell. |
-
-Either way the login page renders correctly. The difference is whether
-the brand entries came over HTTP or from the in-JVM map.
-
-### Start the fake (recommended)
-
-In a second terminal:
-
-```bash
-./dev-branding-api.sh        # foreground, ctrl-c to stop
-```
-
-It binds `127.0.0.1:8080`, serves
-`GET /branding-api/keycloak/lookup-host?host=<host>` and
-`GET /branding-api/keycloak/whitelabel/<code>` per
-`contracts/branding-api.openapi.yaml`, and requires the same bearer
-token the SPI carries.
-
-Knobs (read at startup; restart to change):
-
-| Env var | Effect |
-|---|---|
-| `SLEEP_MS=4000`           | Adds delay; the SPI's 3 s timeout will fire and fall back. |
-| `BREAK_MODE=json`         | Returns invalid JSON. |
-| `BREAK_MODE=status_500`   | Returns 500. |
-| `BREAK_MODE=status_503`   | Returns 503. |
-| `INJECT_POISON=1`         | Adds malicious entries to `cssVariables` — the SPI's `BrandCss` validator must drop them. |
-| `PORT=18080`              | Different port (then also set `KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_URL` on the keycloak service). |
+wired). The real provider is the `BrandingApiServlet` in the geowealth
+Tomcat repo. When it's unreachable the SPI falls back to the hardcoded
+`BrandRegistry` (`changepath`, `cca`, `default`) — the login page still
+renders correctly, just from the in-JVM map instead of HTTP.
 
 ---
 
@@ -136,8 +106,8 @@ both signing in cleanly.
 |---|---|---|
 | POC app loads, but login button does nothing | `keycloak.init` failed silently. | Check browser console; usually `webOrigins`/`redirectUris` doesn't include the hostname. Update `keycloak/geowealth-realm-export.json`, then either `down -v` (wipes both realms) or PATCH via admin API. |
 | Login page is unstyled / blank | Theme JAR didn't land in the Keycloak image. | `docker compose build keycloak && docker compose up -d --force-recreate keycloak`. SPI changes need a full image rebuild. |
-| Both hosts render the same default brand | SPI couldn't reach the branding API and the registry has no entry for that firm code. | Confirm `./dev-branding-api.sh` is up, then check Keycloak logs for `Branding: ... brand_src=registry_fallback*` lines. |
-| Slow login (~3 s pause) | Branding API is reachable but slow. | The SPI's HTTP timeout is 3 s; expect one stall then fallback. Restart the fake without `SLEEP_MS`, or check that `host.docker.internal` resolves. |
+| Both hosts render the same default brand | SPI couldn't reach the branding API and the registry has no entry for that firm code. | Confirm the GeoWealth Tomcat is reachable on `host.docker.internal:8080`, then check Keycloak logs for `Branding: ... brand_src=registry_fallback*` lines. |
+| Slow login (~3 s pause) | Branding API is reachable but slow. | The SPI's HTTP timeout is 3 s; expect one stall then fallback. Investigate the upstream provider, or check that `host.docker.internal` resolves. |
 | Linux: `host.docker.internal` doesn't resolve from the keycloak container | Docker Desktop only feature. | Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the keycloak service in `docker-compose.yml`. |
 | Browser shows `*.localhost` as "site can't be reached" | Linux resolver doesn't route `.localhost`. | Add the four `/etc/hosts` entries above. |
 
@@ -166,8 +136,7 @@ For live edits without losing sessions, use the admin API on port 8898
 | `vite.config.ts` | Wildcards `.localhost` so `changepath.localhost:5174` works. |
 | `../../../geowealth-keycloak/` | Keycloak SPI: `LoginFormsProvider` override, `BrandingService`, `BrandingApiClient`, `BrandCss` validator, branded theme. |
 | `../../../keycloak/geowealth-realm-export.json` | Realm seed: `geowealth-poc-client`, the four allowed redirect URIs, the `poc-user`. |
-| `../../../dev-branding-api/`, `../../../dev-branding-api.sh` | The Python fake standing in for the GeoWealth Tomcat. |
-| `../../../contracts/branding-api.openapi.yaml` | The wire contract both sides target. |
+| `../../../contracts/branding-api.openapi.yaml` | The wire contract the SPI and the GeoWealth `BrandingApiServlet` both target. |
 | `../../../OPERATIONS.md` *(coming next)* | Log greps, expected latencies, cache hit ratio. |
 | `../../../SECURITY-CHECKS.md` | Phase 4 §9.3 security probe results + repro. |
 | `../../../geowealth-keycloak-poc-migration-plan.md` | Full plan, phase exit criteria, risk register. |
