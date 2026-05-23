@@ -8,8 +8,8 @@ Snapshot for resuming work after `/clear`. The synthesis plan is in
 
 | Repo | Branch | Latest SSO commit |
 |---|---|---|
-| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | Phase 2 finalize — real cert in realm-export, WIP refreshed |
-| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | Phase 2 finalize — `/saml/idp/*` namespace fix |
+| `~/keycloak-demo`     | `petarnenov/geowealth-whitelabel-poc`      | `75a284a` Phase 2 finalize — real cert + WIP refresh |
+| `~/geowealth`         | `team/petarnenov/keycloak-whitelabel-poc`  | `32de5d0d281` Phase 3 — P1 sidebar Demo MFE-BFF entry |
 
 ## Done
 
@@ -80,12 +80,31 @@ and bare `sso`/`metadata`/`slo` names. The original inline mapping in
 `frontOfficeTiles` was replaced with a comment pointing at the new
 package. See `~/geowealth/src/main/resources/struts-tiles.xml`.
 
-## Then — Phase 3 (sidebar)
+## Phase 3 — DONE (2026-05-23)
 
-P1 sidebar entry "Demo MFE-BFF" linking to the keycloak shell at
-`http://localhost:5173` (or the SP-init URL through Keycloak). Edit:
-`WebContent/react/app/src/pages/PlatformOne/sidebar/_hooks/useIntegrationLinks.js`.
-Plan section 3 in `SSO-MIGRATION-PLAN.md`.
+`Integrations → Demo MFE-BFF` sidebar entry added in
+`useIntegrationLinks.js`. Renders as `<a target="_blank">` to
+`/saml/idp/sso.do?RelayState=keycloak-demo` (absoluteUrl flag honored
+by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
+verified the URL is in the served bundle. Container-level gating
+inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
+
+## Next — manual end-to-end smoke
+
+With both stacks up (`./start.sh` + Tomcat + webpack-dev-server):
+
+1. Log into P1 at `http://localhost:8888/` with a GeoWealth-firm user.
+2. Open the Integrations submenu in the sidebar → click "Demo MFE-BFF".
+3. New tab opens at `/saml/idp/sso.do?RelayState=keycloak-demo`.
+4. P1 builds a signed SAML Response → auto-submit form POSTs to
+   `http://localhost:8898/realms/demo-realm/broker/p1/endpoint`.
+5. Keycloak validates the cert, runs first-broker-login (auto-link
+   by email), mints a realm session, redirects to the keycloak-demo
+   shell at `http://localhost:5173/` with the user already signed in.
+
+Watch the logs while you click:
+- `tail -f ~/tools/tomcat9/logs/catalina.out | grep SAML_ISSUED`
+- `docker logs -f keycloak-demo-keycloak-1 | grep -iE 'broker|saml'`
 
 ## Then — Phase 4 / 5
 
@@ -115,7 +134,9 @@ Plan section 3 in `SSO-MIGRATION-PLAN.md`.
 
 Then prompt:
 
-> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. Phase 1 + Phase 2
-> are done — endpoints live, cert in place. Pick up at Phase 3:
-> add the "Demo MFE-BFF" sidebar entry in P1 and verify the IdP-init
-> flow ends in the keycloak-demo shell with a federated user.
+> Read `WIP-SSO.md` and `SSO-MIGRATION-PLAN.md`. Phases 1, 2, and 3
+> are done. Either: (a) do the manual end-to-end smoke documented
+> in WIP-SSO.md and capture any issues, then start Phase 4
+> role-mapping; or (b) jump straight to Phase 5 production hardening
+> (TLS, key rotation, InResponseTo replay, front-channel SLO, audit
+> routing, E2E JUnit suite).
