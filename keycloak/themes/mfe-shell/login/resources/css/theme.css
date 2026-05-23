@@ -272,14 +272,33 @@ span.pf-v5-c-form-control:focus-within {
   box-shadow: 0 0 0 2px rgba(48, 116, 146, 0.12) !important;
 }
 
-/* password-visibility eye button — make it match */
-.pf-v5-c-input-group__item .pf-v5-c-button {
-  background: #ffffff !important;
-  border: 1px solid var(--p1-input-border) !important;
-  border-left: none !important;
-  border-radius: 0 !important;
-  height: 32px !important;
-  color: var(--p1-fg) !important;
+/* P1's password input has no show/hide eye toggle  hide the PF5
+   password-visibility button + collapse the input-group wrapper that
+   used to host it so the password input fills the full column width
+   like the username input does. */
+.pf-v5-c-input-group__item:has(.pf-v5-c-button[aria-label*="password" i]),
+.pf-v5-c-input-group__item:has(button[name="kc-form-password-visibility"]),
+.pf-v5-c-input-group__item .pf-v5-c-button[aria-label*="password" i],
+.pf-v5-c-input-group__item .pf-v5-c-button[aria-label="Show password"],
+.pf-v5-c-input-group__item .pf-v5-c-button[aria-label="Hide password"],
+button.pf-v5-c-button[aria-label="Show password"],
+button.pf-v5-c-button[aria-label="Hide password"],
+button[name="kc-form-password-visibility"] {
+  display: none !important;
+}
+
+/* Drop the input-group's flex layout so the input span fills the row
+   even after the trailing button is removed. */
+.pf-v5-c-input-group:has(input[type="password"]),
+.pf-v5-c-input-group:has(input[name="password"]) {
+  display: block !important;
+  width: 100% !important;
+}
+
+.pf-v5-c-input-group:has(input[type="password"]) > .pf-v5-c-input-group__item,
+.pf-v5-c-input-group:has(input[name="password"]) > .pf-v5-c-input-group__item {
+  width: 100% !important;
+  display: block !important;
 }
 
 /* ---------- primary action button ---------- */
