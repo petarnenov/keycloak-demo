@@ -89,6 +89,72 @@ by `BackOfficeLinks.js`). Webpack dev-server picked it up via HMR;
 verified the URL is in the served bundle. Container-level gating
 inherited from "Integrations" group (visible only to luIsFirmGEOWEALTH).
 
+## Phase 11 — Keycloak login 1:1 P1 visual parity + whitelabel verification (2026-05-23)
+
+Two deliverables in one phase:
+
+### 11a — mfe-shell login theme matches P1 pixel-for-pixel
+
+The Keycloak login screen (visible during federation errors,
+expired sessions, edge cases) now mirrors P1's login at
+`http://localhost:8888/` end-to-end:
+
+- GeoWealth logo (383×111 PNG copied into theme resources)
+  above a white card on light-gray bg
+- "Sign in" heading: Lato Regular 24px, gray rgb(113,113,113)
+- Inputs: single thin gray border, no rounding, 12px Lato
+- "Login" button: solid teal rgb(48,116,146), Lato Bold, no rounding
+- "P1" link (federated IdP) in teal accent
+
+Implementation in commit `98a4441`. Five distinct fixes:
+
+1. `GeoWealthThemeSelectorProvider` returned `null` for non-`geowealth-realm` 
+   requests, which Keycloak treats as "strip theme" (not "delegate"). Fixed
+   to read `realm.getLoginTheme()` for pass-through. Without this, every
+   non-opted-in realm silently lost its `loginTheme` config.
+2. `mfe-shell/login/theme.properties` switched `parent=keycloak` →
+   `parent=keycloak.v2` so the PF5 inheritance chain resolves.
+3. `mfe-shell/login/messages/messages_en.properties` overrides
+   `loginAccountTitle` / `loginTitle` to `Sign in` and `doLogIn` to `Login`.
+4. `mfe-shell/login/resources/css/theme.css` rewritten against PF5
+   selectors (`.pf-v5-c-login__main`, `.pf-v5-c-form-control`,
+   `.pf-v5-c-button.pf-m-primary`). Flattens `.pf-v5-c-login__container`'s
+   CSS grid to a flex column so the header (logo) stacks above the card
+   instead of collapsing to 0 width in a side-track.
+5. `mfe-shell/login/resources/img/geowealth-logo.png` baked in so the
+   theme is self-contained.
+
+### 11b — Whitelabel pipeline verified end-to-end
+
+The geowealth branding pipeline (`GeoWealthLoginFormsProvider` +
+`BrandingService` + `BrandingApiClient` + P1's `/branding-api/*`
+servlet) was already deployed but `POC_BRANDING_API_TOKEN` wasn't
+sourced into the Keycloak container env on previous restarts, so
+`GeoWealthLoginFormsProviderFactory.init` was logging
+`branding API not configured  using hardcoded registry fallback only`.
+
+After sourcing the token and `up -d --force-recreate keycloak` the
+init log reads `GeoWealth branding API enabled:
+http://host.docker.internal:8080 (cache TTL 60s)`.
+
+End-to-end verification matrix:
+
+| Stage | Result |
+|---|---|
+| P1 servlet `/branding-api/keycloak/whitelabel/{code}` | ✅ 200 valid JSON |
+| Lookup endpoint `/lookup?host=...` | ✅ 200 maps to brand code |
+| Brand registry on P1 | ✅ `cca` (firmCd=1, GeoWealth, primary #c8482a) + `changepath` (firmCd=4, primary #155e8f) |
+| Keycloak SPI factory init | ✅ enabled |
+| Realm opt-in via `geowealthBrandingProvider=true` | ✅ on geowealth-realm |
+| geowealth-realm login renders brand-aware CSS variables + logo + display name + supportEmail + website | ✅ verified visually (CCA brand: red-orange/teal gradient + GeoWealth logo + support@geowealth.com) |
+| SAML federation propagates `firmCd` attribute from P1 → Keycloak user | ✅ `tim1: attributes={'firmCd': ['1']}` (1 = CCA = GeoWealth) |
+
+The demo-realm (where the Demo MFE-BFF flow lives) doesn't opt in
+to the dynamic branding provider — it ships the static
+`mfe-shell` theme that's already P1-branded by hand (11a). Opting
+demo-realm in would be a one-line attribute change on the realm if
+ever needed (`geowealthBrandingProvider=true`).
+
 ## Phase 10 — Federated SLO end-to-end (2026-05-23)
 
 After Phase 8 landed login + landing flow, Sign out from the shell
