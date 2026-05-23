@@ -9,9 +9,11 @@
     * no Show/Hide password toggle
     * primary "Login" button immediately under the inputs
     * "Forgot Password?" link directly below the button, centered
-    * social/IdP providers list hidden (the realm has the p1 broker for
-      SP-init from the GeoWealth side; users typing username/password on
-      this page should never see it)
+    * social/IdP providers list rendered as a secondary CTA  needed
+      so SAML-federated users (e.g. tim1 routed through the P1 broker)
+      have a UI entry point. Without it the only way to sign in is the
+      username/password form, which a federated user can never satisfy
+      because their credentials live in P1, not in Keycloak.
 
   All FreeMarker variables in scope are the ones Keycloak's
   LoginFormsProvider injects for ``login`` ftls: ``url.*``, ``realm.*``,
@@ -83,6 +85,27 @@
             </#if>
 
           </form>
+        </#if>
+
+        <#-- Social / IdP providers (P1 SAML broker for the demo realm).
+             Keycloak's stock login.ftl renders these inside a
+             ``socialProviders`` section under the footer; we render them
+             inline so they sit right under the Login button and read as
+             a real alternative CTA, not a footnote. -->
+        <#if realm.password && social?? && social.providers?? && social.providers?has_content>
+          <div id="kc-social-providers" class="kc-social-section kc-social-gray">
+            <ul class="pf-v5-c-login__main-footer-links">
+              <#list social.providers as p>
+                <li class="pf-v5-c-login__main-footer-links-item">
+                  <a id="social-${p.alias}" class="pf-v5-c-login__main-footer-links-item-link"
+                     href="${p.loginUrl}" aria-label="${p.displayName!p.alias}">
+                    <#if p.iconClasses?has_content><i class="${p.iconClasses}" aria-hidden="true"></i></#if>
+                    <span class="kc-social-provider-name">${msg("doSignInWith")} ${p.displayName!p.alias}</span>
+                  </a>
+                </li>
+              </#list>
+            </ul>
+          </div>
         </#if>
       </div>
     </div>

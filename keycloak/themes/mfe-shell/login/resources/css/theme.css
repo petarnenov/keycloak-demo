@@ -569,13 +569,63 @@ input#password::placeholder {
   text-decoration: underline !important;
 }
 
-/* Hide the social/IdP providers list  the demo realm carries the
-   p1 broker for SP-init flows, but on the IdP-init/local-user side we
-   don't want users to click into the broker accidentally. */
-#kc-social-providers,
-.kc-social-section,
-.pf-v5-c-login__main-footer ul.pf-v5-c-login__main-footer-links {
+/* IdP provider buttons (P1 SAML broker).
+   Phase 14-pixel originally hid this whole block to match the
+   GeoWealth target page, but that broke the only UI entry point for
+   federated users like tim1 (whose passwords live in P1, not in the
+   Keycloak local store). Bring the block back, style it to read as a
+   secondary CTA under the Login button, and centre it for visual
+   parity with the form column. */
+#kc-social-providers {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  max-width: 480px !important;
+  margin: 12px auto 0 !important;
+}
+#kc-social-providers > h2,
+.kc-social-section-header {
   display: none !important;
+}
+#kc-social-providers ul.pf-v5-c-login__main-footer-links {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  list-style: none !important;
+  justify-content: center !important;
+}
+#kc-social-providers .pf-v5-c-login__main-footer-links-item {
+  width: 100% !important;
+}
+#kc-social-providers .pf-v5-c-login__main-footer-links-item-link {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 40px !important;
+  border: 1px solid var(--p1-accent) !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: var(--p1-accent) !important;
+  font-family: var(--p1-font) !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  text-decoration: none !important;
+  transition: background 120ms ease, color 120ms ease !important;
+}
+#kc-social-providers .pf-v5-c-login__main-footer-links-item-link:hover {
+  background: var(--p1-accent) !important;
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+/* The link's visible label is wrapped in a span we want to inherit the
+   anchor's colour, but the global #social-p1 .kc-social-provider-name
+   rule above sets it green-blue. Override here. */
+#kc-social-providers .pf-v5-c-login__main-footer-links-item-link .kc-social-provider-name {
+  color: inherit !important;
 }
 
 /* The stock pf-v5-c-login__main-footer-band ships above our injected
