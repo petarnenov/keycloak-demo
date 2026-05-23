@@ -47,10 +47,39 @@ Role → MFE mapping in `bff/UserController.java#whoami`:
 - `Dockerfile.keycloak` — multi-stage: stage 1 runs `gradle shadowJar` on `keycloak-provider/` (which first generates the REST client from `user-api/openapi.yaml`, then fat-jars it with relocated Jackson). Stage 2 copies the jar into `/opt/keycloak/providers/` and runs `kc.sh build`. Build context is the **repo root** so the build can read `user-api/`. SPI changes need a full image rebuild, not just a container restart.
 - `start.sh` — the canonical entrypoint. Auto-detects docker or podman, sources `.envrc`, tears the stack down (preserving volumes), rebuilds all three custom images, and brings everything back up. On the podman path it explicitly waits for postgres + user-service + keycloak healthchecks before starting the rest, because `podman compose` ignores `depends_on: condition: service_healthy`. Override engine selection with `CONTAINER_ENGINE=docker|podman`.
 
+## Persistence model — what survives a restart
+
+| Lives in | Persists across | Wiped only by |
+|---|---|---|
+| Keycloak realms, native users, federated identities, sessions, role mappings, live admin-API edits | `docker compose restart`, `docker compose down` + `up`, `./start.sh`, image rebuild + `--force-recreate` | `docker compose down -v` or **`./start.sh --reset`** |
+| Postgres data backing all of the above | same | same |
+| `keycloak/data` (import sources, KeyStore, exported state) | same | same |
+| `user-service` user store (the `democlient` / `demouser` / `demoadmin` map) | always  it's a hardcoded `Map.of(...)` in `UserController.java` | source edit + rebuild |
+
+Practical consequences:
+
+- **A SAML-brokered login through P1 writes a federated identity to Keycloak's Postgres on first sign-in.** That identity survives every routine `restart` / `down+up` / image rebuild. The next time the same P1 user lands on the broker flow, Keycloak finds the existing record and skips the first-broker-login flow.
+- **A user created through the admin UI or self-registration** is a native user in the realm's Postgres tables. Same persistence guarantees as brokered identities.
+- **The three `user-service` demo users** are not persisted because they don't need to be  they're code-defined and re-appear on every container start. To add a new demo user, edit `user-service/src/main/java/demo/userservice/UserController.java`, then `podman compose up -d --build --force-recreate user-service`. The Keycloak side picks the change up on the next login (the SPI is `NO_CACHE`).
+- **`./start.sh` is non-destructive.** It runs `down` (without `-v`) before rebuilding images, so the Postgres volume stays in place. Use `./start.sh --reset` for an explicit, opt-in wipe  it's the only path in the repo that destroys user data.
+
+To verify persistence end-to-end:
+
+```bash
+TOKEN=$(curl -s -X POST 'http://localhost:8898/realms/master/protocol/openid-connect/token' \
+  -d 'client_id=admin-cli&grant_type=password&username=admin&password=admin' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+curl -s -X POST "http://localhost:8898/admin/realms/demo-realm/users" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"username":"persist-check","enabled":true}'
+docker compose restart keycloak
+# re-issue the admin token, then list users  persist-check is still there.
+```
+
 ## Non-obvious runtime gotchas
 
 - **`Authentication.getRoles()` returns `Collection<String>`, not `List<String>`.** The Micronaut type is `Collection`; don't assign to `List` in `UserController.java`.
-- **Realm imports are `IGNORE_EXISTING` by default.** `--import-realm` seeds an empty Postgres only. To apply a `realm-export.json` edit on a running stack, either `podman compose down -v && up` (wipes everything) or change the live realm via admin API (fast, preserves sessions). Always update both if you want reproducibility.
+- **Realm imports are `IGNORE_EXISTING` by default.** `--import-realm` seeds an empty Postgres only. To apply a `realm-export.json` edit on a running stack, either `./start.sh --reset` (destructive — wipes all users) or change the live realm via admin API (fast, preserves sessions). Always update both files if you want reproducibility.
 - **SPI auto-creates realm roles.** `DemoUser.getRoleMappingsInternal()` calls `realm.addRole(name)` if a referenced role is missing, so roles named by user-service records that aren't in `realm-export.json` still work at runtime — but a fresh-DB install would lack them until the first login. Keep BFF-gated role names declared in the JSON too.
 - **`defaultRoles` is deprecated in Keycloak 26.** The realm JSON no longer has `"defaultRoles"`; the old effect (every user gets `user`) lived in the `default-roles-demo-realm` composite, from which we removed `user`. Don't add `defaultRoles` back — it won't behave as you expect.
 - **SPI is `NO_CACHE`.** The realm component config sets `cachePolicy: NO_CACHE`, so every Keycloak lookup hits `user-service` over REST. Changes in `user-service` are visible on the next request (good for the demo) but every login is at least 3 round-trips over the compose network — don't be surprised by the latency.

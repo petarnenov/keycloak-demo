@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 # Tear down any running stack and bring it back up with a full image rebuild.
-# Volumes (Postgres, Keycloak data) are preserved — for a fully fresh realm
-# run `docker compose down -v` before this script.
+#
+# Persistence:
+#   By default this preserves the Postgres and Keycloak data volumes, so
+#   every user created through the Keycloak admin UI, every federated
+#   identity built by the P1 SAML broker on first login, and every realm
+#   tweak made via the admin API survives a re-run. `docker compose down`
+#   (without `-v`) and `docker compose restart` are equally safe.
+#
+#   To wipe everything and re-seed the realms from the JSON exports,
+#   pass `--reset` (opt-in, never the default). This calls
+#   `docker compose down -v` and is the only path in this repo that
+#   destroys user data.
 #
 # Modes:
 #   ./start.sh           Level 1 (demo).      Default-mode stack as defined in
@@ -13,6 +23,12 @@
 #                                              source edits rebuild in ~1-2s.
 #                                              Hard-refresh the browser to pick
 #                                              up the new federation chunks.
+#   ./start.sh --reset   DESTRUCTIVE.         Wipes all volumes (Postgres +
+#                                              Keycloak data) before rebuilding.
+#                                              Use this only when you want a
+#                                              clean realm seed from the JSON
+#                                              exports. Combine with --dev as
+#                                              `./start.sh --dev --reset`.
 #
 # Level 3 (BFF on the host) is reached via ./dev-bff.sh — it requires the
 # stack to be up first (typically via ./start.sh --dev so the shell's BFF URL
@@ -26,17 +42,21 @@ cd "$(dirname "$0")"
 
 # --- Parse args ------------------------------------------------------------
 DEV=0
-case "${1:-}" in
-  ""|--default|default) DEV=0 ;;
-  --dev|dev)            DEV=1 ;;
-  -h|--help|help)
-    sed -n '2,18p' "$0"
-    exit 0 ;;
-  *)
-    echo "Error: unknown argument '$1' (expected '--dev' or nothing)." >&2
-    echo "Run '$0 --help' for usage." >&2
-    exit 1 ;;
-esac
+RESET=0
+for arg in "$@"; do
+  case "$arg" in
+    ""|--default|default) DEV=0 ;;
+    --dev|dev)            DEV=1 ;;
+    --reset|reset)        RESET=1 ;;
+    -h|--help|help)
+      sed -n '2,29p' "$0"
+      exit 0 ;;
+    *)
+      echo "Error: unknown argument '$arg' (expected '--dev', '--reset', or nothing)." >&2
+      echo "Run '$0 --help' for usage." >&2
+      exit 1 ;;
+  esac
+done
 
 # Pull DOCKER_HOST + RESEND_API_TOKEN in for users who don't have direnv.
 if [ -f .envrc ]; then
@@ -131,8 +151,15 @@ wait_healthy() {
   done
 }
 
-echo "==> Stopping any running containers (volumes preserved)"
-"${COMPOSE[@]}" "${FILES[@]}" down --remove-orphans || true
+if [ "$RESET" = 1 ]; then
+  echo "==> --reset: wiping volumes (Postgres + Keycloak data)"
+  echo "    All users, federated identities, sessions, and live realm edits"
+  echo "    will be lost. Realms will be re-seeded from the JSON exports."
+  "${COMPOSE[@]}" "${FILES[@]}" down -v --remove-orphans || true
+else
+  echo "==> Stopping any running containers (volumes preserved)"
+  "${COMPOSE[@]}" "${FILES[@]}" down --remove-orphans || true
+fi
 
 echo "==> Rebuilding all images (keycloak + bff + user-service)"
 "${COMPOSE[@]}" "${FILES[@]}" build
