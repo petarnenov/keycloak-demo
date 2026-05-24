@@ -138,22 +138,21 @@ else
   "${COMPOSE[@]}" "${FILES[@]}" down --remove-orphans || true
 fi
 
-echo "==> Rebuilding all images (keycloak + user-service + domain bff/web)"
+echo "==> Rebuilding all images (domain bff/web). Keycloak uses the stock image."
 "${COMPOSE[@]}" "${FILES[@]}" build
 
 if [ "$ENGINE" = podman ]; then
   # podman-compose does NOT honour `depends_on: condition: service_healthy`,
-  # so bring the data + identity tier up first and wait, then the rest.
-  echo "==> Starting data + user store (postgres, user-service)"
-  "${COMPOSE[@]}" "${FILES[@]}" up -d postgres user-service
+  # so bring postgres up first and wait, then keycloak, then the domains.
+  echo "==> Starting postgres"
+  "${COMPOSE[@]}" "${FILES[@]}" up -d postgres
   wait_healthy postgres
-  wait_healthy user-service
 
   echo "==> Starting Keycloak"
   "${COMPOSE[@]}" "${FILES[@]}" up -d keycloak
   wait_healthy keycloak 300
 
-  echo "==> Starting the rest (web + bff)"
+  echo "==> Starting the domains (web + bff)"
   "${COMPOSE[@]}" "${FILES[@]}" up -d
 else
   # docker compose honours depends_on health conditions itself.

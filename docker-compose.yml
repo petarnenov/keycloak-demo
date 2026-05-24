@@ -1,7 +1,7 @@
-# Domain topology. The realm + identity tier (postgres + keycloak +
-# user-service) is shared; each domain owns its own FE + BFF image and
-# resolves to its own hostname. Domains never share code — only the realm
-# and the identity-provider federation (SAML to P1).
+# Domain topology. Postgres + Keycloak are the shared identity tier;
+# each domain owns its own FE + BFF image and resolves to its own
+# hostname. Domains never share code — only the realm and the SAML
+# federation to P1.
 #
 #   browser → P1/Integrations sidebar (in the ~/geowealth Tomcat app)
 #                ├─ Demo Billing  → https://billing.geowealth.int:5184  (→ bff-billing:8084)
@@ -30,41 +30,18 @@ services:
       retries: 10
 
   keycloak:
-    build:
-      context: .
-      dockerfile: Dockerfile.keycloak
+    image: quay.io/keycloak/keycloak:26.0.7
     command: ["start-dev", "--import-realm", "--verbose"]
-    mem_limit: 4g
-    mem_reservation: 2g
+    mem_limit: 1g
     environment:
-      KC_OPTS: "-Xmx2g"
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak_secret
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      RESEND_API_TOKEN: "${RESEND_API_TOKEN}"
-      RESEND_FROM: "Demo Realm <onboarding@resend.dev>"
-      OTP_TRUST_WINDOW_MINUTES: "60"
-      USER_SERVICE_URL: http://user-service:8080
-      # POC: GeoWealth white-labeling sync. The LoginFormsProvider override
-      # in geowealth-keycloak/ reads these at SPI init time and constructs
-      # the BrandingApiClient. If either URL or TOKEN is blank, the provider
-      # falls through to the hardcoded BrandRegistry fallback — useful when
-      # the geowealth Tomcat isn't running yet. host.docker.internal resolves
-      # to the dev machine's loopback on Docker Desktop / Podman (macOS).
-      # On Linux, add `extra_hosts: ["host.docker.internal:host-gateway"]`.
-      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_URL: "${POC_BRANDING_API_URL:-http://host.docker.internal:8080}"
-      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_API_TOKEN: "${POC_BRANDING_API_TOKEN}"
-      KC_SPI_LOGIN_FREEMARKER_GEOWEALTH_BRANDING_CACHE_TTL_SECONDS: "60"
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
-      # POC: white-labeling realm imported alongside the demo realm. Both go
-      # through Keycloak's --import-realm sweep; IGNORE_EXISTING means the
-      # geowealth-realm is only created on first run (fresh DB) or after
-      # `down -v`. To edit a running realm, use the admin API.
-      - ./keycloak/geowealth-realm-export.json:/opt/keycloak/data/import/geowealth-realm.json
       - keycloak_data:/opt/keycloak/data
     networks:
       - keycloak-network
@@ -83,26 +60,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      user-service:
-        condition: service_healthy
-
-  user-service:
-    build:
-      context: .
-      dockerfile: user-service/Dockerfile
-    image: keycloak-demo-user-service:latest
-    environment:
-      MICRONAUT_APPLICATION_NAME: user-service
-    networks:
-      - keycloak-network
-    ports:
-      - "8090:8080"
-    healthcheck:
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 20s
 
   # ---- domain: billing -------------------------------------------------------
   # Self-contained under ./domains/billing/. FE at billing.geowealth.int:5184

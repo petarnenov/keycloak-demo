@@ -3,67 +3,12 @@
   "realm": "demo-realm",
   "enabled": true,
   "displayName": "Demo SSO Realm",
-  "loginTheme": "mfe-shell",
   "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
-  "browserFlow": "demo-browser",
   "authenticationFlows": [
-    {
-      "alias": "demo-browser",
-      "description": "Browser flow with email OTP as second factor",
-      "providerId": "basic-flow",
-      "topLevel": true,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "auth-cookie",
-          "requirement": "ALTERNATIVE",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticator": "identity-provider-redirector",
-          "requirement": "ALTERNATIVE",
-          "priority": 25,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "flowAlias": "demo-browser forms",
-          "requirement": "ALTERNATIVE",
-          "priority": 30,
-          "autheticatorFlow": true,
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "demo-browser forms",
-      "description": "Username/password, then email OTP",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "auth-username-password-form",
-          "requirement": "REQUIRED",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticator": "demo-email-otp",
-          "requirement": "REQUIRED",
-          "priority": 20,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        }
-      ]
-    },
     {
       "alias": "p1-first-broker-login",
       "description": "Actions taken after first broker login with identity provider account, which is not yet linked to any Keycloak account",
@@ -250,26 +195,6 @@
       ]
     }
   ],
-  "components": {
-    "org.keycloak.storage.UserStorageProvider": [
-      {
-        "name": "demo-user-provider",
-        "providerId": "demo-user-provider",
-        "subComponents": {},
-        "config": {
-          "enabled": [
-            "true"
-          ],
-          "priority": [
-            "0"
-          ],
-          "cachePolicy": [
-            "NO_CACHE"
-          ]
-        }
-      }
-    ]
-  },
   "users": [],
   "clients": [
     {
@@ -304,7 +229,6 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
-        "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*"
       },
       "protocolMappers": [
@@ -355,7 +279,6 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
-        "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "https://trading.geowealth.int:5185/*##http://localhost:5185/*"
       },
       "protocolMappers": [
@@ -514,8 +437,5 @@
       }
     }
   ],
-  "attributes": {
-    "geowealthBrandingProvider": "true"
-  },
   "resetPasswordAllowed": true
 }

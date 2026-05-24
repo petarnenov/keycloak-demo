@@ -2,7 +2,7 @@
 
 A working reference for federating standalone domain apps against a single Keycloak realm with **P1 SAML SSO**. Each demo "product" is a self-contained domain under `domains/<name>/` with its own React+Vite frontend, its own Micronaut BFF, and its own OIDC client. Domains share only the realm and the SAML federation to P1; they never share code.
 
-Domains are surfaced through the **P1 sidebar** (under *Integrations*) in the original GeoWealth Tomcat app at `~/geowealth/`. Clicking a link bounces through Keycloak → P1 → back, lands on the domain SPA already signed in.
+There are no native Keycloak users in this demo. Every login goes through the SAML broker to P1 — either started from the **P1 sidebar** (Integrations → Demo Billing / Demo Trading) in the `~/geowealth/` Tomcat app, or by visiting a domain SPA URL directly. Both flows end up doing the same thing: Keycloak's authorize endpoint with `kc_idp_hint=p1` → SAML AuthnRequest to P1 → signed Response back → first-broker-login auto-link by email → OIDC code → SPA token.
 
 ## Topology
 
@@ -11,14 +11,13 @@ Domains are surfaced through the **P1 sidebar** (under *Integrations*) in the or
                                   └─ Demo Trading  → https://trading.geowealth.int:5185  → bff-trading :8085
 
   Keycloak                         :8898    realm "demo-realm" — clients: demo-billing-client, demo-trading-client
-  user-service                     :8090    REST source of truth for the 3 demo users
   Postgres                                  Keycloak metadata + federated identities
 
-  Identity flow (every domain link):
-    browser → Keycloak /auth?kc_idp_hint=p1
-            → P1 /saml/idp/sso.do  (SP-init SAML, signed Response with InResponseTo)
-            → Keycloak (correlate, first-broker-login auto-link by email)
-            → domain SPA at https://<name>.geowealth.int:<port>/
+  SAML login (every domain link, every direct SPA visit):
+    SPA → Keycloak /auth?kc_idp_hint=p1
+        → P1 /saml/idp/sso.do  (SP-init SAML, signed Response with InResponseTo)
+        → Keycloak (correlate, first-broker-login auto-link by email)
+        → domain SPA at https://<name>.geowealth.int:<port>/
 ```
 
 ## Domains in the demo
@@ -42,24 +41,13 @@ Each BFF has the same shape:
 - `@Secured({"isAuthenticated()"})` controllers returning deterministic stub data — no DB, no external calls
 - CORS allowlist for the matching domain origin only
 
-## Identity tier (shared)
+## Identity tier
 
-- **`user-service/`** — standalone Micronaut REST service that owns the demo users. Source of truth for `verify-credentials`, `findByUsername`, `findByEmail`.
-- **`keycloak-provider/`** — Keycloak SPI jar with two providers in one:
-  - **`DemoUserStorageProvider`** — User Storage SPI that delegates lookup and password verify to `user-service` over REST.
-  - **`EmailOtpAuthenticator`** — second-factor email OTP step (used only on the browser flow, not on direct-grant or SAML-brokered flows).
-- **`user-api/openapi.yaml`** — contract between the SPI client and `user-service`. Both sides regenerate from it at build time.
-- **`keycloak/realm-export.json`** — `demo-realm` seed: the two OIDC clients, realm roles, SPI registration, `demo-browser` flow with the OTP step, P1 SAML broker config.
+- **Keycloak** at `:8898` — stock `quay.io/keycloak/keycloak:26.0.7` image. No custom SPIs.
+- **`keycloak/realm-export.json`** — `demo-realm` seed: the two OIDC clients, the p1 SAML identity provider, the SAML attribute mappers (email/firstName/lastName/firmCd/roles), the `p1-first-broker-login` flow.
+- **Postgres** — backs Keycloak. Holds federated identities created on first broker login.
 
-Three demo users (hardcoded in `user-service/src/main/java/demo/userservice/UserController.java`, identified by email because `loginWithEmailAllowed=true`):
-
-| Username | Email | Password | Roles |
-|---|---|---|---|
-| democlient | nikiiv.linococo@gmail.com | 123 | `client` |
-| demouser   | nikolay.ivanchev@gmail.com | 123 | `user` |
-| demoadmin  | nikolai.ivanchev@gmail.com | 123 | `admin`, `user` |
-
-In the live demo, identity normally arrives through SAML federation from P1, so the OTP step is bypassed (P1 already authenticated the user). Direct-grant against demo-realm still works for `curl` testing and also bypasses OTP.
+Users land in the realm only when P1 authenticates them through the SAML broker. There are no usernames or passwords to manage on the Keycloak side.
 
 ## Running it
 
@@ -74,7 +62,7 @@ Prerequisites:
   127.0.0.1 trading.geowealth.int
   ```
 
-- TLS cert pairs (Vite preview must serve HTTPS — keycloak-js v26 uses `crypto.subtle`, which the browser only exposes in secure contexts):
+- TLS cert pairs at `proxy/certs/<name>.geowealth.int.{crt,key}`. Vite preview must serve HTTPS — keycloak-js v26 uses `crypto.subtle`, which the browser only exposes in secure contexts:
 
   ```bash
   mkcert -cert-file proxy/certs/billing.geowealth.int.crt \
@@ -86,11 +74,13 @@ Prerequisites:
          trading.geowealth.int localhost 127.0.0.1
   ```
 
+- `~/geowealth/` Tomcat running on `localhost:8080` — that's where the P1 SAML IdP lives (`/saml/idp/sso.do`). Without it, the SAML chain has nothing to bounce through.
+
 Then:
 
 ```bash
 ./start.sh           # bring everything up
-./start.sh --reset   # wipe Postgres + Keycloak data, re-seed from JSON exports
+./start.sh --reset   # wipe Postgres + Keycloak data, re-seed from realm-export.json
 ./stop.sh            # graceful down (volumes preserved)
 ./stop.sh --wipe     # graceful down + volume wipe
 ```
@@ -100,26 +90,27 @@ The script auto-detects docker vs podman. Override with `CONTAINER_ENGINE=docker
 After it's up:
 
 - **Keycloak admin console**: <http://localhost:8898/admin/> (admin / admin)
-- **user-service**: <http://localhost:8090/health>
 - **Billing FE**: <https://billing.geowealth.int:5184/>
 - **Trading FE**: <https://trading.geowealth.int:5185/>
 
-To exercise the full P1 → Keycloak → domain flow, you also need the `~/geowealth/` Tomcat app running (separate repo). Hit a domain SPA directly first to validate the SSO chain on its own; once that works, drive it from P1's sidebar.
+## Testing the login
 
-## Sanity checks
+Two entry points, same flow.
 
-Token + endpoint smoke test (direct-grant; bypasses OTP and SAML):
+**From the P1 sidebar (the integration scenario):**
 
-```bash
-TOKEN=$(curl -s -X POST "http://localhost:8898/realms/demo-realm/protocol/openid-connect/token" \
-  -d "client_id=demo-billing-client&grant_type=password&username=demouser&password=123" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+1. Log into P1 at `http://localhost:8080/`
+2. Sidebar → **Integrations** → click **Demo Billing** or **Demo Trading**
+3. A new tab opens Keycloak `…/auth?…&kc_idp_hint=p1`; since you already have a P1 session, P1 returns a signed SAML Response immediately (no login prompt)
+4. Keycloak runs first-broker-login (auto-link by email, silent on subsequent visits), issues an OIDC code, redirects to the domain SPA
+5. The dashboard renders with stub data from the BFF
 
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8084/api/summary   | python3 -m json.tool
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8085/api/portfolio | python3 -m json.tool
-```
+**Directly (same SAML chain, no P1 sidebar):**
 
-If both return JSON: Keycloak issues tokens, the BFFs trust Keycloak's JWKS, the realm clients are wired. If you get a `401`, decode the JWT (`echo "$TOKEN" | cut -d. -f2 | base64 -d`) and check the `iss` claim — it must match the BFF's `KEYCLOAK_AUTH_SERVER_URL`.
+1. Open `https://billing.geowealth.int:5184/` (or `…/trading…:5185/`)
+2. SPA's `AuthProvider` runs `keycloak.init({ onLoad: 'check-sso' })`. No session → `keycloak.login({ idpHint: 'p1' })` kicks the browser to Keycloak
+3. Same SAML round-trip; if no P1 session exists, P1 prompts; if it does, silent
+4. SPA gets the code, exchanges for a token, renders the dashboard
 
 ## Adding a new domain
 
@@ -137,7 +128,8 @@ cp -r domains/billing domains/reporting
 #   domains/reporting/bff/src/main/java/demo/reporting/* → new package + controller
 #   domains/reporting/bff/src/main/resources/application.yml → app.source, CORS_ORIGIN default
 
-# 2. Register the new OIDC client in keycloak/realm-export.json (model after demo-billing-client)
+# 2. Register the new OIDC client in keycloak/realm-export.json (model after demo-billing-client).
+#    Realm imports are IGNORE_EXISTING; for a running realm, POST the client via admin API too.
 # 3. Add demo-reporting + bff-reporting services in docker-compose.yml
 # 4. Add /etc/hosts entry + mkcert cert pair
 # 5. In ~/geowealth/WebContent/react/app/src/pages/PlatformOne/sidebar/_hooks/useIntegrationLinks.js:
@@ -151,7 +143,9 @@ cp -r domains/billing domains/reporting
 
 ## What's not in here
 
-- **No MFE shell, no Module Federation.** The previous iteration of this repo had a React shell at `:5173` lazy-loading three role-gated MFEs through `@originjs/vite-plugin-federation`. That whole layer is gone — the domain stack replaces it. See `CLAUDE.md` for the editing notes that survived the migration.
+- **No MFE shell, no Module Federation.** A previous iteration of this repo had a React shell at `:5173` lazy-loading three role-gated MFEs through `@originjs/vite-plugin-federation`. That whole layer is gone.
+- **No native users, no User Storage SPI, no email OTP, no `user-service`.** Earlier iterations exposed a Keycloak User Storage SPI backed by a separate Micronaut service holding three hardcoded demo users, plus an email-OTP second factor. Everything that depended on Keycloak having its own user store is removed — the realm is fed entirely by P1's SAML broker.
+- **No whitelabel POC.** Earlier iterations had a `geowealth-realm` + dynamic-login-theming SPI + branding-API client; all of it is removed.
 - **No fancy data layer.** The BFFs return stub data inline (`Map.of(...)`-style literals). Real backends would put a service + DB + cache here.
 - **No real billing/trading logic.** The dashboards are visual scaffolding to demonstrate the SSO chain renders something believable; the numbers are mock.
 
@@ -159,4 +153,3 @@ cp -r domains/billing domains/reporting
 
 - `CLAUDE.md` — survival notes for editing this repo
 - `keycloak/realm-export.json` — the realm seed
-- `geowealth-keycloak/` — separate Keycloak SPI for white-label login theming (orthogonal to the domain stack; ships in the same Keycloak image)
