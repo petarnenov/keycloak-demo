@@ -18,7 +18,11 @@ WORKDIR /app
 # server's static-file routing.
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
-COPY package.json vite.config.ts ./
+COPY package.json vite.config.ts entrypoint.cjs ./
 
 EXPOSE 5184
-CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "5184", "--strictPort"]
+# entrypoint.cjs runs vite preview on an internal port (6184) and listens
+# on 5184 itself, sniffing the first byte: TLS → pass-through, plain HTTP
+# → 301 to https://. Gives the same UX as putting an nginx sidecar in
+# front, without pulling in a second image.
+CMD ["node", "entrypoint.cjs", "5184"]

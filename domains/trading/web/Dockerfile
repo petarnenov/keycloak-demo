@@ -16,7 +16,10 @@ WORKDIR /app
 # vite.config.ts at preview-server startup.
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
-COPY package.json vite.config.ts ./
+COPY package.json vite.config.ts entrypoint.cjs ./
 
 EXPOSE 5185
-CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "5185", "--strictPort"]
+# entrypoint.cjs runs vite preview on an internal port (6185) and listens
+# on 5185 itself, sniffing the first byte: TLS → pass-through, plain HTTP
+# → 301 to https://.
+CMD ["node", "entrypoint.cjs", "5185"]
