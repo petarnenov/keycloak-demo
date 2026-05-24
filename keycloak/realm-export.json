@@ -245,6 +245,20 @@
             "id.token.claim": "true",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "firm-cd-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "firmCd",
+            "claim.name": "firmCd",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
         }
       ]
     },
@@ -296,6 +310,20 @@
             "id.token.claim": "true",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "firm-cd-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "firmCd",
+            "claim.name": "firmCd",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
         }
       ]
     },
@@ -329,16 +357,32 @@
   "roles": {
     "realm": [
       {
-        "name": "user",
-        "description": "Standard user role"
+        "name": "client",
+        "description": "Coarse capability: end-client of the firm (limited self-service)."
+      },
+      {
+        "name": "advisor",
+        "description": "Coarse capability: P1 advisor seat (read+act on client accounts within the firm)."
       },
       {
         "name": "admin",
-        "description": "Administrator role"
+        "description": "Coarse capability: back-office admin (firm-scoped admin powers)."
       },
       {
-        "name": "client",
-        "description": "Client role"
+        "name": "billing-admin",
+        "description": "Per-domain capability: write access to the billing domain (manage invoices, plans, payment methods)."
+      },
+      {
+        "name": "billing-viewer",
+        "description": "Per-domain capability: read-only access to the billing domain."
+      },
+      {
+        "name": "trading-trader",
+        "description": "Per-domain capability: place and manage orders in the trading domain."
+      },
+      {
+        "name": "trading-viewer",
+        "description": "Per-domain capability: read-only access to the trading domain (portfolio/positions/orders)."
       }
     ]
   },
@@ -418,17 +462,6 @@
       }
     },
     {
-      "name": "roles-user-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "user",
-        "role": "user"
-      }
-    },
-    {
       "name": "roles-client-from-saml",
       "identityProviderAlias": "p1",
       "identityProviderMapper": "saml-role-idp-mapper",
@@ -440,6 +473,17 @@
       }
     },
     {
+      "name": "roles-advisor-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "advisor",
+        "role": "advisor"
+      }
+    },
+    {
       "name": "roles-admin-from-saml",
       "identityProviderAlias": "p1",
       "identityProviderMapper": "saml-role-idp-mapper",
@@ -448,6 +492,61 @@
         "attribute.name": "roles",
         "attribute.value": "admin",
         "role": "admin"
+      }
+    },
+    {
+      "name": "roles-billing-admin-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "billing-admin",
+        "role": "billing-admin"
+      }
+    },
+    {
+      "name": "roles-billing-viewer-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "billing-viewer",
+        "role": "billing-viewer"
+      }
+    },
+    {
+      "name": "roles-trading-trader-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "trading-trader",
+        "role": "trading-trader"
+      }
+    },
+    {
+      "name": "roles-trading-viewer-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "trading-viewer",
+        "role": "trading-viewer"
+      }
+    },
+    {
+      "name": "roles-legacy-user-to-advisor-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "user",
+        "role": "advisor"
       }
     }
   ],

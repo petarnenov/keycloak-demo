@@ -6,6 +6,8 @@ interface AuthContextValue {
   authenticated: boolean;
   username: string | null;
   email: string | null;
+  firmCd: string | null;
+  roles: string[];
   logout: () => void;
 }
 
@@ -103,6 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authenticated,
     username: authenticated ? tokenClaim<string>('preferred_username') : null,
     email: authenticated ? tokenClaim<string>('email') : null,
+    firmCd: authenticated ? tokenClaim<string>('firmCd') : null,
+    roles: authenticated ? tokenClaim<string[]>('roles') ?? [] : [],
     logout: () => keycloak.logout({ redirectUri: window.location.origin + '/' })
   };
 

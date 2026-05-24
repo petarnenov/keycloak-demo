@@ -20,6 +20,12 @@ import java.util.Map;
  * a realistic dashboard to render without a real market data provider.
  * Shape mirrors what a real trading service would expose; numbers are
  * mock and pinned per-call.
+ *
+ * Authorization model (see sso-role-mapping.md):
+ *   - read endpoints: any of trading-trader / trading-viewer / advisor / admin
+ *   - write endpoints (not present in this stub): trading-trader / admin
+ * `firmCd` is read from the JWT and echoed back so the FE / downstream can
+ * verify the tenant scoping that any real service would enforce.
  */
 @Controller("/api")
 @Produces(MediaType.APPLICATION_JSON)
@@ -32,11 +38,12 @@ public class TradingController {
     }
 
     @Get("/portfolio")
-    @Secured({"isAuthenticated()"})
+    @Secured({"trading-trader", "trading-viewer", "advisor", "admin"})
     public Map<String, Object> portfolio(Authentication authentication) {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
+        body.put("firmCd", firmCd(authentication));
         body.put("accountId", "TRD-44219");
         body.put("currency", "USD");
         body.put("marketValue",   1_247_812.55);
@@ -50,7 +57,7 @@ public class TradingController {
     }
 
     @Get("/positions")
-    @Secured({"isAuthenticated()"})
+    @Secured({"trading-trader", "trading-viewer", "advisor", "admin"})
     public Map<String, Object> positions(Authentication authentication) {
         List<Map<String, Object>> positions = new ArrayList<>();
         positions.add(position("AAPL", "Apple Inc.",          240, 198.42, 212.85));
@@ -64,12 +71,13 @@ public class TradingController {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
+        body.put("firmCd", firmCd(authentication));
         body.put("positions", positions);
         return body;
     }
 
     @Get("/orders")
-    @Secured({"isAuthenticated()"})
+    @Secured({"trading-trader", "trading-viewer", "advisor", "admin"})
     public Map<String, Object> orders(Authentication authentication) {
         List<Map<String, Object>> orders = new ArrayList<>();
         orders.add(order("ORD-91204", "AAPL", "buy",  100, "limit", 211.50, "filled",  LocalDate.now()));
@@ -82,8 +90,14 @@ public class TradingController {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
+        body.put("firmCd", firmCd(authentication));
         body.put("orders", orders);
         return body;
+    }
+
+    private static String firmCd(Authentication authentication) {
+        Object v = authentication.getAttributes().get("firmCd");
+        return v == null ? null : v.toString();
     }
 
     private static Map<String, Object> position(String symbol, String name, int qty, double avgCost, double last) {

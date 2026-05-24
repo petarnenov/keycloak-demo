@@ -19,6 +19,12 @@ import java.util.Map;
  * to the authenticated subject so the FE has something realistic to render
  * without touching a database. The shape of the responses is what would
  * eventually come back from a real billing service; the values are mock.
+ *
+ * Authorization model (see sso-role-mapping.md):
+ *   - read endpoints: any of billing-admin / billing-viewer / admin
+ *   - write endpoints (not present in this stub): billing-admin / admin
+ * `firmCd` is read from the JWT and echoed back so the FE / downstream can
+ * verify the tenant scoping that any real service would enforce.
  */
 @Controller("/api")
 @Produces(MediaType.APPLICATION_JSON)
@@ -31,11 +37,12 @@ public class BillingController {
     }
 
     @Get("/summary")
-    @Secured({"isAuthenticated()"})
+    @Secured({"billing-admin", "billing-viewer", "admin"})
     public Map<String, Object> summary(Authentication authentication) {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
+        body.put("firmCd", firmCd(authentication));
         body.put("accountId", "ACCT-90217");
         body.put("plan", "Professional");
         body.put("planRenewsOn", LocalDate.now().plusDays(18).toString());
@@ -52,7 +59,7 @@ public class BillingController {
     }
 
     @Get("/invoices")
-    @Secured({"isAuthenticated()"})
+    @Secured({"billing-admin", "billing-viewer", "admin"})
     public Map<String, Object> invoices(Authentication authentication) {
         List<Map<String, Object>> invoices = new ArrayList<>();
         invoices.add(invoice("INV-2026-005", LocalDate.now().minusDays(2),  499.00, "open"));
@@ -64,12 +71,13 @@ public class BillingController {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
+        body.put("firmCd", firmCd(authentication));
         body.put("invoices", invoices);
         return body;
     }
 
     @Get("/usage")
-    @Secured({"isAuthenticated()"})
+    @Secured({"billing-admin", "billing-viewer", "admin"})
     public Map<String, Object> usage(Authentication authentication) {
         List<Map<String, Object>> lines = new ArrayList<>();
         lines.add(Map.of("metric", "API requests",    "included", 100_000, "used", 42_318, "unit", "calls"));
@@ -80,10 +88,16 @@ public class BillingController {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
+        body.put("firmCd", firmCd(authentication));
         body.put("periodStart", LocalDate.now().withDayOfMonth(1).toString());
         body.put("periodEnd",   LocalDate.now().withDayOfMonth(1).plusMonths(1).minusDays(1).toString());
         body.put("lines", lines);
         return body;
+    }
+
+    private static String firmCd(Authentication authentication) {
+        Object v = authentication.getAttributes().get("firmCd");
+        return v == null ? null : v.toString();
     }
 
     private static Map<String, Object> invoice(String number, LocalDate issued, double amount, String status) {

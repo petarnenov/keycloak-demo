@@ -119,6 +119,10 @@ export function App() {
           <section className="who">
             <p>Signed in as <strong>{auth.username}</strong></p>
             {auth.email && <p className="muted small">{auth.email}</p>}
+            <p className="muted small">
+              Firm: <strong>{auth.firmCd ?? '—'}</strong>
+              {' · '}Roles: <strong>{auth.roles.length ? auth.roles.join(', ') : '—'}</strong>
+            </p>
             <button type="button" onClick={auth.logout}>Sign out</button>
           </section>
         )}

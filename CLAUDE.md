@@ -19,6 +19,18 @@ Current domains:
 
 Each FE is a small standalone React + Vite + keycloak-js app, packaged into its own image via its own `Dockerfile` (no bind-mount). Each BFF is a standalone Micronaut module with its own `Dockerfile` and its own image.
 
+## SSO role / tenancy model
+
+Design rationale and trade-offs live in **`sso-role-mapping.md`** at the repo root. The shape that ships here:
+
+- **Realm role vocabulary** (`keycloak/realm-export.json#/roles/realm`):
+  - Global coarse capabilities: `client`, `advisor`, `admin`.
+  - Per-domain capabilities: `billing-admin`, `billing-viewer`, `trading-trader`, `trading-viewer`.
+- **`saml-role-idp-mapper` × 8** under `identityProviderMappers` (all `syncMode=FORCE`): one per role name above, value-mapped from the `roles` SAML attribute, plus one legacy transition mapper `user` → `advisor` so the current P1 `derivePocRoles` POC keeps working until P1 ships the data-driven replacement.
+- **`firmCd` is a separate claim, not a role**: `saml-user-attribute-idp-mapper` (existing) writes it as a user attribute; an `oidc-usermodel-attribute-mapper` on each OIDC client (`firm-cd-claim`) emits it as a top-level JWT claim. The BFFs read `authentication.getAttributes().get("firmCd")` for tenant scoping.
+- **BFF gating uses `@Secured` with the per-domain capability roles** plus the global escape hatches (`advisor`/`admin` for trading, just `admin` for billing) — see `BillingController.java` / `TradingController.java`. `application.yml` keeps `/api/** -> isAuthenticated()` as a defence-in-depth floor.
+- **Adding a new capability role** = add to `realm-export.json#/roles/realm`, add a matching `saml-role-idp-mapper` (value → role, FORCE), and on a running stack POST the role + mapper via admin API (realm import is `IGNORE_EXISTING`).
+
 ## Layout
 
 - `domains/<name>/web/` — the FE. Standalone npm project (no monorepo), Vite + React + keycloak-js. Builds into its own image. Talks only to its own BFF via Vite preview's `/api/<name>` proxy.
