@@ -3,15 +3,20 @@
 # hostname. Domains never share code — only the realm and the SAML
 # federation to P1.
 #
-#   browser → P1/Integrations sidebar (in the ~/geowealth Tomcat app)
-#                ├─ Demo Billing  → https://billing.geowealth.int:5184  (nginx → /api/billing → bff-billing:8080 inside the docker network)
-#                └─ Demo Trading  → https://trading.geowealth.int:5185  (nginx → /api/trading → bff-trading:8080 inside the docker network)
+# Public host ports:
+#   auth.geowealth.int:5180   — nginx → keycloak:8080 (TLS terminator)
+#   billing.geowealth.int:5184 — nginx → SPA + /api/billing → bff-billing
+#   trading.geowealth.int:5185 — nginx → SPA + /api/trading → bff-trading
 #
-# Each link first hits Keycloak's authorize endpoint with kc_idp_hint=p1,
-# which short-circuits straight to P1's SAML IdP and back. Once Keycloak
-# emits the OIDC code, the browser lands on the domain SPA, which runs
-# keycloak-js to finalize and pull a token. The BFFs are not exposed on
-# the host — only nginx reaches them, over the keycloak-network bridge.
+# Internal only (no host port):
+#   keycloak:8080, bff-billing:8080, bff-trading:8080, postgres:5432
+#
+# Login flow: SPA's keycloak-js redirects the browser to
+# https://auth.geowealth.int:5180/realms/demo-realm/...&kc_idp_hint=p1 →
+# Keycloak emits SAML AuthnRequest to P1 (http://localhost:8080 in dev) →
+# P1 POSTs signed Response back through the browser to the auth domain →
+# Keycloak first-broker-login → OIDC code → browser back to SPA →
+# keycloak-js exchanges code for token → SPA renders dashboard.
 
 services:
   postgres:
@@ -41,13 +46,21 @@ services:
       KC_DB_PASSWORD: keycloak_secret
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+      # Keycloak runs HTTP internally on 8080; the `auth` nginx in front
+      # terminates TLS. KC_HOSTNAME is the public URL clients hit, so token
+      # issuer claims and broker callback URIs are generated correctly.
+      # KC_PROXY_HEADERS=xforwarded tells Keycloak to trust the X-Forwarded-*
+      # headers that nginx sets.
+      KC_HOSTNAME: https://auth.geowealth.int:5180
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
       - keycloak_data:/opt/keycloak/data
     networks:
       - keycloak-network
-    ports:
-      - "8898:8080"
+    # No host port mapping — Keycloak is reached via the `auth` reverse-proxy
+    # service at https://auth.geowealth.int:5180.
     healthcheck:
       test:
         [
@@ -61,6 +74,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  # ---- auth: TLS reverse-proxy in front of Keycloak --------------------------
+  # Gives Keycloak its own hostname (auth.geowealth.int) and HTTPS, mirroring
+  # what `sso.acme.com` would be in production. Replaces the previous
+  # `keycloak:8898` direct host-port mapping. See `production-topology.md`.
+  auth:
+    image: nginx:1.27-alpine
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "5180:5180"
+    volumes:
+      - ./keycloak/nginx-auth.conf:/etc/nginx/nginx.conf:ro
+      - ./proxy/certs/auth.geowealth.int.crt:/certs/auth.crt:ro
+      - ./proxy/certs/auth.geowealth.int.key:/certs/auth.key:ro
 
   # ---- domain: billing -------------------------------------------------------
   # Self-contained under ./domains/billing/. FE at billing.geowealth.int:5184

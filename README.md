@@ -58,13 +58,18 @@ Prerequisites:
 - `/etc/hosts` entries:
 
   ```
+  127.0.0.1 auth.geowealth.int
   127.0.0.1 billing.geowealth.int
   127.0.0.1 trading.geowealth.int
   ```
 
-- TLS cert pairs at `proxy/certs/<name>.geowealth.int.{crt,key}`. Vite preview must serve HTTPS — keycloak-js v26 uses `crypto.subtle`, which the browser only exposes in secure contexts:
+- TLS cert pairs at `proxy/certs/<name>.geowealth.int.{crt,key}`. Each public-facing nginx serves HTTPS — keycloak-js v26 uses `crypto.subtle`, which the browser only exposes in secure contexts:
 
   ```bash
+  mkcert -cert-file proxy/certs/auth.geowealth.int.crt \
+         -key-file  proxy/certs/auth.geowealth.int.key \
+         auth.geowealth.int localhost 127.0.0.1
+
   mkcert -cert-file proxy/certs/billing.geowealth.int.crt \
          -key-file  proxy/certs/billing.geowealth.int.key \
          billing.geowealth.int localhost 127.0.0.1
@@ -89,7 +94,7 @@ The script auto-detects docker vs podman. Override with `CONTAINER_ENGINE=docker
 
 After it's up:
 
-- **Keycloak admin console**: <http://localhost:8898/admin/> (admin / admin)
+- **Keycloak admin console**: <https://auth.geowealth.int:5180/admin/> (admin / admin)
 - **Billing FE**: <https://billing.geowealth.int:5184/>
 - **Trading FE**: <https://trading.geowealth.int:5185/>
 
