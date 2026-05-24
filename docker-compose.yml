@@ -78,12 +78,9 @@ services:
     ports:
       - "5184:5184"
     volumes:
+      # nginx reads the certs at the same paths its config hardcodes.
       - ./proxy/certs/billing.geowealth.int.crt:/certs/billing.crt:ro
       - ./proxy/certs/billing.geowealth.int.key:/certs/billing.key:ro
-    environment:
-      BFF_BILLING_URL: http://bff-billing:8080
-      HTTPS_CERT_PATH: /certs/billing.crt
-      HTTPS_KEY_PATH: /certs/billing.key
 
   bff-billing:
     build:
@@ -121,10 +118,6 @@ services:
     volumes:
       - ./proxy/certs/trading.geowealth.int.crt:/certs/trading.crt:ro
       - ./proxy/certs/trading.geowealth.int.key:/certs/trading.key:ro
-    environment:
-      BFF_TRADING_URL: http://bff-trading:8080
-      HTTPS_CERT_PATH: /certs/trading.crt
-      HTTPS_KEY_PATH: /certs/trading.key
 
   bff-trading:
     build:
