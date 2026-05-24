@@ -273,69 +273,6 @@
   "users": [],
   "clients": [
     {
-      "clientId": "mfe-shell-client",
-      "enabled": true,
-      "name": "MFE Shell Client",
-      "description": "Single OIDC client for the microfrontend shell (replaces app1/2/3-client).",
-      "publicClient": true,
-      "bearerOnly": false,
-      "webOrigins": [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-      ],
-      "redirectUris": [
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5173/",
-        "http://127.0.0.1:5173/*",
-        "http://localhost:5173",
-        "http://localhost:5173/",
-        "http://localhost:5173/*"
-      ],
-      "baseUrl": "http://localhost:5173/",
-      "rootUrl": "http://localhost:5173",
-      "protocol": "openid-connect",
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": false,
-      "frontchannelLogout": false,
-      "protocolMappers": [
-        {
-          "name": "realm-roles-flat",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
-          "config": {
-            "claim.name": "roles",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "firmCd",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "consentRequired": false,
-          "config": {
-            "aggregate.attrs": "false",
-            "introspection.token.claim": "true",
-            "userinfo.token.claim": "true",
-            "multivalued": "false",
-            "user.attribute": "firmCd",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "claim.name": "firmCd",
-            "jsonType.label": "String"
-          }
-        }
-      ],
-      "attributes": {
-        "saml_idp_initiated_sso_url_name": "mfe-shell-client"
-      }
-    },
-    {
       "clientId": "demo-billing-client",
       "enabled": true,
       "name": "Demo Billing Client",
@@ -387,22 +324,30 @@
       ]
     },
     {
-      "clientId": "app1-client",
-      "enabled": false,
-      "name": "App1 Client",
-      "description": "Legacy per-app OIDC client. Disabled in the MFE migration \u2014 the shell uses mfe-shell-client instead. Kept in the realm for fast rollback; flip 'enabled' to true to revive the old 3-app demo.",
+      "clientId": "demo-trading-client",
+      "enabled": true,
+      "name": "Demo Trading Client",
+      "description": "Public OIDC client for the demo-trading standalone app at https://trading.geowealth.int:5185. P1-only auth via kc_idp_hint=p1.",
       "publicClient": true,
       "bearerOnly": false,
       "webOrigins": [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        "https://trading.geowealth.int:5185",
+        "http://localhost:5185",
+        "http://127.0.0.1:5185"
       ],
       "redirectUris": [
-        "http://localhost:5173/*",
-        "http://127.0.0.1:5173/*"
+        "https://trading.geowealth.int:5185",
+        "https://trading.geowealth.int:5185/",
+        "https://trading.geowealth.int:5185/*",
+        "http://localhost:5185",
+        "http://localhost:5185/",
+        "http://localhost:5185/*",
+        "http://127.0.0.1:5185",
+        "http://127.0.0.1:5185/",
+        "http://127.0.0.1:5185/*"
       ],
-      "baseUrl": "http://localhost:5173/",
-      "rootUrl": "http://localhost:5173",
+      "baseUrl": "https://trading.geowealth.int:5185/",
+      "rootUrl": "https://trading.geowealth.int:5185",
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
@@ -410,91 +355,8 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
-        "login_theme": "app-a"
-      },
-      "protocolMappers": [
-        {
-          "name": "realm-roles-flat",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
-          "config": {
-            "claim.name": "roles",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        }
-      ]
-    },
-    {
-      "clientId": "app2-client",
-      "enabled": false,
-      "name": "App2 Client",
-      "description": "Legacy per-app OIDC client. Disabled in the MFE migration \u2014 the shell uses mfe-shell-client instead. Kept in the realm for fast rollback.",
-      "publicClient": true,
-      "bearerOnly": false,
-      "webOrigins": [
-        "http://localhost:5174",
-        "http://127.0.0.1:5174"
-      ],
-      "redirectUris": [
-        "http://localhost:5174/*",
-        "http://127.0.0.1:5174/*"
-      ],
-      "baseUrl": "http://localhost:5174/",
-      "rootUrl": "http://localhost:5174",
-      "protocol": "openid-connect",
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": false,
-      "frontchannelLogout": false,
-      "attributes": {
-        "login_theme": "app-b"
-      },
-      "protocolMappers": [
-        {
-          "name": "realm-roles-flat",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
-          "config": {
-            "claim.name": "roles",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        }
-      ]
-    },
-    {
-      "clientId": "app3-client",
-      "enabled": false,
-      "name": "App3 Client",
-      "description": "Legacy per-app OIDC client. Disabled in the MFE migration \u2014 the shell uses mfe-shell-client instead. Kept in the realm for fast rollback.",
-      "publicClient": true,
-      "bearerOnly": false,
-      "webOrigins": [
-        "http://localhost:5175",
-        "http://127.0.0.1:5175"
-      ],
-      "redirectUris": [
-        "http://localhost:5175/*",
-        "http://127.0.0.1:5175/*"
-      ],
-      "baseUrl": "http://localhost:5175/",
-      "rootUrl": "http://localhost:5175",
-      "protocol": "openid-connect",
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": false,
-      "frontchannelLogout": false,
-      "attributes": {
-        "login_theme": "app-c"
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://trading.geowealth.int:5185/*##http://localhost:5185/*"
       },
       "protocolMappers": [
         {

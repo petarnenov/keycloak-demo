@@ -14,25 +14,11 @@
 #   destroys user data.
 #
 # Modes:
-#   ./start.sh           Level 1 (demo).      Default-mode stack as defined in
-#                                              docker-compose.yml — MFE containers
-#                                              run `build && preview`.
-#   ./start.sh --dev     Level 2 (MFE dev).   Adds docker-compose.dev.yml. MFE
-#                                              containers run `vite build --watch`
-#                                              + `vite preview` concurrently, so
-#                                              source edits rebuild in ~1-2s.
-#                                              Hard-refresh the browser to pick
-#                                              up the new federation chunks.
-#   ./start.sh --reset   DESTRUCTIVE.         Wipes all volumes (Postgres +
-#                                              Keycloak data) before rebuilding.
-#                                              Use this only when you want a
-#                                              clean realm seed from the JSON
-#                                              exports. Combine with --dev as
-#                                              `./start.sh --dev --reset`.
-#
-# Level 3 (BFF on the host) is reached via ./dev-bff.sh — it requires the
-# stack to be up first (typically via ./start.sh --dev so the shell's BFF URL
-# overrides are wired).
+#   ./start.sh           Bring up the full domain stack (postgres, keycloak,
+#                        user-service, all domain web + bff images).
+#   ./start.sh --reset   DESTRUCTIVE. Wipes all volumes (Postgres + Keycloak
+#                        data) before rebuilding. Use this only when you want
+#                        a clean realm seed from the JSON exports.
 #
 # Works with either Docker or Podman: the container engine is auto-detected
 # (Docker preferred). Override with CONTAINER_ENGINE=docker|podman.
@@ -41,18 +27,16 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # --- Parse args ------------------------------------------------------------
-DEV=0
 RESET=0
 for arg in "$@"; do
   case "$arg" in
-    ""|--default|default) DEV=0 ;;
-    --dev|dev)            DEV=1 ;;
+    ""|--default|default) ;;
     --reset|reset)        RESET=1 ;;
     -h|--help|help)
-      sed -n '2,29p' "$0"
+      sed -n '2,17p' "$0"
       exit 0 ;;
     *)
-      echo "Error: unknown argument '$arg' (expected '--dev', '--reset', or nothing)." >&2
+      echo "Error: unknown argument '$arg' (expected '--reset' or nothing)." >&2
       echo "Run '$0 --help' for usage." >&2
       exit 1 ;;
   esac
@@ -106,16 +90,9 @@ case "$ENGINE" in
     exit 1 ;;
 esac
 
-# Add `-f docker-compose.dev.yml` to every compose call when --dev was passed.
 FILES=(-f docker-compose.yml)
-if [ "$DEV" = 1 ]; then
-  FILES+=(-f docker-compose.dev.yml)
-fi
 
 echo "==> Using ${COMPOSE[*]} ${FILES[*]} (engine: $ENGINE)"
-if [ "$DEV" = 1 ]; then
-  echo "==> DEV mode: MFE containers will run vite build --watch + preview"
-fi
 
 PROJECT="$(basename "$PWD")"
 
@@ -161,7 +138,7 @@ else
   "${COMPOSE[@]}" "${FILES[@]}" down --remove-orphans || true
 fi
 
-echo "==> Rebuilding all images (keycloak + bff + user-service)"
+echo "==> Rebuilding all images (keycloak + user-service + domain bff/web)"
 "${COMPOSE[@]}" "${FILES[@]}" build
 
 if [ "$ENGINE" = podman ]; then
@@ -188,8 +165,4 @@ echo
 echo "==> Status:"
 "${COMPOSE[@]}" "${FILES[@]}" ps
 echo
-if [ "$DEV" = 1 ]; then
-  echo "Level 2 dev mode is ON. Edits to apps/mfe-X/src/** rebuild in-place;"
-  echo "hard-refresh the browser to pick up new federation chunks."
-fi
 echo "Tail logs with: ${COMPOSE[*]} ${FILES[*]} logs -f"

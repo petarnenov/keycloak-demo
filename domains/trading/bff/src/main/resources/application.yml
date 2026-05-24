@@ -1,0 +1,48 @@
+micronaut:
+  application:
+    name: ${MICRONAUT_APPLICATION_NAME:trading-bff}
+  server:
+    cors:
+      enabled: true
+      configurations:
+        all:
+          allowedOrigins:
+            - ${CORS_ORIGIN:https://trading.geowealth.int:5185}
+          allowedMethods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          allowedHeaders:
+            - "*"
+  security:
+    enabled: true
+    authentication: bearer
+    token:
+      name-key: preferred_username
+      roles-name: roles
+      jwt:
+        signatures:
+          jwks:
+            keycloak:
+              url: ${KEYCLOAK_AUTH_SERVER_URL:http://localhost:8080/realms/demo-realm}/protocol/openid-connect/certs
+    intercept-url-map:
+      - pattern: /**
+        http-method: OPTIONS
+        access:
+          - isAnonymous()
+      - pattern: /health
+        access:
+          - isAnonymous()
+      - pattern: /api/**
+        access:
+          - isAuthenticated()
+
+endpoints:
+  health:
+    enabled: true
+    sensitive: false
+
+app:
+  source: ${APP_SOURCE:trading-bff}

@@ -1,36 +1,16 @@
-# Microfrontend topology. The shell at :5173 signs users in once against
-# Keycloak and lazy-loads three independently-deployed MFEs through module
-# federation; each MFE is its own container and pairs with its own BFF.
+# Domain topology. The realm + identity tier (postgres + keycloak +
+# user-service) is shared; each domain owns its own FE + BFF image and
+# resolves to its own hostname. Domains never share code — only the realm
+# and the identity-provider federation (SAML to P1).
 #
-#   browser → shell (5173)
-#                ├─ fetches mfe-client (5181) / mfe-ops (5182) / mfe-admin (5183) remoteEntry.js
-#                └─ proxies /api/{whoami,client/*,ops/*,admin/*} to the matching BFF container
+#   browser → P1/Integrations sidebar (in the ~/geowealth Tomcat app)
+#                ├─ Demo Billing  → https://billing.geowealth.int:5184  (→ bff-billing:8084)
+#                └─ Demo Trading  → https://trading.geowealth.int:5185  (→ bff-trading:8085)
 #
-#   bff-client (8081, no role gate)   ← /api/whoami + /api/client/*
-#   bff-ops    (8082, user|admin)     ← /api/ops/*
-#   bff-admin  (8083, admin)          ← /api/admin/*
-
-x-mfe-common: &mfe-common
-  image: node:20-alpine
-  working_dir: /workspace
-  volumes:
-    - ./frontend:/workspace
-    - /workspace/node_modules
-  networks:
-    - keycloak-network
-  depends_on:
-    keycloak:
-      condition: service_healthy
-
-x-bff-common: &bff-common
-  build:
-    context: ./bff
-  image: keycloak-demo-bff:latest
-  networks:
-    - keycloak-network
-  depends_on:
-    keycloak:
-      condition: service_healthy
+# Each link first hits Keycloak's authorize endpoint with kc_idp_hint=p1,
+# which short-circuits straight to P1's SAML IdP and back. Once Keycloak
+# emits the OIDC code, the browser lands on the domain SPA, which runs
+# keycloak-js to finalize and pull a token.
 
 services:
   postgres:
@@ -124,144 +104,86 @@ services:
       retries: 20
       start_period: 20s
 
-  # ---- frontend: shell + three MFE containers --------------------------------
-  # Each Vite container shares ./frontend so it can `npm install` the whole
-  # workspace once and resolve shell-api / inter-package symlinks. Each MFE
-  # builds and previews its own dist (federation expose requires a build); the
-  # shell stays in dev mode so the /api proxy and HMR for shell code work.
+  # ---- domain: billing -------------------------------------------------------
+  # Self-contained under ./domains/billing/. FE at billing.geowealth.int:5184
+  # (mkcert TLS, /etc/hosts entry required). BFF on :8084 returns stub
+  # invoices/summary/usage. Reached from P1/Integrations → Demo Billing.
 
-  shell:
-    <<: *mfe-common
-    command: sh -c "npm install && npm run -w shell dev -- --host 0.0.0.0"
-    ports:
-      - "5173:5173"
-    environment:
-      VITE_KEYCLOAK_URL: http://localhost:8898
-      VITE_KEYCLOAK_CLIENT_ID: mfe-shell-client
-      VITE_APP_NAME: "Demo Shell"
-      VITE_APP_TITLE: "Microfrontend SSO Demo"
-      VITE_APP_THEME: "a"
-      # Federation remote URLs — embedded in the shell bundle, must be
-      # browser-reachable (so localhost, not the in-compose hostname).
-      VITE_MFE_CLIENT_URL: http://localhost:5181
-      VITE_MFE_OPS_URL: http://localhost:5182
-      VITE_MFE_ADMIN_URL: http://localhost:5183
-      # BFF URLs are used by the Vite proxy on the shell container itself,
-      # so they're in-network hostnames.
-      BFF_SHELL_URL: http://bff-client:8080
-      BFF_CLIENT_URL: http://bff-client:8080
-      BFF_OPS_URL: http://bff-ops:8080
-      BFF_ADMIN_URL: http://bff-admin:8080
-
-  mfe-client:
-    <<: *mfe-common
-    command: sh -c "npm install && npm run -w mfe-client build && npm run -w mfe-client preview"
-    ports:
-      - "5181:5181"
-
-  mfe-ops:
-    <<: *mfe-common
-    command: sh -c "npm install && npm run -w mfe-ops build && npm run -w mfe-ops preview"
-    ports:
-      - "5182:5182"
-
-  mfe-admin:
-    <<: *mfe-common
-    command: sh -c "npm install && npm run -w mfe-admin build && npm run -w mfe-admin preview"
-    ports:
-      - "5183:5183"
-
-  # ---- standalone: demo-billing -----------------------------------------------
-  # Plain white React app at billing.geowealth.int:5184 (requires
-  # /etc/hosts entry: `127.0.0.1 billing.geowealth.int`). P1-only auth via
-  # demo-realm + kc_idp_hint=p1. Pairs with bff-billing (8084) for JWT
-  # validation; "Under construction" content for now.
   demo-billing:
-    <<: *mfe-common
-    command: sh -c "npm install && npm run -w demo-billing build && npm run -w demo-billing preview"
+    build:
+      context: ./domains/billing/web
+    image: keycloak-demo-billing-web:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
     ports:
       - "5184:5184"
     volumes:
-      - ./frontend:/workspace
-      - /workspace/node_modules
-      # Mount the mkcert-issued certificate read-only. Vite preview reads
-      # the paths via env vars (HTTPS_CERT_PATH / HTTPS_KEY_PATH) and serves
-      # https:// on 5184. The certs are locally trusted because mkcert
-      # installs a CA into the host's keychain on first run.
       - ./proxy/certs/billing.geowealth.int.crt:/certs/billing.crt:ro
       - ./proxy/certs/billing.geowealth.int.key:/certs/billing.key:ro
     environment:
-      VITE_KEYCLOAK_URL: http://localhost:8898
-      VITE_KEYCLOAK_REALM: demo-realm
-      VITE_KEYCLOAK_CLIENT_ID: demo-billing-client
       BFF_BILLING_URL: http://bff-billing:8080
       HTTPS_CERT_PATH: /certs/billing.crt
       HTTPS_KEY_PATH: /certs/billing.key
 
-  # ---- POC: GeoWealth white-labeling demo app --------------------------------
-  # Standalone Vite dev server at :5174, isolated from the MFE shell. Entered
-  # via subdomains (changepath.localhost:5174, default.localhost:5174) so the
-  # browser-visible Host header drives ThemeSelectorProvider's tenant
-  # resolution against Keycloak (Phase 2). Macos resolves *.localhost
-  # automatically; Linux may need /etc/hosts entries.
-  geowealth-poc:
-    <<: *mfe-common
-    command: sh -c "npm install && npm run -w geowealth-poc dev -- --host 0.0.0.0"
-    ports:
-      - "5174:5174"
-    environment:
-      VITE_KEYCLOAK_REALM: geowealth-realm
-      VITE_KEYCLOAK_CLIENT_ID: geowealth-poc-client
-      VITE_APP_TITLE: "GeoWealth POC"
-
-  # ---- backend: one BFF per MFE ----------------------------------------------
-  # Same image, different config. APP_ALLOWED_ROLES is what gates /api/user;
-  # /api/whoami is unconditional (the shell calls it through bff-client).
-
-  bff-client:
-    <<: *bff-common
-    ports:
-      - "8081:8080"
-    environment:
-      MICRONAUT_APPLICATION_NAME: bff-client
-      APP_SOURCE: bff-client
-      CORS_ORIGIN: http://localhost:5173
-      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-
-  bff-ops:
-    <<: *bff-common
-    ports:
-      - "8082:8080"
-    environment:
-      MICRONAUT_APPLICATION_NAME: bff-ops
-      APP_SOURCE: bff-ops
-      APP_ALLOWED_ROLES: "user,admin"
-      CORS_ORIGIN: http://localhost:5173
-      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-
-  bff-admin:
-    <<: *bff-common
-    ports:
-      - "8083:8080"
-    environment:
-      MICRONAUT_APPLICATION_NAME: bff-admin
-      APP_SOURCE: bff-admin
-      APP_ALLOWED_ROLES: "admin"
-      CORS_ORIGIN: http://localhost:5173
-      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-
-  # BFF for demo-billing. APP_ALLOWED_ROLES intentionally unset — bff-billing
-  # accepts any authenticated user (the role gate in UserController.java
-  # short-circuits when the list is empty). CORS_ORIGIN allows the billing
-  # subdomain plus localhost direct access.
   bff-billing:
-    <<: *bff-common
+    build:
+      context: ./domains/billing/bff
+    image: keycloak-demo-billing-bff:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
     ports:
       - "8084:8080"
     environment:
-      MICRONAUT_APPLICATION_NAME: bff-billing
-      APP_SOURCE: bff-billing
-      CORS_ORIGIN: http://billing.geowealth.int:5184
+      MICRONAUT_APPLICATION_NAME: billing-bff
+      APP_SOURCE: billing-bff
+      CORS_ORIGIN: https://billing.geowealth.int:5184
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+
+  # ---- domain: trading -------------------------------------------------------
+  # Twin of billing — same shape, different stub data (positions, orders, P/L).
+  # FE at trading.geowealth.int:5185 (mkcert TLS, /etc/hosts entry required).
+  # BFF on :8085. Reached from P1/Integrations → Demo Trading.
+
+  demo-trading:
+    build:
+      context: ./domains/trading/web
+    image: keycloak-demo-trading-web:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "5185:5185"
+    volumes:
+      - ./proxy/certs/trading.geowealth.int.crt:/certs/trading.crt:ro
+      - ./proxy/certs/trading.geowealth.int.key:/certs/trading.key:ro
+    environment:
+      BFF_TRADING_URL: http://bff-trading:8080
+      HTTPS_CERT_PATH: /certs/trading.crt
+      HTTPS_KEY_PATH: /certs/trading.key
+
+  bff-trading:
+    build:
+      context: ./domains/trading/bff
+    image: keycloak-demo-trading-bff:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "8085:8080"
+    environment:
+      MICRONAUT_APPLICATION_NAME: trading-bff
+      APP_SOURCE: trading-bff
+      CORS_ORIGIN: https://trading.geowealth.int:5185
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
 
 volumes:
