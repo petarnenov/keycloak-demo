@@ -1,4 +1,0 @@
-# The generator emits a sample concrete controller (a TODO stub) alongside the
-# abstract one. We hand-write demo.userservice.UserController instead, so skip
-# the sample to keep it out of the compiled sources.
-**/org/openapitools/controller/UsersController.java
