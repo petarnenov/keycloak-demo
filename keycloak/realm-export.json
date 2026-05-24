@@ -229,7 +229,7 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
-        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*"
+        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*##http://localhost:8888/*"
       },
       "protocolMappers": [
         {
