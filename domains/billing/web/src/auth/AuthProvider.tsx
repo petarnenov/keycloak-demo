@@ -38,25 +38,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    const startLogin = () =>
+      keycloak.login({ idpHint: 'p1', redirectUri: window.location.origin + '/' });
+
     initOnce()
       .then((ok) => {
         if (cancelled) return;
         if (!ok) {
-          // Force SAML federation through P1 — demo-realm is P1-only
-          // (Phase 13 of WIP-SSO.md). idpHint=p1 instructs Keycloak to
-          // skip its own login form and go straight to the P1 broker.
-          keycloak.login({
-            idpHint: 'p1',
-            redirectUri: window.location.origin + '/'
-          });
+          startLogin();
           return;
         }
         setAuthenticated(true);
         setReady(true);
       })
       .catch(() => {
+        // Most common cause: state mismatch when the auth response was
+        // initiated outside keycloak-js (e.g. a hand-built ?code=... URL
+        // landed here). Recover by starting a fresh keycloak-js-driven
+        // login — keycloak-js will store its own state + code_verifier,
+        // and the next callback round-trip will validate cleanly.
         if (cancelled) return;
-        setReady(true);
+        startLogin();
       });
     return () => {
       cancelled = true;

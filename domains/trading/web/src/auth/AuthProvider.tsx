@@ -38,23 +38,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    const startLogin = () =>
+      keycloak.login({ idpHint: 'p1', redirectUri: window.location.origin + '/' });
+
     initOnce()
       .then((ok) => {
         if (cancelled) return;
         if (!ok) {
-          // P1-only auth via SAML federation — same pattern as billing.
-          keycloak.login({
-            idpHint: 'p1',
-            redirectUri: window.location.origin + '/'
-          });
+          startLogin();
           return;
         }
         setAuthenticated(true);
         setReady(true);
       })
       .catch(() => {
+        // State mismatch when ?code=... arrives from an auth flow that
+        // keycloak-js did not initiate (e.g. the P1 sidebar used to
+        // hand-build the OIDC authorize URL). Recover by starting a
+        // fresh keycloak-js-driven login.
         if (cancelled) return;
-        setReady(true);
+        startLogin();
       });
     return () => {
       cancelled = true;
