@@ -331,7 +331,7 @@
       "clientId": "p1-self-client",
       "enabled": true,
       "name": "P1 Self OIDC Client",
-      "description": "OIDC client used by P1 itself for silent re-authentication when its HttpSession has expired but the Keycloak session is still alive. Redirect URI is the P1 OIDC callback endpoint that exchanges the code, validates the id_token, looks up the user by sub (P1 UUID), and recreates LoggedUser in the HttpSession. Also registers a back-channel logout URL so KC notifies P1 when its SSO session ends (idle timeout / admin revoke) — without this, P1 wouldn't learn about a dead KC session until the next federation attempt, and the user appears 'logged in' on P1 but cannot reach any SP.",
+      "description": "OIDC client used by P1 for silent re-auth when its HttpSession expired but the KC session is alive. Back-channel logout URL lets KC notify P1 when its SSO session ends (idle timeout / admin revoke). See CLAUDE.md (Phase 15-17) for the full rationale.",
       "publicClient": true,
       "bearerOnly": false,
       "webOrigins": [
