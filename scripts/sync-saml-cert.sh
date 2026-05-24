@@ -31,10 +31,16 @@ set -euo pipefail
 
 KC_BASE_URL="${KC_BASE_URL:-https://auth.geowealth.int:5180}"
 KC_REALM="${KC_REALM:-demo-realm}"
-KC_ADMIN_USER="${KC_ADMIN_USER:-admin}"
-KC_ADMIN_PASS="${KC_ADMIN_PASS:-admin}"
 P1_METADATA_URL="${P1_METADATA_URL:-http://localhost:8888/saml/idp/metadata.do}"
 IDP_ALIAS="${IDP_ALIAS:-p1}"
+BACKUP_DIR="${BACKUP_DIR:-/tmp/sync-saml-cert-backups}"
+
+# KC_ADMIN_USER and KC_ADMIN_PASS must be set explicitly — refusing to
+# default to admin/admin so a misconfigured cron-run can't leak the
+# default credentials in audit logs or process listings. Source from a
+# secret store in prod.
+: "${KC_ADMIN_USER:?KC_ADMIN_USER not set — refusing to attempt admin/admin}"
+: "${KC_ADMIN_PASS:?KC_ADMIN_PASS not set — refusing to attempt admin/admin}"
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 die() { echo "[FATAL] $*" >&2; exit 1; }
@@ -116,7 +122,13 @@ log "Cert mismatch detected:"
 log "  realm has: ${realm_cert:0:40}…${realm_cert: -10:10} (${#realm_cert} chars)"
 log "  P1 emits:  ${current_cert:0:40}…${current_cert: -10:10} (${#current_cert} chars)"
 
-# --- 5. Patch the realm. --------------------------------------------
+# --- 5. Backup current config before mutating. ----------------------
+mkdir -p "$BACKUP_DIR"
+backup_file="$BACKUP_DIR/$(date '+%Y%m%d-%H%M%S')-$IDP_ALIAS.json"
+cp "$tmp_cfg" "$backup_file"
+log "Backed up current realm IdP config to $backup_file"
+
+# --- 6. Patch the realm. --------------------------------------------
 log "Updating realm IdP '$IDP_ALIAS' with new signing cert"
 tmp_new="$(mktemp)"
 trap 'rm -f "$tmp_meta" "$tmp_cfg" "$tmp_new"' EXIT
@@ -129,14 +141,21 @@ with open(os.environ['OUT_FILE'], 'w') as fh:
     json.dump(d, fh)
 PY
 
-curl -sf -k \
-    --max-time 10 \
-    -X PUT \
-    -H "Authorization: Bearer $admin_token" \
-    -H "Content-Type: application/json" \
-    --data-binary "@$tmp_new" \
-    "$KC_BASE_URL/admin/realms/$KC_REALM/identity-provider/instances/$IDP_ALIAS" \
-    > /dev/null \
-    || die "PUT to update IdP config failed"
+if ! curl -sf -k \
+        --max-time 10 \
+        -X PUT \
+        -H "Authorization: Bearer $admin_token" \
+        -H "Content-Type: application/json" \
+        --data-binary "@$tmp_new" \
+        "$KC_BASE_URL/admin/realms/$KC_REALM/identity-provider/instances/$IDP_ALIAS" \
+        > /dev/null; then
+    echo "[FATAL] PUT to update IdP config failed" >&2
+    echo "  Restore with:" >&2
+    echo "    curl -sk -X PUT -H 'Authorization: Bearer <admin-token>' -H 'Content-Type: application/json' \\" >&2
+    echo "      --data-binary @$backup_file \\" >&2
+    echo "      $KC_BASE_URL/admin/realms/$KC_REALM/identity-provider/instances/$IDP_ALIAS" >&2
+    exit 1
+fi
 
 log "Realm updated. Verify on next login attempt."
+log "Backup retained at $backup_file"

@@ -71,13 +71,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       channel = new BroadcastChannel('auth');
       channel.onmessage = (event) => {
-        if (event?.data?.type === 'logout' && !cancelled) {
-          window.location.reload();
+        if (event?.data?.type !== 'logout' || cancelled) return;
+        // Guard against destroying in-flight work. The browser fires
+        // `beforeunload` only when there are unsaved changes the page
+        // has flagged via `event.preventDefault()` — we replicate that
+        // signal by checking for any element with a `data-dirty="true"`
+        // attribute (forms can set it as the user types). If something
+        // looks unsaved, prompt; otherwise reload silently.
+        const dirty = document.querySelector('[data-dirty="true"]') !== null;
+        if (dirty) {
+          const ok = window.confirm(
+            'You were signed out in another tab. Reload now and lose unsaved changes?'
+          );
+          if (!ok) return;
         }
+        window.location.reload();
       };
     } catch {
       // BroadcastChannel unsupported (old browsers) — no front-channel
-      // signal will reach this tab; refresh-token failure (~5 min)
+      // signal will reach this tab; refresh-token failure (~30 min)
       // will eventually drive the same outcome via init catch above.
     }
 

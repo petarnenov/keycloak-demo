@@ -29,8 +29,31 @@
 -->
 <script>
   (function () {
-    try { sessionStorage.clear(); } catch (e) {}
-    try { localStorage.clear(); } catch (e) {}
+    // Selective wipe: only delete keys belonging to auth/identity
+    // libraries we know about (keycloak-js + our own conventions). The
+    // SPA may also store unrelated user state — UI preferences, draft
+    // invoices, cached customers — which should survive a logout in a
+    // sibling SPA.
+    var AUTH_KEY_PREFIXES = ['kc-', 'oidc.', 'auth.'];
+    function isAuthKey(key) {
+      if (!key) return false;
+      for (var i = 0; i < AUTH_KEY_PREFIXES.length; i++) {
+        if (key.indexOf(AUTH_KEY_PREFIXES[i]) === 0) return true;
+      }
+      return false;
+    }
+    function wipe(storage) {
+      try {
+        var doomed = [];
+        for (var i = 0; i < storage.length; i++) {
+          var k = storage.key(i);
+          if (isAuthKey(k)) doomed.push(k);
+        }
+        doomed.forEach(function (k) { storage.removeItem(k); });
+      } catch (e) {}
+    }
+    wipe(sessionStorage);
+    wipe(localStorage);
     try {
       // BroadcastChannel scope is per-origin, so this only reaches
       // tabs at https://billing.geowealth.int:5184 — the live billing
