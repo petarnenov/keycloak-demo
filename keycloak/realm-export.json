@@ -3,8 +3,8 @@
   "realm": "demo-realm",
   "enabled": true,
   "displayName": "Demo SSO Realm",
-  "accessTokenLifespan": 300,
-  "ssoSessionIdleTimeout": 1800,
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 25200,
   "ssoSessionMaxLifespan": 36000,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
@@ -227,9 +227,10 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "frontchannelLogout": false,
+      "frontchannelLogout": true,
       "attributes": {
-        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*##http://localhost:8888/*"
+        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*##http://localhost:8888/*",
+        "frontchannel.logout.url": "https://billing.geowealth.int:5184/frontchannel-logout.html"
       },
       "protocolMappers": [
         {
@@ -277,9 +278,10 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "frontchannelLogout": false,
+      "frontchannelLogout": true,
       "attributes": {
-        "post.logout.redirect.uris": "https://trading.geowealth.int:5185/*##http://localhost:5185/*"
+        "post.logout.redirect.uris": "https://trading.geowealth.int:5185/*##http://localhost:5185/*",
+        "frontchannel.logout.url": "https://trading.geowealth.int:5185/frontchannel-logout.html"
       },
       "protocolMappers": [
         {
@@ -301,7 +303,7 @@
       "clientId": "p1-self-client",
       "enabled": true,
       "name": "P1 Self OIDC Client",
-      "description": "OIDC client used by P1 itself for silent re-authentication when its HttpSession has expired but the Keycloak session is still alive. Redirect URI is the P1 OIDC callback endpoint that exchanges the code, validates the id_token, looks up the user by sub (P1 UUID), and recreates LoggedUser in the HttpSession.",
+      "description": "OIDC client used by P1 itself for silent re-authentication when its HttpSession has expired but the Keycloak session is still alive. Redirect URI is the P1 OIDC callback endpoint that exchanges the code, validates the id_token, looks up the user by sub (P1 UUID), and recreates LoggedUser in the HttpSession. Also registers a back-channel logout URL so KC notifies P1 when its SSO session ends (idle timeout / admin revoke) — without this, P1 wouldn't learn about a dead KC session until the next federation attempt, and the user appears 'logged in' on P1 but cannot reach any SP.",
       "publicClient": true,
       "bearerOnly": false,
       "webOrigins": [
@@ -317,7 +319,10 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:8888/*"
+        "post.logout.redirect.uris": "http://localhost:8888/*",
+        "backchannel.logout.url": "http://host.docker.internal:8888/saml/idp/back-channel-logout.do",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       }
     }
   ],

@@ -59,8 +59,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         startLogin();
       });
+
+    // Front-channel logout signal: a sibling SPA (billing, p1, etc)
+    // signed out, KC fanned out a logout iframe to this origin's
+    // `frontchannel-logout.html`, that page wiped storage and
+    // broadcast on the "auth" channel. We need to leave the dashboard
+    // — but NOT call keycloak.logout() (that would loop the SLO
+    // chain). Reload reruns keycloak.init({ check-sso }); KC has no
+    // session for us anymore, so init resolves false → startLogin().
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel('auth');
+      channel.onmessage = (event) => {
+        if (event?.data?.type === 'logout' && !cancelled) {
+          window.location.reload();
+        }
+      };
+    } catch {
+      // BroadcastChannel unsupported (old browsers) — no front-channel
+      // signal will reach this tab; refresh-token failure (~5 min)
+      // will eventually drive the same outcome via init catch above.
+    }
+
     return () => {
       cancelled = true;
+      channel?.close();
     };
   }, []);
 
