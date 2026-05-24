@@ -296,6 +296,29 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "p1-self-client",
+      "enabled": true,
+      "name": "P1 Self OIDC Client",
+      "description": "OIDC client used by P1 itself for silent re-authentication when its HttpSession has expired but the Keycloak session is still alive. Redirect URI is the P1 OIDC callback endpoint that exchanges the code, validates the id_token, looks up the user by sub (P1 UUID), and recreates LoggedUser in the HttpSession.",
+      "publicClient": true,
+      "bearerOnly": false,
+      "webOrigins": [
+        "http://localhost:8888"
+      ],
+      "redirectUris": [
+        "http://localhost:8888/saml/idp/oidc-callback.do"
+      ],
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8888/*"
+      }
     }
   ],
   "roles": {
