@@ -4,13 +4,14 @@
 # federation to P1.
 #
 #   browser → P1/Integrations sidebar (in the ~/geowealth Tomcat app)
-#                ├─ Demo Billing  → https://billing.geowealth.int:5184  (→ bff-billing:8084)
-#                └─ Demo Trading  → https://trading.geowealth.int:5185  (→ bff-trading:8085)
+#                ├─ Demo Billing  → https://billing.geowealth.int:5184  (nginx → /api/billing → bff-billing:8080 inside the docker network)
+#                └─ Demo Trading  → https://trading.geowealth.int:5185  (nginx → /api/trading → bff-trading:8080 inside the docker network)
 #
 # Each link first hits Keycloak's authorize endpoint with kc_idp_hint=p1,
 # which short-circuits straight to P1's SAML IdP and back. Once Keycloak
 # emits the OIDC code, the browser lands on the domain SPA, which runs
-# keycloak-js to finalize and pull a token.
+# keycloak-js to finalize and pull a token. The BFFs are not exposed on
+# the host — only nginx reaches them, over the keycloak-network bridge.
 
 services:
   postgres:
@@ -82,6 +83,8 @@ services:
       - ./proxy/certs/billing.geowealth.int.crt:/certs/billing.crt:ro
       - ./proxy/certs/billing.geowealth.int.key:/certs/billing.key:ro
 
+  # Internal-only. nginx in the demo-billing container reaches it as
+  # bff-billing:8080 via the docker network; no host port mapping.
   bff-billing:
     build:
       context: ./domains/billing/bff
@@ -91,18 +94,15 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
-    ports:
-      - "8084:8080"
     environment:
       MICRONAUT_APPLICATION_NAME: billing-bff
       APP_SOURCE: billing-bff
-      CORS_ORIGIN: https://billing.geowealth.int:5184
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
 
   # ---- domain: trading -------------------------------------------------------
   # Twin of billing — same shape, different stub data (positions, orders, P/L).
   # FE at trading.geowealth.int:5185 (mkcert TLS, /etc/hosts entry required).
-  # BFF on :8085. Reached from P1/Integrations → Demo Trading.
+  # BFF is internal-only, reached by nginx as bff-trading:8080. Same as billing.
 
   demo-trading:
     build:
@@ -128,12 +128,9 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
-    ports:
-      - "8085:8080"
     environment:
       MICRONAUT_APPLICATION_NAME: trading-bff
       APP_SOURCE: trading-bff
-      CORS_ORIGIN: https://trading.geowealth.int:5185
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
 
 volumes:
