@@ -354,8 +354,24 @@
       }
     }
   ],
+  "defaultRole": {
+    "name": "default-roles-demo-realm",
+    "description": "${role_default-roles}",
+    "composite": true,
+    "clientRole": false
+  },
   "roles": {
     "realm": [
+      {
+        "name": "default-roles-demo-realm",
+        "description": "${role_default-roles}",
+        "composite": true,
+        "composites": {
+          "client": {
+            "account": ["view-profile", "manage-account"]
+          }
+        }
+      },
       {
         "name": "client",
         "description": "Coarse capability: end-client of the firm (limited self-service)."
@@ -385,8 +401,8 @@
         "description": "Per-domain capability: read-only access to the trading domain (portfolio/positions/orders)."
       },
       {
-        "name": "gw-superadmin",
-        "description": "Global cross-firm override (P1 gwAdminFlag). The BFF applies it as 'gw-superadmin || hasX()', mirroring P1's call-site 'gwAdmin || canX()' convention."
+        "name": "gwAdmin",
+        "description": "Global cross-firm override (P1 gwAdminFlag). The BFF applies it as 'gwAdmin || hasX()', mirroring P1's call-site 'gwAdmin || canX()' convention."
       }
     ]
   },
@@ -554,14 +570,14 @@
       }
     },
     {
-      "name": "roles-gw-superadmin-from-saml",
+      "name": "roles-gwadmin-from-saml",
       "identityProviderAlias": "p1",
       "identityProviderMapper": "saml-role-idp-mapper",
       "config": {
         "syncMode": "FORCE",
         "attribute.name": "roles",
-        "attribute.value": "gw-superadmin",
-        "role": "gw-superadmin"
+        "attribute.value": "gwAdmin",
+        "role": "gwAdmin"
       }
     }
   ],

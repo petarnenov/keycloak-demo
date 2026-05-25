@@ -114,10 +114,10 @@ public class BillingController {
         return v == null ? null : v.toString();
     }
 
-    /** Tier 2 gate: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gw-superadmin. */
+    /** Tier 2 gate: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gwAdmin. */
     private void requirePermission(HttpRequest<?> request, Authentication authentication, int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwSuperadmin(authentication)) {
-            return; // opt-in; coarse @Secured already applied; gw-superadmin overrides (gwAdmin || canX)
+        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
+            return; // opt-in; coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
         }
         String bearer = bearer(request);
         if (bearer == null || !authz.hasPermission(bearer, sub(authentication), objectType, permission)) {
@@ -125,12 +125,12 @@ public class BillingController {
         }
     }
 
-    /** Tier 3 list gate: keep only the items the user may act on, via P1's refine. No-op when off or gw-superadmin. */
+    /** Tier 3 list gate: keep only the items the user may act on, via P1's refine. No-op when off or gwAdmin. */
     private List<Map<String, Object>> refineByObjectAccess(HttpRequest<?> request, Authentication authentication,
                                                            List<Map<String, Object>> items,
                                                            int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwSuperadmin(authentication)) {
-            return items; // gw-superadmin sees every row (gwAdmin || canX)
+        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
+            return items; // gwAdmin sees every row (gwAdmin || canX)
         }
         String bearer = bearer(request);
         if (bearer == null) {
@@ -163,9 +163,9 @@ public class BillingController {
         return v == null ? authentication.getName() : v.toString();
     }
 
-    /** Global cross-firm override carried as the gw-superadmin realm role (gwAdminFlag). */
-    private static boolean isGwSuperadmin(Authentication authentication) {
-        return authentication.getRoles().contains("gw-superadmin");
+    /** Global cross-firm override carried as the gwAdmin realm role (gwAdminFlag). */
+    private static boolean isGwAdmin(Authentication authentication) {
+        return authentication.getRoles().contains("gwAdmin");
     }
 
     private static Map<String, Object> invoice(String number, LocalDate issued, double amount, String status) {

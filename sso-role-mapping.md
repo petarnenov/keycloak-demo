@@ -157,7 +157,7 @@ The four decisions and their justification:
 
 - **`gwAdminFlag` is a global override boolean**, outside the permission graph.
   Decide deliberately whether it becomes a separate global role
-  (`gw-superadmin`); do not fold it into the per-firm table.
+  (`gwAdmin`); do not fold it into the per-firm table.
 - **The BFF must actually read `firmCd`** for tenant scoping. The controllers
   today use only `authentication.getName()`; any fine-grained authz must also
   check the firm, or the capability roles are effectively global.
