@@ -96,7 +96,7 @@ public class TradingController {
         orders.add(order("ORD-91198", "GOOG", "buy",   60, "limit", 168.00, "cancelled", LocalDate.now().minusDays(3)));
 
         // tier 3 (lists): refine to the orders this user may act on — P1's refine pattern.
-        orders = refineByObjectAccess(request, orders, DemoAuthz.ORDER, DemoAuthz.PERM_EXECUTE);
+        orders = refineByObjectAccess(request, authentication, orders, DemoAuthz.ORDER, DemoAuthz.PERM_EXECUTE);
 
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
@@ -111,10 +111,10 @@ public class TradingController {
         return v == null ? null : v.toString();
     }
 
-    /** Tier 2 gate: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off. */
+    /** Tier 2 gate: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gw-superadmin. */
     private void requirePermission(HttpRequest<?> request, Authentication authentication, int objectType, int permission) {
-        if (!authz.fineEnabled()) {
-            return; // opt-in; the coarse @Secured gate already applied
+        if (!authz.fineEnabled() || isGwSuperadmin(authentication)) {
+            return; // opt-in; coarse @Secured already applied; gw-superadmin overrides (gwAdmin || canX)
         }
         String bearer = bearer(request);
         if (bearer == null || !authz.hasPermission(bearer, sub(authentication), objectType, permission)) {
@@ -122,12 +122,12 @@ public class TradingController {
         }
     }
 
-    /** Tier 3 list gate: keep only the items (keyed by "id") the user may act on, via P1's refine. No-op when off. */
-    private List<Map<String, Object>> refineByObjectAccess(HttpRequest<?> request,
+    /** Tier 3 list gate: keep only the items (keyed by "id") the user may act on, via P1's refine. No-op when off or gw-superadmin. */
+    private List<Map<String, Object>> refineByObjectAccess(HttpRequest<?> request, Authentication authentication,
                                                            List<Map<String, Object>> items,
                                                            int objectType, int permission) {
-        if (!authz.fineEnabled()) {
-            return items;
+        if (!authz.fineEnabled() || isGwSuperadmin(authentication)) {
+            return items; // gw-superadmin sees every row (gwAdmin || canX)
         }
         String bearer = bearer(request);
         if (bearer == null) {
@@ -158,6 +158,11 @@ public class TradingController {
     private static String sub(Authentication authentication) {
         Object v = authentication.getAttributes().get("sub");
         return v == null ? authentication.getName() : v.toString();
+    }
+
+    /** Global cross-firm override carried as the gw-superadmin realm role (gwAdminFlag). */
+    private static boolean isGwSuperadmin(Authentication authentication) {
+        return authentication.getRoles().contains("gw-superadmin");
     }
 
     private static Map<String, Object> position(String symbol, String name, int qty, double avgCost, double last) {

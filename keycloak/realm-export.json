@@ -383,6 +383,10 @@
       {
         "name": "trading-viewer",
         "description": "Per-domain capability: read-only access to the trading domain (portfolio/positions/orders)."
+      },
+      {
+        "name": "gw-superadmin",
+        "description": "Global cross-firm override (P1 gwAdminFlag). The BFF applies it as 'gw-superadmin || hasX()', mirroring P1's call-site 'gwAdmin || canX()' convention."
       }
     ]
   },
@@ -547,6 +551,17 @@
         "attribute.name": "roles",
         "attribute.value": "user",
         "role": "advisor"
+      }
+    },
+    {
+      "name": "roles-gw-superadmin-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "gw-superadmin",
+        "role": "gw-superadmin"
       }
     }
   ],
