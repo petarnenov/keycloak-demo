@@ -516,7 +516,69 @@ The tier-1 gate is unchanged from what's already on the branch (`sso-role-mappin
    );
    ```
    Onboarding a firm = inserting rows that map their firm-specific `Role.name`s onto the canonical capability vocabulary. `derivePocRoles` becomes `derivCapabilities(loggedUser) = joinTranslationTable(loggedUser.firmCd, loggedUser.entityRoles)`. The SAML `roles` attribute now emits canonical strings, never firm-specific ones. The `roles-legacy-user-to-advisor-from-saml` Keycloak mapper can be removed once every firm has translation rows.
+   **Critical for analogy — translate from *effective* authority, not raw membership.** The built-in capabilities must come from the same `policy_rule_tbl`-backed predicates the monolith uses (`advisor` ← `isEmployee()`, `admin` ← `canLoggedUserAccessBackOffice()`), and a firm-specific role should only contribute its capability if that role's permissions are actually materialised for the user. Live proof this matters: `tim1` holds the `Admins` role **and** `gw_admin_flag=1`, yet `canLoggedUserAccessBackOffice()` returns `false` because `POLICY_RULE_TBL` is unbuilt for that firm (verified 2026-05-25 against the local P1 DB). A membership-only translation would emit `admin` where the monolith itself denies back-office — making the demo *more* permissive than P1, which is the opposite of analogy. So gate the translation on effective permissions (this also presumes `refreshPolicyRulesForEntity` has run — §1.7).
 3. **Phase C (P1 PR — authz endpoint):** add `GET /api/p1-authz/me` (§2.2), validating a Keycloak JWT, returning the existing `LoggedUserJTO`-derived permission map + `capabilities` + `p1Roles` for diagnostics. One endpoint, every BFF consumes it.
 4. **Phase D (BFFs):** add `P1AuthzClient` + the 60s in-process cache (§2.3) + one or two tier-2 checks in `BillingController` / `TradingController` to prove the model. Hard 2s upstream timeout, fail-closed on hang (§2.7).
 5. **Phase E (revocation):** plug the BFF cache into Keycloak's back-channel logout. Cache TTL can drop further (e.g. 5min) once a real revocation signal exists.
 6. **Phase F (admin BFF, future):** if/when a back-office admin domain needs the per-firm role catalogue, add a **separate** `GET /api/p1-authz/firm/{firmCd}/role-catalogue` endpoint mirroring §1.7a's gate (`isLoggedUserGwAdminFromFirm`). Response shape: one entry per role with the firm-specific name, default flag, AND its `ObjectTypePermission` set (the same `"<objectTypeCd>_<permissionCd>"` keys §1.7b emits) — so an admin BFF can render a JSON equivalent of `bo/manageRolePermissions.do`'s matrix without scraping the JSP. Mutation endpoints (`PUT …/role/{roleCd}/permissions`, `PUT …/role/{roleCd}/users`) wrap `setNewObjectTypePermissionsToRole` + `updateEntityRolesForRole` and inherit P1's eventual-consistency model — caller must accept the async-task delay. Do not stretch `/api/p1-authz/me` to serve admin use cases.
+7. **Phase G (object-instance scope — the last step to full monolith analogy):** add `POST /api/p1-authz/can` + `POST /api/p1-authz/refine` (§2.9) and have the BFFs `refine`-before-return on list endpoints / `can`-before-act on single-object endpoints. This is the tier that makes the domains gate at the row level the way the monolith does (`refineUUIDs` / `loadCustomerViewableAccounts`). Land the `gw-superadmin` realm role + `saml-role-idp-mapper` here too (decided in §2.6/§2.7), so the `gwAdmin || canX()` override exists end-to-end.
+
+### 2.9 Tier 3 — object-instance scope (AccessSets): mirror the monolith's *refine* pattern
+
+Tier 2 answers "can this user MODIFY *invoices*" — an `ObjectType`-level question. The monolith also gates at the **object-instance** level — "can this user execute account `ACCT-42`" — through `POLICY_RULE_TBL.OBJECT_ID` and `ENTITY_ROLE_ACCESS_SET_TBL` (§1.7). Neither the JWT nor the `/api/p1-authz/me` map carries instance scope, so full analogy needs a third tier. Its shape is dictated by how the monolith already solves this — not by preference.
+
+**How the monolith does it.** Everything bottoms out in one primitive — `loadPolicyRules(entityId, objectType, permission, identifier)` (`PolicyRuleManager.java:87`), returning the user's `PolicyRuleWrapper`s (each carries `getObjectId()` UUID or `getObjectCd()` int). Two shapes sit on it:
+
+- **Single object** → `canUserDoObject(uuid, ot, perm, identifier)` (`:82`) passes the specific id, checks `size() > 0`. This is `canLoggedUserExecuteAccount(user, accountId)` (`:361`), `canLoggedUserModifyClient` (`:212`), `canLoggedUserModifyRole` (`:288`) → one boolean.
+- **A list** → load the rule set **once** with `identifier = null` (the user's whole accessible set for that `(ot, perm)`), then **intersect in memory** with the candidate collection the caller already holds: `refineUUIDs(candidateIds, user, ot, perm)` (`:262`) and `loadCustomerViewableAccounts(customerAccounts, user)` (`:346`) — "given the page I'm about to render, return the subset the user may see."
+
+So the monolith fires **no** per-object N+1 for a list and ships the AccessSet **nowhere** — it loads the rule set once and refines the candidates in play. Per-object is just the single-candidate case, and `gwAdminFlag` short-circuits ahead of all of it at the call site (§1.8).
+
+**Faithful Tier 3 — expose the same two shapes, refine on the P1 side, both from one cached rule-set load:**
+
+```
+POST /api/p1-authz/can     { objectType, permission, objectId }   → { allowed: true|false }       ≈ canUserDoObject
+POST /api/p1-authz/refine  { objectType, permission, ids:[...] }  → { allowed: [ subset of ids ] } ≈ refineUUIDs
+```
+
+- `/refine` is the list workhorse: the BFF sends **only the page it is returning** (e.g. 50 ids), P1 loads the `(ot, perm)` rule set once and intersects — bounded by the page, one rule load, exactly `loadCustomerViewableAccounts`.
+- `/can` is `/refine` with one id — for single-object GET/PUT.
+- Both validate the user's own JWT, fail **closed** on the 2s timeout (§2.7); `gw-superadmin` short-circuits to "all allowed" without loading rules, mirroring `gwAdmin || canX(obj)`.
+- **Caching:** the BFF caches the rule set keyed `(sub, objectType, permission)` for ≤60s (§2.3) and serves both `/can` and `/refine` locally from it — strictly better than the monolith, which reloads per call.
+- **Two id shapes:** `OBJECT_ID` (UUID — accounts, clients) vs `OBJECT_CD` (int — roles, ebrokers) per `PolicyRule.hbm.xml`. The endpoint keys on whichever the `ObjectType` uses; the demo domains are UUID-keyed.
+
+**Controller, list path (the `loadCustomerViewableAccounts` analogue):**
+
+```java
+@Get("/invoices")
+@Secured({"billing-admin","billing-viewer","admin"})                       // tier 1
+public List<Invoice> invoices(Authentication authn) {
+    var page    = billingService.invoicesForFirm(authz.firmCd(authn));     // candidates (already firm-scoped, tier 1.5)
+    var allowed = authz.refine(authn, ObjectType.INVOICE, Permission.VIEW, // tier 3 — one call, P1 intersects
+                               page.stream().map(Invoice::id).toList());
+    return page.stream().filter(i -> allowed.contains(i.id())).toList();
+}
+```
+
+Single-object path uses `authz.can(authn, ObjectType.INVOICE, Permission.MODIFY, invoiceId)` — the `canLoggedUserExecuteAccount` analogue. Add to §2.6 "what stays out": **never loop `/can` over a list** (the N+1 the monolith deliberately avoids) and **never return the full AccessSet to the BFF** (unbounded) — always `/refine` the page.
+
+### 2.10 Full analogy with the P1 monolith — what maps to what
+
+| Monolith mechanism | Demo-domain equivalent | Tier |
+|---|---|---|
+| `isEmployee()` (entity type, `LoggedUser.java:49`) | `advisor` capability | 1 — identity |
+| `canLoggedUserAccessBackOffice()` = `(BACK_OFFICE, EXECUTE)` rule (`:544`) | `admin` capability | 1 — coarse |
+| firm-specific `Role.name` → `ObjectTypePermission`s | per-firm translation table → canonical capability, **effective not membership** | 1 |
+| `gwAdminFlag` call-site `gwAdmin \|\| canX()` (§1.8) | `gw-superadmin` realm role + `isGwSuperadmin \|\| …` in BFF authz | all |
+| `canLoggedUserExecuteObjectType` / `LoggedUserJTO.permissions` (`OT_Perm`) | `GET /api/p1-authz/me` permissions map, cached ≤60s | 2 — fine |
+| `canUserDoObject(id)` / `canLoggedUserExecuteAccount` (`:361`) | `POST /api/p1-authz/can` | 3 — object |
+| `refineUUIDs` (`:262`) / `loadCustomerViewableAccounts` (`:346`) | `POST /api/p1-authz/refine` | 3 — object lists |
+| `invalidateSessionByLoginKey` | back-channel logout → BFF cache evict (§2.4) | — |
+| `POLICY_RULE_TBL` is the materialised source of truth | BFF holds no authority; always reads P1 | — |
+
+Two invariants make this an analogy, not just a resemblance:
+
+1. **Effective, not declared.** Every tier reads P1's *effective* authority (`policy_rule_tbl`-backed `canX` / the permissions map), never raw `ENTITY_ROLE_TBL` membership — see the `tim1` proof in Phase B. The translation layer and `/api/p1-authz/me` derive from the same engine the monolith queries.
+2. **Same keys, same refine.** Tier 2 reuses P1's `"<objectTypeCd>_<permissionCd>"` keys (§1.7b); Tier 3 reuses P1's *load-once-then-intersect* refine (`refineUUIDs`). The BFF never builds a parallel authority model — it calls P1's, cached.
+
+Deliberate divergences (not gaps): the BFF accepts ≤60s staleness (the monolith's own warm session is staler — 7h, §1.3) and fails **closed** on a P1 timeout rather than blocking a request thread. With Phases B–D + G in place and `POLICY_RULE_TBL` materialised, a domain BFF authorises a request through the same three questions, in the same order, against the same source of truth as the monolith does internally — which is the definition of "works like the monolith" for this design.
