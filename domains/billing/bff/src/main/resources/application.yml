@@ -16,6 +16,11 @@ micronaut:
             - OPTIONS
           allowedHeaders:
             - "*"
+  http:
+    services:
+      p1authz:
+        url: ${P1_AUTHZ_URL:http://localhost:8888}
+        read-timeout: 2s
   security:
     enabled: true
     authentication: bearer
@@ -46,3 +51,8 @@ endpoints:
 
 app:
   source: ${APP_SOURCE:billing-bff}
+  authz:
+    # Tier 2/3 fine checks (p1-auth-flow.md §2.2/§2.9). Opt-in: off keeps the
+    # coarse-only @Secured behaviour until P1's authz endpoints are reachable.
+    fine-enabled: ${AUTHZ_FINE_ENABLED:false}
+    cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}

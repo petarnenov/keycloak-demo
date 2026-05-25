@@ -1,10 +1,14 @@
 package demo.billing;
 
 import io.micronaut.context.annotation.Value;
+import io.micronaut.http.HttpHeaders;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
+import io.micronaut.http.exceptions.HttpStatusException;
 import io.micronaut.security.annotation.Secured;
 import io.micronaut.security.authentication.Authentication;
 
@@ -31,14 +35,18 @@ import java.util.Map;
 public class BillingController {
 
     private final String source;
+    private final P1AuthzClient authz;
 
-    public BillingController(@Value("${app.source:billing-bff}") String source) {
+    public BillingController(@Value("${app.source:billing-bff}") String source, P1AuthzClient authz) {
         this.source = source;
+        this.authz = authz;
     }
 
     @Get("/summary")
-    @Secured({"billing-admin", "billing-viewer", "admin"})
-    public Map<String, Object> summary(Authentication authentication) {
+    @Secured({"billing-admin", "billing-viewer", "admin"})   // tier 1: can this user reach billing
+    public Map<String, Object> summary(HttpRequest<?> request, Authentication authentication) {
+        // tier 2: can this user VIEW invoices specifically (opt-in; see P1AuthzClient)
+        requirePermission(request, authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
@@ -59,14 +67,20 @@ public class BillingController {
     }
 
     @Get("/invoices")
-    @Secured({"billing-admin", "billing-viewer", "admin"})
-    public Map<String, Object> invoices(Authentication authentication) {
+    @Secured({"billing-admin", "billing-viewer", "admin"})   // tier 1
+    public Map<String, Object> invoices(HttpRequest<?> request, Authentication authentication) {
+        requirePermission(request, authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
+
         List<Map<String, Object>> invoices = new ArrayList<>();
         invoices.add(invoice("INV-2026-005", LocalDate.now().minusDays(2),  499.00, "open"));
         invoices.add(invoice("INV-2026-004", LocalDate.now().minusDays(31), 499.00, "paid"));
         invoices.add(invoice("INV-2026-003", LocalDate.now().minusDays(61), 499.00, "paid"));
         invoices.add(invoice("INV-2026-002", LocalDate.now().minusDays(92), 449.00, "paid"));
         invoices.add(invoice("INV-2026-001", LocalDate.now().minusDays(120), 449.00, "paid"));
+
+        // tier 3 (lists): refine the page to the invoices this user may VIEW — the
+        // loadCustomerViewableAccounts pattern (one /refine call, P1 intersects).
+        invoices = refineByObjectAccess(request, invoices, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);
 
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
@@ -98,6 +112,55 @@ public class BillingController {
     private static String firmCd(Authentication authentication) {
         Object v = authentication.getAttributes().get("firmCd");
         return v == null ? null : v.toString();
+    }
+
+    /** Tier 2 gate: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off. */
+    private void requirePermission(HttpRequest<?> request, Authentication authentication, int objectType, int permission) {
+        if (!authz.fineEnabled()) {
+            return; // opt-in; the coarse @Secured gate already applied
+        }
+        String bearer = bearer(request);
+        if (bearer == null || !authz.hasPermission(bearer, sub(authentication), objectType, permission)) {
+            throw new HttpStatusException(HttpStatus.FORBIDDEN, "fine permission denied");
+        }
+    }
+
+    /** Tier 3 list gate: keep only the items the user may act on, via P1's refine. No-op when fine checks are off. */
+    private List<Map<String, Object>> refineByObjectAccess(HttpRequest<?> request,
+                                                           List<Map<String, Object>> items,
+                                                           int objectType, int permission) {
+        if (!authz.fineEnabled()) {
+            return items;
+        }
+        String bearer = bearer(request);
+        if (bearer == null) {
+            return List.of(); // fail closed
+        }
+        List<String> ids = new ArrayList<>();
+        for (Map<String, Object> it : items) {
+            Object id = it.get("number");
+            if (id != null) {
+                ids.add(id.toString());
+            }
+        }
+        java.util.Set<String> allowed = new java.util.HashSet<>(authz.refine(bearer, objectType, permission, ids));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> it : items) {
+            Object id = it.get("number");
+            if (id != null && allowed.contains(id.toString())) {
+                out.add(it);
+            }
+        }
+        return out;
+    }
+
+    private static String bearer(HttpRequest<?> request) {
+        return request.getHeaders().get(HttpHeaders.AUTHORIZATION);
+    }
+
+    private static String sub(Authentication authentication) {
+        Object v = authentication.getAttributes().get("sub");
+        return v == null ? authentication.getName() : v.toString();
     }
 
     private static Map<String, Object> invoice(String number, LocalDate issued, double amount, String status) {
