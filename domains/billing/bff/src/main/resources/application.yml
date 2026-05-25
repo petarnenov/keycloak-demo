@@ -27,6 +27,12 @@ micronaut:
     # Backend-for-Frontend / Token Handler: the BFF holds the OAuth tokens in a
     # server-side session and hands the browser only an httpOnly session cookie.
     authentication: session
+    endpoints:
+      logout:
+        # The SPA "Sign out" is a top-level GET navigation to /logout; allow it
+        # (Micronaut clears the session and redirects to KC's end-session, which
+        # SAML-SLOs P1 too).
+        get-allowed: true
     oauth2:
       clients:
         keycloak:

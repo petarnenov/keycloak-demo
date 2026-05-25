@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // httpOnly `BSESSION` cookie. So "who am I?" is a cookie-authenticated call to
 // the BFF, and "log in" / "log out" are top-level navigations to BFF routes.
 const LOGIN_URL = '/oauth/login/keycloak'; // BFF → KC authorize → (P1 via authenticateByDefault)
-const LOGOUT_URL = '/logout';              // BFF RP-initiated logout → KC → P1 SLO
+const LOGOUT_URL = '/auth/logout';              // BFF RP-initiated logout → KC → P1 SLO
 
 interface Me {
   username: string;
