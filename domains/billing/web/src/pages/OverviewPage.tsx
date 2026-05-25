@@ -1,4 +1,5 @@
 import { useSummary, useUsage } from '../queries';
+import { isForbidden } from '../api';
 import { money } from '../format';
 
 export function OverviewPage() {
@@ -8,6 +9,8 @@ export function OverviewPage() {
   const summary = summaryQ.data;
   const usage = usageQ.data;
 
+  const forbidden = isForbidden(summaryQ.error) || isForbidden(usageQ.error);
+
   return (
     <div>
       <header className="page-head">
@@ -15,7 +18,12 @@ export function OverviewPage() {
         <p className="muted">Account summary &amp; usage</p>
       </header>
 
-      {(summaryQ.isError || usageQ.isError) && (
+      {forbidden ? (
+        <p className="error">
+          You don&rsquo;t have access to billing. Ask an administrator for the
+          billing-viewer or billing-admin role.
+        </p>
+      ) : (summaryQ.isError || usageQ.isError) && (
         <p className="error">
           Failed to load:{' '}
           {(summaryQ.error as Error | null)?.message ??

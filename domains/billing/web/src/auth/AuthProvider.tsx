@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { startLogin, clearLoginGuard } from '../api';
 
 interface AuthContextValue {
   ready: boolean;
   authenticated: boolean;
+  authError: boolean;
   username: string | null;
   email: string | null;
   firmCd: string | null;
@@ -17,7 +19,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // access/refresh tokens in a server session, and hands the browser only an
 // httpOnly `BSESSION` cookie. So "who am I?" is a cookie-authenticated call to
 // the BFF, and "log in" / "log out" are top-level navigations to BFF routes.
-const LOGIN_URL = '/oauth/login/keycloak'; // BFF → KC authorize → (P1 via authenticateByDefault)
 const LOGOUT_URL = '/auth/logout';              // BFF RP-initiated logout → KC → P1 SLO
 
 interface Me {
@@ -50,6 +51,7 @@ async function fetchMe(): Promise<MeResult> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
+  const [authError, setAuthError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,13 +65,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const r = await fetchMe();
       if (cancelled) return;
       if (r.status === 'ok') {
+        // Authenticated: reset the loop guard so a future genuine logout can
+        // start login again.
+        clearLoginGuard();
         setMe(r.me);
         setReady(true);
       } else {
         // 'unauth' (no session) or a transient 'error' on first load → start the
         // BFF login flow; if a KC session already exists it re-SSOs silently and
-        // lands back here.
-        window.location.assign(LOGIN_URL);
+        // lands back here. startLogin() is loop-guarded: if we just came back
+        // from login and still have no session, it returns false — stop instead
+        // of bouncing to the IdP forever, and show an error.
+        const redirecting = startLogin();
+        if (!redirecting) {
+          setAuthError(true);
+          setReady(true);
+        }
       }
     })();
 
@@ -81,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     ready,
     authenticated: me !== null,
+    authError,
     username: me?.username ?? null,
     email: me?.email ?? null,
     firmCd: me?.firmCd ?? null,

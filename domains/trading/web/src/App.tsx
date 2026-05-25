@@ -16,6 +16,17 @@ export function App() {
     );
   }
 
+  // Login was attempted but we still have no session (loop guard tripped) —
+  // stop bouncing to the IdP and tell the user, instead of an endless spinner.
+  if (auth.authError) {
+    return (
+      <div className="splash">
+        <p className="error">Couldn&rsquo;t sign you in.</p>
+        <p className="muted">Please reload the page, or contact your administrator if it persists.</p>
+      </div>
+    );
+  }
+
   // AuthProvider drives the redirect to P1 when there is no session; this
   // is the brief window before the browser leaves for the IdP.
   if (!auth.authenticated) {

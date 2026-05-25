@@ -1,4 +1,5 @@
 import { useInvoices } from '../queries';
+import { isForbidden } from '../api';
 import { money } from '../format';
 
 export function InvoicesPage() {
@@ -12,7 +13,12 @@ export function InvoicesPage() {
         <p className="muted">Recent billing history</p>
       </header>
 
-      {invoicesQ.isError && (
+      {isForbidden(invoicesQ.error) ? (
+        <p className="error">
+          You don&rsquo;t have access to billing. Ask an administrator for the
+          billing-viewer or billing-admin role.
+        </p>
+      ) : invoicesQ.isError && (
         <p className="error">Failed to load: {(invoicesQ.error as Error).message}</p>
       )}
 

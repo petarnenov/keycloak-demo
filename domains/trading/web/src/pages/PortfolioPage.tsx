@@ -1,4 +1,5 @@
 import { usePortfolio, usePositions } from '../queries';
+import { isForbidden } from '../api';
 import { money, pct } from '../format';
 
 export function PortfolioPage() {
@@ -8,6 +9,8 @@ export function PortfolioPage() {
   const portfolio = portfolioQ.data;
   const positions = positionsQ.data?.positions;
 
+  const forbidden = isForbidden(portfolioQ.error) || isForbidden(positionsQ.error);
+
   return (
     <div>
       <header className="page-head">
@@ -15,7 +18,12 @@ export function PortfolioPage() {
         <p className="muted">Account summary &amp; open positions</p>
       </header>
 
-      {(portfolioQ.isError || positionsQ.isError) && (
+      {forbidden ? (
+        <p className="error">
+          You don&rsquo;t have access to trading. Ask an administrator for the
+          trading-viewer or trading-trader role.
+        </p>
+      ) : (portfolioQ.isError || positionsQ.isError) && (
         <p className="error">
           Failed to load:{' '}
           {(portfolioQ.error as Error | null)?.message ??

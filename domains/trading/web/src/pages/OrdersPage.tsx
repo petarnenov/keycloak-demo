@@ -1,4 +1,5 @@
 import { useOrders } from '../queries';
+import { isForbidden } from '../api';
 import { money } from '../format';
 
 export function OrdersPage() {
@@ -12,7 +13,12 @@ export function OrdersPage() {
         <p className="muted">Recent order activity</p>
       </header>
 
-      {ordersQ.isError && (
+      {isForbidden(ordersQ.error) ? (
+        <p className="error">
+          You don&rsquo;t have access to trading. Ask an administrator for the
+          trading-viewer or trading-trader role.
+        </p>
+      ) : ordersQ.isError && (
         <p className="error">Failed to load: {(ordersQ.error as Error).message}</p>
       )}
 
