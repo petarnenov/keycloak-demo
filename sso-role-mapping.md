@@ -1,13 +1,20 @@
 # SSO role mapping — how P1 permissions should become realm roles
 
-How the P1 → Keycloak SAML bridge should project P1's authorization model onto
-`demo-realm` roles. This is a design report, not a description of the current
-state: today the projection is a hardcoded proof-of-concept
-(`derivePocRoles` in P1's `IdpSsoAction.java`) that the code itself flags for
-replacement. The recommendation below is grounded in an analysis of P1's actual
-authorization model and its existing SAML integrations.
+How the P1 → Keycloak SAML bridge projects P1's authorization model onto
+`demo-realm` roles. The recommendation below is grounded in an analysis of P1's
+actual authorization model and its existing SAML integrations.
 
-## Current state (the POC)
+> **Implementation status (Decision 3 shipped).** The hardcoded `derivePocRoles`
+> POC has been replaced by the data-driven translation this report recommends —
+> geowealth `team/petarnenov/keycloak-whitelabel-poc`, *SSO Phase 18*:
+> `IdpSsoAction.deriveCapabilities` → `SamlManager.deriveSsoCapabilities` →
+> the pure `SsoRoleTranslator`, fed by per-firm `FirmSSOConfig.roleCapabilityMappings`.
+> Coarse caps are derived from *effective* P1 authority; per-domain caps from the
+> firm's authored mapping. The Keycloak realm + BFF side (coarse roles, `firmCd`
+> claim, `@Secured` gating) shipped earlier. The section below describes the
+> original POC the implementation superseded, for context.
+
+## Original state (the POC, now superseded)
 
 ```
 P1: derivePocRoles(LoggedUser)  ──►  SAML roles ∈ {client, user, admin}
@@ -15,9 +22,10 @@ Keycloak: 3× saml-role-idp-mapper (syncMode=FORCE)  ──►  realm role
 BFF: @Secured("isAuthenticated()")  (roles not yet gated)
 ```
 
-`derivePocRoles` (P1 `com/geowealth/saml/idp/IdpSsoAction.java`) adds `client`
+`derivePocRoles` (P1 `com/geowealth/saml/idp/IdpSsoAction.java`) added `client`
 to everyone, `user` when `LoggedUser.isAdvisor()`, and `admin` when
-`LoggedUser.canLoggedUserAccessBackOffice()`. Three problems:
+`LoggedUser.canLoggedUserAccessBackOffice()`. Three problems it had (all now
+addressed by the data-driven translation above):
 
 1. **Logic, not data.** A new role needs a Java change and a P1 redeploy; firm
    onboarding cannot introduce a role without a developer.
