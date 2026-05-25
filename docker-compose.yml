@@ -129,6 +129,14 @@ services:
       MICRONAUT_APPLICATION_NAME: billing-bff
       APP_SOURCE: billing-bff
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+      # BFF / Token Handler: the BFF is a confidential OIDC client doing the
+      # code flow server-side. It reaches Keycloak at the PUBLIC issuer (so the
+      # `iss` claim matches the browser-side authorize redirect) via the
+      # auth.geowealth.int:host-gateway extra_host below; TLS to the mkcert cert
+      # is trusted insecurely for the demo (application.yml).
+      OAUTH_CLIENT_ID: demo-billing-client
+      OAUTH_CLIENT_SECRET: "${BILLING_OAUTH_CLIENT_SECRET}"
+      KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
       # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9). OFF by default so the
       # standalone demo works without a reachable P1; `export AUTHZ_FINE_ENABLED=true`
       # before `compose up` to activate against a running geowealth. P1_AUTHZ_URL points
@@ -136,6 +144,13 @@ services:
       # Desktop (on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]`).
       AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-false}"
       P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8080}"
+    extra_hosts:
+      - "auth.geowealth.int:host-gateway"
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # mkcert root CA — imported into the JRE trust store at startup so the BFF
+      # trusts Keycloak's mkcert cert for the server-side OIDC code exchange.
+      - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
 
   # ---- domain: trading -------------------------------------------------------
   # Twin of billing — same shape, different stub data (positions, orders, P/L).

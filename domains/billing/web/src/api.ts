@@ -1,5 +1,3 @@
-import { keycloak } from './auth/keycloak';
-
 export interface Summary {
   accountId: string;
   plan: string;
@@ -43,14 +41,19 @@ export interface UsageReport {
   username: string;
 }
 
+// BFF / Token Handler: the SPA carries no token — it calls the BFF with the
+// httpOnly session cookie (`credentials: 'include'`). The BFF attaches the
+// user's access token server-side. A 401 means the BFF session is gone (e.g.
+// after a back-channel logout) → hand the browser to the BFF login route.
 async function get<T>(path: string): Promise<T> {
-  await keycloak.updateToken(30).catch(() => {
-    // If refresh fails, fall through — the fetch below will surface a 401
-    // and the AuthProvider's check-sso loop handles re-login.
-  });
   const res = await fetch(path, {
-    headers: { Authorization: `Bearer ${keycloak.token ?? ''}` }
+    credentials: 'include',
+    headers: { Accept: 'application/json' }
   });
+  if (res.status === 401 || res.status === 403) {
+    window.location.assign('/oauth/login/keycloak');
+    throw new Error(`${path} → ${res.status} (signed out)`);
+  }
   if (!res.ok) {
     throw new Error(`${path} → ${res.status}`);
   }

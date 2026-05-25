@@ -119,7 +119,7 @@ public class BillingController {
         if (!authz.fineEnabled() || isGwAdmin(authentication)) {
             return; // opt-in; coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
         }
-        String bearer = bearer(request);
+        String bearer = bearer(authentication);
         if (bearer == null || !authz.hasPermission(bearer, sub(authentication), objectType, permission)) {
             throw new HttpStatusException(HttpStatus.FORBIDDEN, "fine permission denied");
         }
@@ -132,7 +132,7 @@ public class BillingController {
         if (!authz.fineEnabled() || isGwAdmin(authentication)) {
             return items; // gwAdmin sees every row (gwAdmin || canX)
         }
-        String bearer = bearer(request);
+        String bearer = bearer(authentication);
         if (bearer == null) {
             return List.of(); // fail closed
         }
@@ -154,8 +154,14 @@ public class BillingController {
         return out;
     }
 
-    private static String bearer(HttpRequest<?> request) {
-        return request.getHeaders().get(HttpHeaders.AUTHORIZATION);
+    /**
+     * The user's own access token, taken from the server-side session (Token
+     * Handler model) rather than an inbound Authorization header. Forwarded to
+     * P1 so authority stays user-bound (§2.6).
+     */
+    private static String bearer(Authentication authentication) {
+        Object token = authentication.getAttributes().get("accessToken");
+        return token == null ? null : "Bearer " + token;
     }
 
     private static String sub(Authentication authentication) {

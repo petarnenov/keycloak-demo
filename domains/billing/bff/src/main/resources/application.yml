@@ -1,37 +1,65 @@
 micronaut:
   application:
     name: ${MICRONAUT_APPLICATION_NAME:billing-bff}
-  server:
-    cors:
-      enabled: true
-      configurations:
-        all:
-          allowedOrigins:
-            - ${CORS_ORIGIN:https://billing.geowealth.int:5184}
-          allowedMethods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
-          allowedHeaders:
-            - "*"
   http:
+    client:
+      # Server-side OIDC calls (discovery + token exchange) hit Keycloak at its
+      # PUBLIC issuer URL (https://auth.geowealth.int:5180) so the `iss` claim
+      # matches what the browser-side authorize redirect uses. The container
+      # reaches that host via the `auth.geowealth.int:host-gateway` extra_host;
+      # the cert is mkcert-signed, so trust it for this demo.
+      ssl:
+        insecure-trust-all-certs: true
     services:
       p1authz:
         url: ${P1_AUTHZ_URL:http://localhost:8888}
         read-timeout: 2s
+  session:
+    http:
+      cookie: true
+      header: false
+      cookie-name: BSESSION
+      cookie-path: /
+      cookie-secure: true
+      cookie-same-site: Lax
   security:
     enabled: true
-    authentication: bearer
+    # Backend-for-Frontend / Token Handler: the BFF holds the OAuth tokens in a
+    # server-side session and hands the browser only an httpOnly session cookie.
+    authentication: session
+    oauth2:
+      clients:
+        keycloak:
+          client-id: ${OAUTH_CLIENT_ID:demo-billing-client}
+          client-secret: ${OAUTH_CLIENT_SECRET}
+          openid:
+            issuer: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
+      # Nonce is kept in the server session (not a client cookie) so the
+      # callback validates cleanly regardless of SameSite/third-party rules.
+      nonce:
+        persistence: session
+      state:
+        persistence: session
     token:
-      name-key: preferred_username
       roles-name: roles
       jwt:
         signatures:
           jwks:
+            # Used only to verify the back-channel logout token KC posts to us
+            # (server-to-server, internal URL).
             keycloak:
-              url: ${KEYCLOAK_AUTH_SERVER_URL:http://localhost:8080/realms/demo-realm}/protocol/openid-connect/certs
+              url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080/realms/demo-realm}/protocol/openid-connect/certs
+    redirect:
+      login-success: /
+      login-failure: /?login_error=true
+      logout: /
+      # Protected endpoints must answer 401/403 to the SPA's fetch (so it can
+      # redirect the browser to /oauth/login/keycloak), NOT 302-redirect the
+      # XHR itself.
+      unauthorized:
+        enabled: false
+      forbidden:
+        enabled: false
     intercept-url-map:
       - pattern: /**
         http-method: OPTIONS
@@ -40,6 +68,16 @@ micronaut:
       - pattern: /health
         access:
           - isAnonymous()
+      - pattern: /oauth/**
+        access:
+          - isAnonymous()
+      - pattern: /backchannel-logout
+        http-method: POST
+        access:
+          - isAnonymous()
+      - pattern: /auth/me
+        access:
+          - isAuthenticated()
       - pattern: /api/**
         access:
           - isAuthenticated()

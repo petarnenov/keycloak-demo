@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { keycloak } from './keycloak';
 
 interface AuthContextValue {
   ready: boolean;
@@ -13,133 +12,96 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// keycloak-js init() must run exactly once per page load. Same singleton
-// pattern as apps/shell/src/auth/AuthProvider.tsx — guards against
-// React 18 StrictMode's double-effect.
-let initPromise: Promise<boolean> | null = null;
-function initOnce(): Promise<boolean> {
-  if (!initPromise) {
-    initPromise = keycloak.init({
-      onLoad: 'check-sso',
-      silentCheckSsoFallback: false,
-      checkLoginIframe: false,
-      pkceMethod: 'S256'
-    });
-  }
-  return initPromise;
+// BFF / Token Handler model (IETF "OAuth 2.0 for Browser-Based Apps"): this SPA
+// holds NO tokens. The BFF runs the OIDC code flow server-side, keeps the
+// access/refresh tokens in a server session, and hands the browser only an
+// httpOnly `BSESSION` cookie. So "who am I?" is a cookie-authenticated call to
+// the BFF, and "log in" / "log out" are top-level navigations to BFF routes.
+const LOGIN_URL = '/oauth/login/keycloak'; // BFF → KC authorize → (P1 via authenticateByDefault)
+const LOGOUT_URL = '/logout';              // BFF RP-initiated logout → KC → P1 SLO
+
+interface Me {
+  username: string;
+  email: string | null;
+  firmCd: string | null;
+  roles: string[];
 }
 
-function tokenClaim<T = unknown>(key: string): T | null {
-  const parsed = keycloak.tokenParsed as Record<string, unknown> | undefined;
-  return (parsed?.[key] as T | undefined) ?? null;
+type MeResult = { status: 'ok'; me: Me } | { status: 'unauth' } | { status: 'error' };
+
+async function fetchMe(): Promise<MeResult> {
+  try {
+    const res = await fetch('/auth/me', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' }
+    });
+    if (res.status === 200) {
+      return { status: 'ok', me: (await res.json()) as Me };
+    }
+    if (res.status === 401 || res.status === 403) {
+      return { status: 'unauth' };
+    }
+    return { status: 'error' };
+  } catch {
+    return { status: 'error' };
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
+  const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let sessionPoll: ReturnType<typeof setInterval> | undefined;
-    const startLogin = () =>
-      keycloak.login({ idpHint: 'p1', redirectUri: window.location.origin + '/' });
 
-    // Leave the dashboard after a logout that happened outside this tab.
-    // Reloading reruns keycloak.init({ check-sso }); KC has no session for us
-    // anymore, so init resolves false → startLogin(). We do NOT call
-    // keycloak.logout() (that would loop the SLO chain). Forms / editors set
-    // `data-dirty="true"` when they hold unsaved input; prompt before
-    // discarding it, otherwise reload silently.
-    const reloadForLogout = () => {
+    // No session yet (first load) or session ended out-of-band → hand the
+    // browser to the BFF login route, which 302s to Keycloak (and on to P1).
+    const goLogin = () => window.location.assign(LOGIN_URL);
+
+    const check = async (initial: boolean) => {
+      const r = await fetchMe();
       if (cancelled) return;
-      const dirty = document.querySelector('[data-dirty="true"]') !== null;
-      if (dirty && !window.confirm(
-        'You were signed out. Reload now and lose unsaved changes?'
-      )) {
-        return;
-      }
-      window.location.reload();
-    };
-
-    // Detect a Keycloak session that ended *outside* this tab — most importantly
-    // a P1 (IdP) logout. That terminates the KC session but cannot front-channel
-    // back to an already-open SPA tab: KC has to POST its SAML LogoutResponse to
-    // P1 instead of rendering the per-client logout iframes, so KC logs "Some
-    // clients have not been logged out" and our frontchannel-logout.html never
-    // runs. checkLoginIframe would surface this too, but it leans on third-party
-    // cookies that modern browsers block. Instead we force a refresh-token
-    // round-trip on a timer; once the KC session is gone the refresh is rejected
-    // and we converge to the front-channel-logout outcome — tell sibling tabs on
-    // this origin, then reload into a fresh sign-in.
-    const SESSION_POLL_MS = 20000;
-    const onSessionLost = () => {
-      if (cancelled) return;
-      try {
-        const ch = new BroadcastChannel('auth');
-        ch.postMessage({ type: 'logout', source: 'session-poll' });
-        ch.close();
-      } catch {
-        // No BroadcastChannel — the reload below still self-recovers this tab.
-      }
-      reloadForLogout();
-    };
-
-    initOnce()
-      .then((ok) => {
-        if (cancelled) return;
-        if (!ok) {
-          startLogin();
-          return;
-        }
-        setAuthenticated(true);
+      if (r.status === 'ok') {
+        setMe(r.me);
         setReady(true);
-        // minValidity past the access-token lifetime forces a real refresh on
-        // every tick, so a server-side session kill surfaces within one poll.
-        sessionPoll = setInterval(() => {
-          keycloak.updateToken(Number.MAX_SAFE_INTEGER).catch(onSessionLost);
-        }, SESSION_POLL_MS);
-      })
-      .catch(() => {
-        // Most common cause: state mismatch when the auth response was
-        // initiated outside keycloak-js (e.g. a hand-built ?code=... URL
-        // landed here). Recover by starting a fresh keycloak-js-driven
-        // login — keycloak-js will store its own state + code_verifier,
-        // and the next callback round-trip will validate cleanly.
-        if (cancelled) return;
-        startLogin();
-      });
+      } else if (r.status === 'unauth') {
+        // Definitive "no session". On first load → start login. While running →
+        // this is the prompt-logout path: the BFF session was destroyed by KC's
+        // back-channel logout (e.g. after a P1 / IdP logout), so leave for login.
+        goLogin();
+      } else if (initial) {
+        // Transient error on first load — show the app shell as "redirecting";
+        // a later poll will resolve. (Don't bounce to login on a network blip.)
+        setReady(true);
+      }
+      // transient error while running → keep current state, retry next tick.
+    };
 
-    // Front-channel logout signal: a sibling SPA (trading, p1, etc) signed out,
-    // KC fanned out a logout iframe to this origin's `frontchannel-logout.html`,
-    // that page wiped storage and broadcast "logout" on the "auth" channel.
-    // (Same channel the session poll above uses.)
-    let channel: BroadcastChannel | null = null;
-    try {
-      channel = new BroadcastChannel('auth');
-      channel.onmessage = (event) => {
-        if (event?.data?.type !== 'logout' || cancelled) return;
-        reloadForLogout();
-      };
-    } catch {
-      // BroadcastChannel unsupported (old browsers) — the session poll still
-      // drives the same outcome on its next refresh round-trip.
-    }
+    check(true);
+
+    // Prompt session-end detection without keeping the federated KC session
+    // alive: /auth/me only touches the BFF's own session cookie (no token
+    // refresh against KC). After a back-channel logout the BFF session is gone →
+    // 401 → we navigate to login. Re-check on focus and on a modest interval.
+    const onFocus = () => check(false);
+    window.addEventListener('focus', onFocus);
+    const poll = setInterval(() => check(false), 30000);
 
     return () => {
       cancelled = true;
-      if (sessionPoll) clearInterval(sessionPoll);
-      channel?.close();
+      window.removeEventListener('focus', onFocus);
+      clearInterval(poll);
     };
   }, []);
 
   const value: AuthContextValue = {
     ready,
-    authenticated,
-    username: authenticated ? tokenClaim<string>('preferred_username') : null,
-    email: authenticated ? tokenClaim<string>('email') : null,
-    firmCd: authenticated ? tokenClaim<string>('firmCd') : null,
-    roles: authenticated ? tokenClaim<string[]>('roles') ?? [] : [],
-    logout: () => keycloak.logout({ redirectUri: window.location.origin + '/' })
+    authenticated: me !== null,
+    username: me?.username ?? null,
+    email: me?.email ?? null,
+    firmCd: me?.firmCd ?? null,
+    roles: me?.roles ?? [],
+    logout: () => window.location.assign(LOGOUT_URL)
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
