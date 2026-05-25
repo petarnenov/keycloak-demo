@@ -129,6 +129,13 @@ services:
       MICRONAUT_APPLICATION_NAME: billing-bff
       APP_SOURCE: billing-bff
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+      # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9). OFF by default so the
+      # standalone demo works without a reachable P1; `export AUTHZ_FINE_ENABLED=true`
+      # before `compose up` to activate against a running geowealth. P1_AUTHZ_URL points
+      # at the host geowealth Tomcat; host.docker.internal resolves to the host on Docker
+      # Desktop (on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]`).
+      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-false}"
+      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8080}"
 
   # ---- domain: trading -------------------------------------------------------
   # Twin of billing — same shape, different stub data (positions, orders, P/L).
@@ -163,6 +170,9 @@ services:
       MICRONAUT_APPLICATION_NAME: trading-bff
       APP_SOURCE: trading-bff
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+      # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9) — see billing note above.
+      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-false}"
+      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8080}"
 
 volumes:
   postgres_data:
