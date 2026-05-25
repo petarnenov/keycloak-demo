@@ -206,6 +206,84 @@ Each `Role` is then wrapped in `RoleWrapper(role, isMandatory=false)` (hard-code
 4. **There is no endpoint that returns the catalogue's `ObjectTypePermission` graph.** The admin UI sees only role *names*. To know what permissions a role grants, you'd need either a custom endpoint or to hit the DB directly.
 5. **`isMandatory` is wire-set to `false` everywhere.** The flag exists in `RoleWrapper` but `loadRolesByFirm` always passes `false`. It's only set to `true` by `createEmptyRole` (`:154`) — a different code path. Treat it as "always false" from this endpoint.
 
+### 1.7b Role ↔ permission internals — what's behind the back-office matrix
+
+`bo/manageRolePermissions.do` (`struts-bo.xml:312`, action `ManageRolesAction.manageRolePermissions()` at `:132`) is the back-office screen that lets a firm admin tick checkboxes in an `ObjectType × Permission` matrix to define what a single role can do. Unlike §1.7a it's a **Struts2-Tiles screen, not JSON** — the action method just validates the gate and selects `.bo.manageRolePermission` tile; the JSP renders by calling getters on the action instance during the request lifecycle.
+
+**Gates.** Class-level `canExecuteAction()` (`:298`) = `loggedUser != null && loggedUser.canLoggedUserAccessBackOffice()` (the standard back-office filter). Method-level: `roleCd != -1` AND `PolicyRuleManager.canUserViewSingleRole(loggedUserID, roleCd)` (`:136`). The sibling `updateRolePermissions()` mutation tightens further to `canLoggedUserModifyRole(loggedUserID, roleCd)` (`:147`).
+
+**How the matrix is rendered.** The JSP iterates `getObjectTypes() × getPermissions()` and asks two questions per cell:
+
+```java
+// columns
+public List<Permission> getPermissions() {
+    if (permList == null) permList = AuthorizationManager.getSole().loadSortedPermissions();
+    return permList;  // 5 rows from PERMISSION_TBL: VIEW=1, MODIFY=2, CREATE=3, DELETE=4, EXECUTE=5
+}
+
+// rows
+public List<ObjectType> getObjectTypes() {
+    if (objtList == null) objtList = AuthorizationManager.getSole().loadSortedObjectTypes();  // 78 rows
+    if (getLoggedUserFirmCd() != 1) {
+        // Should filter GLOBAL_ADMINISTRATION here for non-firm-1 admins.
+        // The check is COMMENTED OUT at :206-208 — every firm admin currently sees it. Existing leak.
+        List<ObjectType> tempObjectTypes = new ArrayList<>();
+        for (ObjectType ot : objtList) {
+//          if (ot.getObjectTypeCd() != ObjectType.GLOBAL_ADMINISTRATION) {
+                tempObjectTypes.add(ot);
+//          }
+        }
+        objtList = tempObjectTypes;
+    }
+    return objtList;
+}
+
+// per-cell: is (otCd, pCd) a legal combination?
+public boolean checkForPossibleObjectTypePermission(String otpCd, String pCd) {
+    if (keysForObjectTypes == null)
+        keysForObjectTypes = AuthorizationManager.getSole().loadKeysFromObjectTypePermissions();
+    return keysForObjectTypes.containsKey(otpCd + "_" + pCd);
+}
+
+// per-cell: is the box checked for THIS role?
+public boolean roleHasThisObjectTypePermission(String otpCd, String pCd) {
+    if (keysForRole == null)
+        keysForRole = AuthorizationManager.getSole().loadObjectTypePermissionKeysForRole(roleCd);
+    return keysForRole.contains(otpCd + "_" + pCd);
+}
+```
+
+**The connection model.** `Role.permissions` is a `Set<ObjectTypePermission>` Hibernate relation. `loadObjectTypePermissionKesForRole` (`AuthorizationHibernateDAO.java:471`) just walks it:
+
+```java
+Role role = (Role) getSession().load(Role.class, roleCd);
+for (ObjectTypePermission otp : role.getObjectTypePermissions())
+    result.add(otp.getObjectType().getObjectTypeCd() + "_" + otp.getPermission().getPermissionCd());
+```
+
+`loadKeysOfObjectTypePermissions` (`:454`) returns the **legal-combo catalogue** — every row in `OBJECTTYPE_PERMISSION_TBL` keyed by `"otCd_pCd"`. This matters: **not every (78 ObjectType × 5 Permission) = 390 combination is valid.** Only the rows pre-registered in `OBJECTTYPE_PERMISSION_TBL` are possible role permissions. The actual count is smaller (the data wasn't queryable here, but the matrix renders disabled cells for impossible combos).
+
+**Mutation.** `updateRolePermissions()` (`:146`) is the form-submit handler:
+
+```java
+if (!PolicyRuleManager.canLoggedUserModifyRole(loggedUserID, roleCd)) throw ...AccessDenied;
+Set<UUID> entitiesToUpdate = PolicyRuleManager.getSole().getSetOfEntitiesInRole(roleCd);
+AuthorizationManager.getSole().setNewObjectTypePermissionsToRole(roleCd, Arrays.asList(newPermissions), loggedUserID);
+ArrayList<UUID> newUsersUUIDs = new ArrayList<>();
+for (String s : getNewUsersInRole()) { newUsersUUIDs.add(new UUID(s)); entitiesToUpdate.add(new UUID(s)); }
+AuthorizationManager.getSole().updateEntityRolesForRole(roleCd, newUsersUUIDs, loggedUserID, entitiesToUpdate, getLoggedUserFirmCd());
+```
+
+`setNewObjectTypePermissionsToRole` is documented at `AuthorizationManager.java:209` as **"completely removes old set and sets new"** — there's no diff/patch semantic; it's wholesale replacement of `Role.objectTypePermissions`. The wire payload is a list of `objectTypePermissionCd` (PKs from `OBJECTTYPE_PERMISSION_TBL`), not `(otCd, pCd)` tuples — the FE has already resolved each ticked cell to its `objectTypePermissionCd` via `getObjectTypePermissionCdFromKey(otpCd, pCd)` (`:234`).
+
+**Permission propagation is asynchronous via a Task.** `updateEntityRolesForRole` builds a `UpdateEntityRolesForRole` actor message; the handler at `AuthorizationManagerTrait.java:437-471` enqueues a task of type `MANAGE_ROLES_TASK_TYPE` via `taskExecutor.executeTask(...)`. The task is responsible for calling `refreshPolicyRulesForEntity(entityId, firmCd)` for every affected user (the `entitiesToUpdate` set passed in). **There is a window between "form submitted" and "POLICY_RULE_TBL regenerated" during which the affected users' authority is stale.** P1 itself absorbs this because its own permission checks query `policy_rule_tbl` directly and the next request after the task completes sees the new state.
+
+**Three takeaways the rest of this document needs to reflect:**
+
+1. **The `permissions` map in `LoggedUserJTO` (§1.2) and any future `/api/p1-authz/me` response is bounded by the `OBJECTTYPE_PERMISSION_TBL` legal-combo count** — not 78×5=390, smaller (precise number depends on the data, but it's the row count of that table).
+2. **`"<objectTypeCd>_<permissionCd>"` is the **only** wire key convention** — used by `LoggedUserJTO.permissions`, by the back-office matrix, by `setNewObjectTypePermissionsToRole`'s reverse-resolution, by everything. The `/api/p1-authz/me` design rightly reuses it (§2.2); the BFFs can therefore use a stable mapping `OT.INVOICE.cd() + "_" + Permission.MODIFY` without a per-firm translation.
+3. **Permission mutations are eventually-consistent.** The task-based refresh means the BFF cache TTL (§2.3) doesn't have to fight for the strongest consistency — P1 itself can't promise sub-task-latency consistency. The BFF cache just needs to be shorter than typical task duration; 60s is comfortably above.
+
 ### 1.8 Things worth knowing before designing anything on top
 
 - **SHA-1 (`SHAPassword.java:38`) is the only password verifier.** Empty default salt. No bcrypt/PBKDF2/argon. Security review material.
@@ -302,7 +380,7 @@ Response shape (deliberately a subset of `LoggedUserJTO`, plus the P1 role names
 }
 ```
 
-The `permissions` keys reuse P1's existing `"<objectTypeCd>_<permissionCd>"` convention (§1.7a — `ObjectType` is a global enum, keys are stable across firms) so nothing new has to be invented and the same fetch can serve every domain.
+The `permissions` keys reuse P1's existing `"<objectTypeCd>_<permissionCd>"` convention (§1.7b — the **only** wire-key shape in P1 for fine permissions; bounded by `OBJECTTYPE_PERMISSION_TBL` legal-combo rows, ObjectType is a global enum). Keys are **stable across firms** — even though the firm-specific *role* that grants a key is dynamic (§1.7a), the *key itself* (`"55_2"`) is identical for every firm. Nothing new has to be invented and the same fetch can serve every domain. A BFF can hard-code the key it needs (`ObjectType.INVOICE.cd() + "_" + Permission.MODIFY`) without ever touching firm-specific naming.
 
 The `p1Roles` array carries the user's **firm-specific role names** (the same strings `getManageUsersDropdownsByFirm` returns to the admin UI). The BFF should treat these as **diagnostic-only** — useful for logging, support tickets, and admin debug screens, **never for gating**. Gating goes through `capabilities` (boolean caps, the `LoggedUserJTO` style) or `permissions` (`objectTypeCd_permissionCd` map). This is the firm-dynamic-role constraint made explicit: P1 role names are visible to the BFF for transparency, but routing authorisation decisions through them would re-introduce per-firm coupling that the canonical-capabilities translation was designed to eliminate.
 
@@ -312,7 +390,7 @@ The `p1Roles` array carries the user's **firm-specific role names** (the same st
 
 Each domain BFF holds a small `Caffeine`/`Map` cache keyed by `(sub, firmCd)`:
 
-- **TTL ≤ 60s.** Bounded by how stale a fine permission is allowed to be. P1's own warm session goes 7h without re-reading roles; 60s on the BFF side is a strict improvement.
+- **TTL ≤ 60s.** Bounded by how stale a fine permission is allowed to be. Note from §1.7b that **P1 itself is eventually consistent here**: a role-permission mutation enqueues an async `MANAGE_ROLES_TASK_TYPE` task that refreshes `POLICY_RULE_TBL`. Until the task completes, P1's own warm session also sees stale rules. The 60s BFF cache only needs to be *longer than typical task latency* (seconds), not "strongest consistency" — there is no stronger consistency available upstream to chase. P1's own warm session goes 7h without re-reading roles (§1.3); 60s on the BFF side is a strict improvement.
 - **Miss → fetch from `/api/p1-authz/me` with the user's own JWT as bearer.** Don't issue an admin token to P1 — let the user's authority gate the fetch itself.
 - **Negative cache on 401/403** for the same TTL, but with a short floor (5s) so a permission grant in P1 propagates quickly when the next request comes in.
 
@@ -374,6 +452,9 @@ The tier-1 gate is unchanged from what's already on the branch (`sso-role-mappin
 - **The translation layer (firm-specific P1 role → canonical capability) is the new single point of failure.** It runs on the P1 side, replacing `derivePocRoles`. A bug there means every firm gets the wrong tier-1 capabilities and the BFF will silently 403 (or, worse, silently 200) the wrong users. Mitigations: per-firm row in the translation table is auditable, the translation is pure (no side effects → easy to unit-test), and the `p1Roles` field in `/api/p1-authz/me` (§2.2) gives ops a way to see what P1 thought the user's firm-specific roles were when authorisation feels wrong.
 - **Canonical-vocabulary drift across BFFs.** Two BFFs hard-coding `"billing-admin"` is fine; six BFFs hard-coding their own variants of similar strings is how `billing-admin` / `bill-admin` / `billingadmin` slip in. Mitigation: keep the canonical capability list in a single doc (`sso-role-mapping.md`) and reference it from each BFF's controller-level `@Secured` annotations via a shared constants source if/when the count of BFFs makes the duplication real.
 - **`getManageUsersDropdownsByFirm` returns `ObjectType.ROLE` for `getObjectTypeCd()` on `RoleWrapper` (§1.7a).** Suggests a parallel authorisation graph where `Role` itself is an `ObjectType` — i.e. there are `ObjectTypePermission`s on the `Role` ObjectType (CREATE/MODIFY/DELETE a role). When `/api/p1-authz/me` exposes the user's permission keys, those role-mutation permissions will be in there too. The BFFs should treat them as P1-internal (no demo domain cares about role CRUD).
+- **Async-task staleness window between "permissions changed in P1" and "BFF sees the change" is the sum of three lags:** task-queue latency (§1.7b — `MANAGE_ROLES_TASK_TYPE` enqueue → completion), BFF cache TTL (60s), and Keycloak session lifespan if the user is mid-session. Worst case ≈ 60s + task latency on a cache miss; best case ≈ task latency on a forced eviction (Phase E). For the demo domains this is fine — billing/trading don't have second-level permission churn. Anything that does (an admin BFF revoking access to PII, say) needs a synchronous invalidation hook, not just TTL.
+- **The "wholesale replace" semantic of `setNewObjectTypePermissionsToRole` (§1.7b)** means a single misclick in the back-office admin UI can blank an entire role's permission set. The BFF cannot detect this — it just sees "user lost all `billing-*` permissions" and 403s. Worth logging the user's `p1Roles` (§2.2 diagnostic field) on every 403 so support can see whether it was a deliberate revocation or a fat-finger admin edit.
+- **The commented-out `GLOBAL_ADMINISTRATION` filter in `ManageRolesAction.java:206-208`** is a real authorisation leak inside P1 — non-firm-1 admins currently see and can tick GLOBAL_ADMINISTRATION cells in the matrix. Not a BFF issue, but worth flagging up the food chain because any permission key minted under that ObjectType could leak through `/api/p1-authz/me` to a BFF that wasn't expecting it.
 
 ### 2.8 Suggested phasing
 
@@ -389,4 +470,4 @@ The tier-1 gate is unchanged from what's already on the branch (`sso-role-mappin
 3. **Phase C (P1 PR — authz endpoint):** add `GET /api/p1-authz/me` (§2.2), validating a Keycloak JWT, returning the existing `LoggedUserJTO`-derived permission map + `capabilities` + `p1Roles` for diagnostics. One endpoint, every BFF consumes it.
 4. **Phase D (BFFs):** add `P1AuthzClient` + the 60s in-process cache (§2.3) + one or two tier-2 checks in `BillingController` / `TradingController` to prove the model. Hard 2s upstream timeout, fail-closed on hang (§2.7).
 5. **Phase E (revocation):** plug the BFF cache into Keycloak's back-channel logout. Cache TTL can drop further (e.g. 5min) once a real revocation signal exists.
-6. **Phase F (admin BFF, future):** if/when a back-office admin domain needs the per-firm role catalogue, add a **separate** `GET /api/p1-authz/firm/{firmCd}/role-catalogue` endpoint mirroring §1.7a's gate (`isLoggedUserGwAdminFromFirm`). Do not stretch `/api/p1-authz/me` to serve admin use cases.
+6. **Phase F (admin BFF, future):** if/when a back-office admin domain needs the per-firm role catalogue, add a **separate** `GET /api/p1-authz/firm/{firmCd}/role-catalogue` endpoint mirroring §1.7a's gate (`isLoggedUserGwAdminFromFirm`). Response shape: one entry per role with the firm-specific name, default flag, AND its `ObjectTypePermission` set (the same `"<objectTypeCd>_<permissionCd>"` keys §1.7b emits) — so an admin BFF can render a JSON equivalent of `bo/manageRolePermissions.do`'s matrix without scraping the JSP. Mutation endpoints (`PUT …/role/{roleCd}/permissions`, `PUT …/role/{roleCd}/users`) wrap `setNewObjectTypePermissionsToRole` + `updateEntityRolesForRole` and inherit P1's eventual-consistency model — caller must accept the async-task delay. Do not stretch `/api/p1-authz/me` to serve admin use cases.
