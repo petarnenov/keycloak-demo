@@ -54,43 +54,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    // No session yet (first load) or session ended out-of-band → hand the
-    // browser to the BFF login route, which 302s to Keycloak (and on to P1).
-    const goLogin = () => window.location.assign(LOGIN_URL);
-
-    const check = async (initial: boolean) => {
+    // BFF / Token Handler: ask the BFF who we are over the session cookie, once.
+    // No client polling and no keepalive — a logout that happens out-of-band
+    // (KC back-channel logout after a P1 logout, or Sign out) destroys the BFF
+    // session server-side; the SPA finds out reactively on its next API call,
+    // where api.ts turns a 401 into a redirect to the login route.
+    (async () => {
       const r = await fetchMe();
       if (cancelled) return;
       if (r.status === 'ok') {
         setMe(r.me);
         setReady(true);
-      } else if (r.status === 'unauth') {
-        // Definitive "no session". On first load → start login. While running →
-        // this is the prompt-logout path: the BFF session was destroyed by KC's
-        // back-channel logout (e.g. after a P1 / IdP logout), so leave for login.
-        goLogin();
-      } else if (initial) {
-        // Transient error on first load — show the app shell as "redirecting";
-        // a later poll will resolve. (Don't bounce to login on a network blip.)
-        setReady(true);
+      } else {
+        // 'unauth' (no session) or a transient 'error' on first load → start the
+        // BFF login flow; if a KC session already exists it re-SSOs silently and
+        // lands back here.
+        window.location.assign(LOGIN_URL);
       }
-      // transient error while running → keep current state, retry next tick.
-    };
-
-    check(true);
-
-    // Prompt session-end detection without keeping the federated KC session
-    // alive: /auth/me only touches the BFF's own session cookie (no token
-    // refresh against KC). After a back-channel logout the BFF session is gone →
-    // 401 → we navigate to login. Re-check on focus and on a modest interval.
-    const onFocus = () => check(false);
-    window.addEventListener('focus', onFocus);
-    const poll = setInterval(() => check(false), 30000);
+    })();
 
     return () => {
       cancelled = true;
-      window.removeEventListener('focus', onFocus);
-      clearInterval(poll);
     };
   }, []);
 
