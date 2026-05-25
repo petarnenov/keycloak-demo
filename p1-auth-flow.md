@@ -321,6 +321,16 @@ So the count that matters for a coarse, cross-firm vocabulary is small and stabl
 
 **→ Two firm-universal roles plus one global flag are the only role-like facts that mean the same thing across all firms.** That is the empirical ceiling on a fixed coarse vocabulary: the shipped `client`/`advisor`/`admin` triad is precisely this anchor set (All Employees → `client`/`advisor` split by `isAdvisor()`; Admins → `admin`; `gwAdminFlag` → the open `gw-superadmin` question in §2.7). Per-domain roles (`billing-admin`, `trading-trader`) are demo refinements layered on top, not P1 universals.
 
+**The triad is additive, not a hierarchy — the three anchors come from independent axes.** Verified on master, `client`/`advisor`/`admin` do **not** nest (no `admin ⊃ advisor ⊃ client`); each derives from a different dimension:
+
+| Coarse role | P1 source | Axis | Evidence |
+|---|---|---|---|
+| `client` | the baseline given to everyone | universal — the **only** real containment (every advisor/admin also holds `client`) | n/a — POC `derivePocRoles` adds it unconditionally |
+| `advisor` | `LoggedUser.advisor = user.isEmployee()` | **identity type** (employee vs end-client), fixed at construction | `LoggedUser.java:49,247-248` |
+| `admin` | a `(BACK_OFFICE, EXECUTE)` row in `policy_rule_tbl` | **computed permission**, data-driven | `LoggedUser.java:117-118` → `PolicyRuleManager.java:544-550` |
+
+Because `advisor` is an identity flag and `admin` is a materialised permission, nothing in code enforces `admin ⟹ advisor`: they are two independent checks. In practice back-office EXECUTE is granted through the firm `Admins` role (employees), so admins are *usually* advisors — but that is **data convention, not a model-level hierarchy.** This is why the realm roles are deliberately **flat (non-composite)** and gating is **OR-of-set** at the BFF (`@Secured({"trading-trader","trading-viewer","advisor","admin"})`, `BillingController`/`TradingController`): the "who covers whom" decision lives at the call site, exactly like the `gwAdminFlag || canX()` convention in P1 (§1.8), not in a composite-role tree that would impose a total order the P1 model does not have.
+
 **How master's other SAML SPs answer the same question** (master has no Keycloak/`derivePocRoles` integration — that is POC-branch only, §1.8 — so these three are the only precedents):
 
 | SP | Role strategy on master | Evidence |
