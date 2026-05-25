@@ -185,9 +185,19 @@ services:
       MICRONAUT_APPLICATION_NAME: trading-bff
       APP_SOURCE: trading-bff
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+      # BFF / Token Handler — confidential OIDC client; reaches KC at the public
+      # issuer via the auth.geowealth.int:host-gateway extra_host (see billing).
+      OAUTH_CLIENT_ID: demo-trading-client
+      OAUTH_CLIENT_SECRET: "${TRADING_OAUTH_CLIENT_SECRET}"
+      KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
       # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9) — see billing note above.
       AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-false}"
       P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8080}"
+    extra_hosts:
+      - "auth.geowealth.int:host-gateway"
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
 
 volumes:
   postgres_data:

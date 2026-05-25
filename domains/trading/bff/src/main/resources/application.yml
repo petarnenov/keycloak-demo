@@ -1,37 +1,56 @@
 micronaut:
   application:
     name: ${MICRONAUT_APPLICATION_NAME:trading-bff}
-  server:
-    cors:
-      enabled: true
-      configurations:
-        all:
-          allowedOrigins:
-            - ${CORS_ORIGIN:https://trading.geowealth.int:5185}
-          allowedMethods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
-          allowedHeaders:
-            - "*"
   http:
+    client:
+      ssl:
+        insecure-trust-all-certs: true
     services:
       p1authz:
         url: ${P1_AUTHZ_URL:http://localhost:8888}
         read-timeout: 2s
+  session:
+    http:
+      cookie: true
+      header: false
+      cookie-name: TSESSION
+      cookie-path: /
+      cookie-secure: true
+      cookie-same-site: Lax
   security:
     enabled: true
-    authentication: bearer
+    # Backend-for-Frontend / Token Handler: the BFF holds the OAuth tokens in a
+    # server-side session and hands the browser only an httpOnly session cookie.
+    authentication: session
+    endpoints:
+      logout:
+        get-allowed: true
+    oauth2:
+      clients:
+        keycloak:
+          client-id: ${OAUTH_CLIENT_ID:demo-trading-client}
+          client-secret: ${OAUTH_CLIENT_SECRET}
+          openid:
+            issuer: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
+      nonce:
+        persistence: session
+      state:
+        persistence: session
     token:
-      name-key: preferred_username
       roles-name: roles
       jwt:
         signatures:
           jwks:
             keycloak:
-              url: ${KEYCLOAK_AUTH_SERVER_URL:http://localhost:8080/realms/demo-realm}/protocol/openid-connect/certs
+              url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080/realms/demo-realm}/protocol/openid-connect/certs
+    redirect:
+      login-success: /
+      login-failure: /?login_error=true
+      logout: /
+      unauthorized:
+        enabled: false
+      forbidden:
+        enabled: false
     intercept-url-map:
       - pattern: /**
         http-method: OPTIONS
@@ -40,6 +59,16 @@ micronaut:
       - pattern: /health
         access:
           - isAnonymous()
+      - pattern: /oauth/**
+        access:
+          - isAnonymous()
+      - pattern: /backchannel-logout
+        http-method: POST
+        access:
+          - isAnonymous()
+      - pattern: /auth/me
+        access:
+          - isAuthenticated()
       - pattern: /api/**
         access:
           - isAuthenticated()
@@ -52,7 +81,5 @@ endpoints:
 app:
   source: ${APP_SOURCE:trading-bff}
   authz:
-    # Tier 2/3 fine checks (p1-auth-flow.md §2.2/§2.9). Opt-in: off keeps the
-    # coarse-only @Secured behaviour until P1's authz endpoints are reachable.
     fine-enabled: ${AUTHZ_FINE_ENABLED:false}
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}

@@ -1,4 +1,5 @@
-import { keycloak } from './auth/keycloak';
+// BFF / Token Handler: no token in the browser — calls carry the httpOnly
+// session cookie; the BFF attaches the user's access token server-side.
 
 export interface Portfolio {
   accountId: string;
@@ -49,12 +50,14 @@ export interface OrdersResponse {
 }
 
 async function get<T>(path: string): Promise<T> {
-  await keycloak.updateToken(30).catch(() => {
-    /* fall through and let fetch surface a 401 */
-  });
   const res = await fetch(path, {
-    headers: { Authorization: `Bearer ${keycloak.token ?? ''}` }
+    credentials: 'include',
+    headers: { Accept: 'application/json' }
   });
+  if (res.status === 401 || res.status === 403) {
+    window.location.assign('/oauth/login/keycloak');
+    throw new Error(`${path} → ${res.status} (signed out)`);
+  }
   if (!res.ok) {
     throw new Error(`${path} → ${res.status}`);
   }
