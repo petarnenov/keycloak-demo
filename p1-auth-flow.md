@@ -137,6 +137,75 @@ POLICY_RULE_TBL  (entityId, objectType, permission, objectId/objectCd, firmCd)
 
 `gwAdminFlag` is **not honored inside `PolicyRuleManager`** — zero hits. Callers apply it manually at the call site as `loggedUser.isGwAdminFlag() || PolicyRuleManager.getSole().canLoggedUserXxx(...)` (see `LoggedUserJTO.java:228-229`, `ReportCenterManagerTrait.java:279/691/734/777/820/863/906/949/981`). A new check that forgets the `gwAdmin ||` prefix silently locks out GW admins.
 
+### 1.7a Role catalogue — what dropdowns the admin UI gets when creating a user
+
+`getManageUsersDropdownsByFirm.do` (`struts-platformOne.xml:1654`, action `ManageUserAction.getManageUsersDropdownsByFirm()` at `:39`) is the canonical "list every role assignable inside firm X" endpoint. It's the dropdown source on the admin user-create / user-edit screen. The full body fits in one paragraph:
+
+```java
+public String getManageUsersDropdownsByFirm() {
+    return withAccessAndFirmCheck(() -> {                                  // gate: gwAdmin for that firm
+        List<RoleWrapper> availableRoles =
+            AuthorizationManager.getSole().loadRolesByFirm(getFirmCd());   // 1 actor msg → 1 HQL
+        Map<Integer, NameAndDefaultFlagOfRole> rolesMap = availableRoles.stream()
+            .collect(Collectors.toMap(RoleWrapper::getRoleCd,
+                w -> new NameAndDefaultFlagOfRole(w.getName(), w.isDefault())));
+        List<WhitelabelCodeAndName> whitelabel =
+            UserManager.getSole().getWhitelabelLight(getFirmCd());
+        Map<String,String> whitelabelsMap = whitelabel.stream()
+            .collect(Collectors.toMap(WhitelabelCodeAndName::whitelabelCode,
+                                       WhitelabelCodeAndName::whitelabelName));
+        ManageUserJTO j = new ManageUserJTO();
+        j.setMetaData(new ManageUserMetaJTO(rolesMap, whitelabelsMap));
+        return success(j);
+    });
+}
+```
+
+**The gate.** `withAccessAndFirmCheck` (`ManageUserAction.java:127-137`):
+- `firmCd` parameter required, must be ≥ 1, else `fail("Missing or invalid firmCd")`.
+- Caller must satisfy `isLoggedUserGwAdminFromFirm(firmCd)` — **firm-scoped gwAdmin only**, no normal advisor / no global gwAdmin without firm scope. Else throws `AccessDeniedException`.
+
+**The role lookup.** `AuthorizationManager.loadRolesByFirm` (`:49`) sends a `LoadRolesByFirm` actor message. The handler (`AuthorizationManagerTrait.java:127-148`) opens a Hibernate session and calls `AuthorizationHibernateDAO.loadRolesByFirm(firmCd)` (`:132`):
+
+```java
+public List<Role> loadRolesByFirm(Integer firmCd) {
+    Query q = getSession().createQuery(
+        "select distinct x from Role x " +
+        " left join fetch x.entityRoles" +
+        " where x.firm.firmCd = :firmCd");
+    q.setParameter("firmCd", firmCd);
+    HibernateSessionFactory.distinctNoPassThrough(q);
+    return q.list();
+}
+```
+
+Each `Role` is then wrapped in `RoleWrapper(role, isMandatory=false)` (hard-coded false) and returned to the action. The `left join fetch x.entityRoles` pulls every user-assignment for every role in the firm — wasteful for a "list catalogue" call, but that's an existing optimisation gap, not a design constraint.
+
+**The wire shape.** `ManageUserMetaJTO` (`:1-13` of `ManageUserMetaJTO.java`):
+
+```json
+{
+  "metaData": {
+    "roles": {
+      "127": { "name": "BillingPowerUser", "defaultFlag": false },
+      "129": { "name": "AdvisorL2",        "defaultFlag": true  },
+      "204": { "name": "ReadOnly",         "defaultFlag": false }
+    },
+    "customWhitelabelCodes": { "default": "Default", "wl-2": "Acme" }
+  }
+}
+```
+
+`NameAndDefaultFlagOfRole` (a `record`) carries only `(name, defaultFlag)` per role. **No permissions, no description, no audit info.** Permission detail is reachable via separate fetch (`Role.getObjectTypePermissions()`) but is not part of this payload.
+
+**Five critical facts for any external design**:
+
+1. **Role names are firm-defined strings, not a fixed enum.** A firm onboarded with custom role names (`BillingPowerUser`, `OpsAnalyst`, `JuniorAdvisor`) sees those strings here. There is no global canonical vocabulary at the `ROLE_TBL` level — `Role.name` is just a `varchar`.
+2. **Each firm has its own role catalogue.** Firm 1's "Admin" and firm 2's "Admin" are two distinct `roleCd`s with different `ObjectTypePermission` sets. Same name, different authority.
+3. **`defaultFlag` marks the roles auto-assigned to a new user in the firm.** This is the closest thing to a "baseline" role in the per-firm catalogue.
+4. **There is no endpoint that returns the catalogue's `ObjectTypePermission` graph.** The admin UI sees only role *names*. To know what permissions a role grants, you'd need either a custom endpoint or to hit the DB directly.
+5. **`isMandatory` is wire-set to `false` everywhere.** The flag exists in `RoleWrapper` but `loadRolesByFirm` always passes `false`. It's only set to `true` by `createEmptyRole` (`:154`) — a different code path. Treat it as "always false" from this endpoint.
+
 ### 1.8 Things worth knowing before designing anything on top
 
 - **SHA-1 (`SHAPassword.java:38`) is the only password verifier.** Empty default salt. No bcrypt/PBKDF2/argon. Security review material.
@@ -152,33 +221,52 @@ POLICY_RULE_TBL  (entityId, objectType, permission, objectId/objectCd, firmCd)
 
 ## Part 2 — Proposal: how external domains should obtain roles & permissions
 
-The Keycloak-demo BFFs (`billing`, `trading`, future N) face the exact tension Part 1 surfaces:
+The Keycloak-demo BFFs (`billing`, `trading`, future N) face the exact tension Part 1 surfaces, plus a new constraint surfaced by §1.7a:
 
 - **The token must stay thin.** Fine permissions are 79 ObjectTypes × 5 actions = ~395 keys per firm, with per-firm variability — too big and too churny for a JWT.
 - **The authority lives in P1.** `policy_rule_tbl` is the source of truth; duplicating it anywhere else means cache invalidation hell.
 - **The check has to be fast.** Per-request actor messages from a BFF to a Java monolith are not viable for hot paths.
+- **Role names are firm-dynamic strings, not a fixed enum** (§1.7a). Firm 1 might have `BillingPowerUser`; firm 2 might have `BillingOps`; firm 3 might have neither. A `@Secured("BillingPowerUser")` annotation in the BFF would silently lock out firms 2 and 3 even when their roles are semantically equivalent. **The BFF cannot gate on P1 role names directly.**
 
-The current `sso-role-mapping.md` design already solved the first half (coarse capability roles + `firmCd` in the token). Below is the proposed shape for the second half — **how a domain BFF reads fine permissions when the coarse role isn't enough**.
+The current `sso-role-mapping.md` design already solved the first half (coarse capability roles + `firmCd` in the token). Below is the proposed shape for the second half — **how a domain BFF reads fine permissions when the coarse role isn't enough**, with the firm-dynamic-role constraint front and centre.
 
-### 2.1 Two-tier authorisation, sharp split
+### 2.1 Two-tier authorisation with a P1-side translation layer
 
 ```
-Tier 1 — coarse, in the token                  Tier 2 — fine, fetched
-─────────────────────────────────────          ─────────────────────────────
-JWT carries:                                    BFF fetches on first request:
-  firmCd                                         GET /api/p1-authz/me
-  roles: [client, advisor, admin,                  → { firmCd, permissions: {…},
-          billing-admin, billing-viewer,                gwAdminFlag, capabilities: {…} }
-          trading-trader, trading-viewer]
-                                                cache per-(sub, firmCd) for ≤ 60s
-@Secured("billing-admin") gates the                in-process; refresh on miss
-endpoint at all — coarse                        permissionService.has(OT.ACCOUNT, MODIFY)
-                                                gates each operation — fine
+P1 (per-firm role catalogue — firm-dynamic strings)
+  ROLE_TBL (firmCd, name, ObjectTypePermissions[])
+  Firm 1: "BillingPowerUser", "AdvisorL2", "ReadOnly"
+  Firm 2: "BillingOps", "Senior Advisor", "Viewer"
+  Firm 3: ...
+       │
+       │  translateToCapabilities(firmCd, P1-role) → set of canonical capabilities
+       │  (the "data-driven derivePocRoles replacement" from sso-role-mapping.md §C-D —
+       │   per-firm DB table modelled on FirmSSOConfig)
+       ▼
+SAML AttributeStatement (canonical capabilities only)
+  roles=["advisor", "billing-admin"]   ← fixed vocabulary, every firm uses the same names
+  firmCd="1"
+       ▼
+Keycloak (fixed realm role catalogue, never grows per firm)
+  saml-role-idp-mapper × N → realm roles
+       ▼
+JWT
+  roles: ["advisor", "billing-admin"]    Tier 1 — coarse, in the token
+  firmCd: 1
+       ▼
+Domain BFF
+  @Secured("billing-admin")              Tier 1 — coarse gate at controller
+  if (!authz.has(OT.INVOICE, MODIFY))    Tier 2 — fine, fetched from P1, cached ≤60s
+      throw 403;
 ```
 
-**Tier 1** is the gate that says "is this user even *allowed near* this domain." `@Secured({"billing-admin","billing-viewer","admin"})` is correct as-is; nothing more is needed at the controller-annotation level.
+The vocabulary in the JWT is the **canonical capability set** (`client/advisor/admin/billing-admin/billing-viewer/trading-trader/trading-viewer/...`), the same one already in `sso-role-mapping.md` Phase 1. P1's firm-specific role names (`BillingPowerUser`, `AdvisorL2`) **never leave P1** as themselves — they go through the translation layer first.
 
-**Tier 2** is for operations where `billing-admin` isn't fine enough — e.g. "can this user modify *invoices*, but not *plans*?", "can this advisor see account `ACCT-42` belonging to firm B?". The BFF asks an authorisation endpoint, caches the answer briefly, and consults it inline.
+**Tier 1** is the gate that says "is this user even *allowed near* this domain." `@Secured({"billing-admin","billing-viewer","admin"})` keys off the canonical capabilities, not P1 role names. The BFF stays decoupled from per-firm role naming.
+
+**Tier 2** is for operations where `billing-admin` isn't fine enough — e.g. "can this user modify *invoices*, but not *plans*?", "can this advisor see account `ACCT-42` belonging to firm B?". The BFF asks `GET /api/p1-authz/me`, caches the answer briefly, and consults it inline. **Permission keys (`"55_2"` — `objectTypeCd_permissionCd`) ARE stable across firms** (`ObjectType` is a global enum) — only role NAMES are firm-dynamic. So tier 2 can use a fixed vocabulary even while tier 1's underlying P1 roles vary.
+
+This is what makes the two-tier split work: the firm-dynamic layer is collapsed into canonical capabilities on the P1 side (tier 1), and the stable-keyed permission map is fetched on demand for fine checks (tier 2). The BFF never has to know that firm 1 calls it `BillingPowerUser` and firm 2 calls it `BillingOps`.
 
 ### 2.2 The authorisation endpoint
 
@@ -188,7 +276,7 @@ endpoint at all — coarse                        permissionService.has(OT.ACCOU
 - `sub` claim → P1 user UUID (the federated-identity mapping P1 already stores).
 - `firmCd` claim → cross-check against the looked-up user's `firmCd`; reject on mismatch.
 
-Response shape (deliberately a subset of `LoggedUserJTO`):
+Response shape (deliberately a subset of `LoggedUserJTO`, plus the P1 role names for transparency):
 
 ```json
 {
@@ -201,6 +289,10 @@ Response shape (deliberately a subset of `LoggedUserJTO`):
     "canAccessModelCenter": true,
     "canExecuteFiftyFiveIP": false
   },
+  "p1Roles": [
+    { "roleCd": 127, "name": "BillingPowerUser" },
+    { "roleCd": 129, "name": "AdvisorL2" }
+  ],
   "permissions": {
     "55_2": true,
     "12_5": true
@@ -210,7 +302,9 @@ Response shape (deliberately a subset of `LoggedUserJTO`):
 }
 ```
 
-The `permissions` keys reuse P1's existing `"<objectTypeCd>_<permissionCd>"` convention so nothing new has to be invented and the same fetch can serve every domain.
+The `permissions` keys reuse P1's existing `"<objectTypeCd>_<permissionCd>"` convention (§1.7a — `ObjectType` is a global enum, keys are stable across firms) so nothing new has to be invented and the same fetch can serve every domain.
+
+The `p1Roles` array carries the user's **firm-specific role names** (the same strings `getManageUsersDropdownsByFirm` returns to the admin UI). The BFF should treat these as **diagnostic-only** — useful for logging, support tickets, and admin debug screens, **never for gating**. Gating goes through `capabilities` (boolean caps, the `LoggedUserJTO` style) or `permissions` (`objectTypeCd_permissionCd` map). This is the firm-dynamic-role constraint made explicit: P1 role names are visible to the BFF for transparency, but routing authorisation decisions through them would re-introduce per-firm coupling that the canonical-capabilities translation was designed to eliminate.
 
 **Why one endpoint, not per-domain**: the fine permissions are P1-owned. Re-projecting them per domain would duplicate authority into N places. One endpoint, N consumers.
 
@@ -260,12 +354,15 @@ The tier-1 gate is unchanged from what's already on the branch (`sso-role-mappin
 | Pattern | Why rejected |
 |---|---|
 | **Put the full permissions map in the JWT.** | ~395 keys × per-firm variation = fat token that changes shape on every grant. Also re-derives authority in two places. |
+| **Project P1 role names directly into realm roles** (e.g. `BillingPowerUser@firmA`, `BillingOps@firmB`). | §1.7a: role names are firm-defined strings, unbounded across firms. Auto-creating realm roles per onboarded firm explodes the realm and creates a control-plane dependency (P1 admin → Keycloak admin API on every role mutation). Auto-deletion is even worse. The whole point of the canonical capability vocabulary is to *collapse* this dimension before SAML emission. |
+| **`@Secured("BillingPowerUser")` in BFF controllers.** | Same root cause: locks the BFF to one firm's vocabulary. If firm 2 calls the same capability `BillingOps`, every BFF needs a code change to keep them in sync. Use canonical capabilities at the gate; route firm-specific knowledge through the P1-side translation layer. |
 | **Replicate `policy_rule_tbl` into a BFF-local store.** | Authority duplication. P1 already has weak coverage of `refreshPolicyRulesForEntity` (~20 mutation sites, one commented out — `NfAccountTblDAO.java:1572`). The BFF would inherit every stale-projection bug. |
 | **Per-domain `/api/p1-authz/{domain}` endpoints.** | Forces P1 to know about external domains. The domain-agnostic `/api/p1-authz/me` lets the BFF decide which `objectTypeCd_permissionCd` keys it cares about. |
 | **Skip the cache, fetch on every request.** | P1 is already the bottleneck — each domain doubling P1's request load is hostile. 60s cache hits 99% of requests. |
 | **Fetch a Keycloak admin token from the BFF and use it to call P1.** | Loses user-bound authority. P1 would have to re-derive who the request is about. Always send the user's own JWT. |
 | **Long-lived (>5min) cache.** | Permission revocation goes invisible. The whole point of P1's `invalidateSessionByLoginKey` discipline is fast revocation; the BFF must not undo it. |
 | **Encode `gwAdminFlag` as a realm role.** | The doc already covered this: it's a *call-site* convention in P1, not an engine-level short-circuit. Surfacing it as a single global realm role (e.g. `gw-superadmin`) IS the right move for tier 1, but `gwAdminFlag || hasX()` patterns still need to live in the BFF's authz layer. |
+| **Expose `getManageUsersDropdownsByFirm.do` to the BFFs.** | It's gated on `isLoggedUserGwAdminFromFirm` (§1.7a) — only firm-scoped gwAdmin can call it. The BFF runs as the end user, not as an admin. Also semantically wrong: BFFs need the *current user's* permissions, not the firm's catalogue. If a future admin BFF needs the catalogue, add a **separate** endpoint `GET /api/p1-authz/firm/{firmCd}/role-catalogue` and gate it the same way. |
 
 ### 2.7 Risks & open questions
 
@@ -274,11 +371,22 @@ The tier-1 gate is unchanged from what's already on the branch (`sso-role-mappin
 - **The `SSOAction` half-set-session bug (1.4) means SP-logged users may not see their permissions even today** via `/loginReact.do` if it ever runs without a complete session. The new endpoint should follow the well-disciplined create path (`LoginAction.loginUser`), not the `SSOAction` shortcut, or it'll inherit the same bug.
 - **`PolicyRuleManager`'s effectively-infinite timeout (1.8) becomes a BFF problem.** Wrap the `P1AuthzClient` call in a hard 2s timeout on the BFF side; let it fail closed (403 / "service degraded") rather than hang the request thread.
 - **What does the BFF do with the response when the user is not yet in P1?** First-broker-login on the SSO side creates the federated identity in Keycloak before the user exists as a P1 entity. The endpoint should return a sentinel (`{ exists: false }`) and the BFF should treat it as "no permissions" rather than 500.
+- **The translation layer (firm-specific P1 role → canonical capability) is the new single point of failure.** It runs on the P1 side, replacing `derivePocRoles`. A bug there means every firm gets the wrong tier-1 capabilities and the BFF will silently 403 (or, worse, silently 200) the wrong users. Mitigations: per-firm row in the translation table is auditable, the translation is pure (no side effects → easy to unit-test), and the `p1Roles` field in `/api/p1-authz/me` (§2.2) gives ops a way to see what P1 thought the user's firm-specific roles were when authorisation feels wrong.
+- **Canonical-vocabulary drift across BFFs.** Two BFFs hard-coding `"billing-admin"` is fine; six BFFs hard-coding their own variants of similar strings is how `billing-admin` / `bill-admin` / `billingadmin` slip in. Mitigation: keep the canonical capability list in a single doc (`sso-role-mapping.md`) and reference it from each BFF's controller-level `@Secured` annotations via a shared constants source if/when the count of BFFs makes the duplication real.
+- **`getManageUsersDropdownsByFirm` returns `ObjectType.ROLE` for `getObjectTypeCd()` on `RoleWrapper` (§1.7a).** Suggests a parallel authorisation graph where `Role` itself is an `ObjectType` — i.e. there are `ObjectTypePermission`s on the `Role` ObjectType (CREATE/MODIFY/DELETE a role). When `/api/p1-authz/me` exposes the user's permission keys, those role-mutation permissions will be in there too. The BFFs should treat them as P1-internal (no demo domain cares about role CRUD).
 
 ### 2.8 Suggested phasing
 
-1. **Phase A (Keycloak demo, no P1 work):** keep the current Phase 1 tier-1 gating. No fine-grained checks yet. Demonstrates the SSO + coarse-role pipeline only.
-2. **Phase B (P1 PR):** add `/api/p1-authz/me`, wired to validate a Keycloak JWT, returning the existing `LoggedUserJTO` permission map. Single endpoint, no per-domain logic.
-3. **Phase C (BFFs):** add the `P1AuthzClient` + the 60s cache + one or two tier-2 checks in `BillingController` / `TradingController` to prove the model.
-4. **Phase D:** when P1 ships the data-driven replacement of `derivePocRoles` (the "per-firm DB table modelled on `FirmSSOConfig`" from `sso-role-mapping.md`), the tier-1 roles become firm-meaningful and `billing-admin@firmA ≠ billing-admin@firmB`. Tier 2 is unaffected — it was already firm-scoped via the user's `policy_rule_tbl` rows.
-5. **Phase E (revocation):** plug the BFF cache into Keycloak's back-channel logout. Cache TTL can drop to 5min once a real revocation signal exists.
+1. **Phase A (Keycloak demo, no P1 work):** keep the current Phase 1 tier-1 gating with the canonical capability vocabulary + the `user → advisor` legacy transition mapper. Demonstrates the SSO + coarse-role pipeline; no fine checks.
+2. **Phase B (P1 PR — translation layer):** the data-driven replacement of `derivePocRoles` (`IdpSsoAction.java:390`). New per-firm DB table modelled on `FirmSSOConfig`:
+   ```sql
+   CREATE TABLE firm_sso_role_translation (
+     firmCd INT, p1RoleCd INT, capability VARCHAR(64),  -- e.g. "billing-admin"
+     PRIMARY KEY (firmCd, p1RoleCd, capability)
+   );
+   ```
+   Onboarding a firm = inserting rows that map their firm-specific `Role.name`s onto the canonical capability vocabulary. `derivePocRoles` becomes `derivCapabilities(loggedUser) = joinTranslationTable(loggedUser.firmCd, loggedUser.entityRoles)`. The SAML `roles` attribute now emits canonical strings, never firm-specific ones. The `roles-legacy-user-to-advisor-from-saml` Keycloak mapper can be removed once every firm has translation rows.
+3. **Phase C (P1 PR — authz endpoint):** add `GET /api/p1-authz/me` (§2.2), validating a Keycloak JWT, returning the existing `LoggedUserJTO`-derived permission map + `capabilities` + `p1Roles` for diagnostics. One endpoint, every BFF consumes it.
+4. **Phase D (BFFs):** add `P1AuthzClient` + the 60s in-process cache (§2.3) + one or two tier-2 checks in `BillingController` / `TradingController` to prove the model. Hard 2s upstream timeout, fail-closed on hang (§2.7).
+5. **Phase E (revocation):** plug the BFF cache into Keycloak's back-channel logout. Cache TTL can drop further (e.g. 5min) once a real revocation signal exists.
+6. **Phase F (admin BFF, future):** if/when a back-office admin domain needs the per-firm role catalogue, add a **separate** `GET /api/p1-authz/firm/{firmCd}/role-catalogue` endpoint mirroring §1.7a's gate (`isLoggedUserGwAdminFromFirm`). Do not stretch `/api/p1-authz/me` to serve admin use cases.
