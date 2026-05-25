@@ -43,7 +43,7 @@ public class BillingController {
     }
 
     @Get("/summary")
-    @Secured({"billing-admin", "billing-viewer", "admin"})   // tier 1: can this user reach billing
+    @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1: can this user reach billing (gwAdmin = global override)
     public Map<String, Object> summary(HttpRequest<?> request, Authentication authentication) {
         // tier 2: can this user VIEW invoices specifically (opt-in; see P1AuthzClient)
         requirePermission(request, authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);
@@ -67,7 +67,7 @@ public class BillingController {
     }
 
     @Get("/invoices")
-    @Secured({"billing-admin", "billing-viewer", "admin"})   // tier 1
+    @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1
     public Map<String, Object> invoices(HttpRequest<?> request, Authentication authentication) {
         requirePermission(request, authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
 
@@ -91,7 +91,7 @@ public class BillingController {
     }
 
     @Get("/usage")
-    @Secured({"billing-admin", "billing-viewer", "admin"})
+    @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1
     public Map<String, Object> usage(Authentication authentication) {
         List<Map<String, Object>> lines = new ArrayList<>();
         lines.add(Map.of("metric", "API requests",    "included", 100_000, "used", 42_318, "unit", "calls"));

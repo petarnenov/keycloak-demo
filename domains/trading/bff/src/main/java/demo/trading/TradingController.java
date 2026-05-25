@@ -44,7 +44,7 @@ public class TradingController {
     }
 
     @Get("/portfolio")
-    @Secured({"trading-trader", "trading-viewer", "advisor", "admin"})
+    @Secured({"trading-trader", "trading-viewer", "advisor", "admin", "gwAdmin"})
     public Map<String, Object> portfolio(Authentication authentication) {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
@@ -63,7 +63,7 @@ public class TradingController {
     }
 
     @Get("/positions")
-    @Secured({"trading-trader", "trading-viewer", "advisor", "admin"})
+    @Secured({"trading-trader", "trading-viewer", "advisor", "admin", "gwAdmin"})
     public Map<String, Object> positions(Authentication authentication) {
         List<Map<String, Object>> positions = new ArrayList<>();
         positions.add(position("AAPL", "Apple Inc.",          240, 198.42, 212.85));
@@ -83,7 +83,7 @@ public class TradingController {
     }
 
     @Get("/orders")
-    @Secured({"trading-trader", "trading-viewer", "advisor", "admin"})   // tier 1
+    @Secured({"trading-trader", "trading-viewer", "advisor", "admin", "gwAdmin"})   // tier 1
     public Map<String, Object> orders(HttpRequest<?> request, Authentication authentication) {
         requirePermission(request, authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
 
