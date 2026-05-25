@@ -295,6 +295,45 @@ AuthorizationManager.getSole().updateEntityRolesForRole(roleCd, newUsersUUIDs, l
 - **`derivePocRoles`-style coarse role projection does NOT exist on master.** The closest analogue is the flat `permissions` map. There is **no "role" field** on `LoggedUserJTO`; downstream consumers infer coarse identity from `adviser`, `gwAdminFlag`, `isPowerAdmin`, `isPowerAdvisor`, and the `typeCd` (`LoggedUserJTO:50`).
 - **Firm scoping is single-firm by construction.** `User.firmCd` is one `int`, and `Role.firm` is one FK. Switching firms = log in as a different `entity_tbl` row. `LoggedUserJTO.firms[]` is a list but the ctor always adds exactly one entry.
 
+### 1.9 How many "main" roles exist — and how master's other SAML SPs handle the question
+
+§1.7a established that `ROLE_TBL.name` is a firm-defined `varchar` with no global enum. But the catalogue is **not** entirely unbounded: two roles are first-class in the domain model, constructed for every firm and reachable through typed getters, while everything else is dynamic.
+
+**The two firm-universal roles** (`Firm.java:58-59`):
+
+```java
+private Role adminsRole       = new Role(this, "Admins",        "Firm Administrators",                 false);
+private Role allEmployeesRole = new Role(this, "All Employees", "All employees of the firm has this role", true);  // isDefault=true
+```
+
+These are the **only** `new Role(name, ...)` sites in production code (every other role is created data-driven, by `roleCd`/name lookup — `AuthorizationHibernateDAO.java:70` builds a blank `new Role()` to populate from a row). They are the only roles with typed accessors (`Firm.getAdminsRole()` / `getAllEmployeesRole()`), and firm/user provisioning wires permissions and `EntityRole` links to **exactly these two** (`UserHibernateDAO.java:248-281`): every employee is joined to `All Employees`, firm admins additionally to `Admins`, and both get an `AccessSetMember` against the default AccessSet. `All Employees` is also the hardcoded default role for new users (`CreateEmployeesTool.java:208,210` → `setDefaultRoleCd(firm.getAllEmployeesRole().getRoleCd())`), which is exactly the "All Employees (Mandatory)" + "Default Role" the admin user-edit screen shows.
+
+Above the firm-scoped model sits one more cross-firm anchor: **`gwAdminFlag`** — a boolean on the user, not a `Role`, not honored inside `PolicyRuleManager` (§1.7/§1.8). It is the GW-internal super-admin override.
+
+So the count that matters for a coarse, cross-firm vocabulary is small and stable:
+
+| Tier | Identity | Guaranteed for every firm? | Source |
+|---|---|---|---|
+| Firm baseline | **All Employees** (`isDefault`) | Yes — every employee | `Firm.java:59`, `UserHibernateDAO.java:270` |
+| Firm admin | **Admins** | Yes — model-level | `Firm.java:58`, `UserHibernateDAO.java:260` |
+| Global super | **`gwAdminFlag`** | Cross-firm boolean, outside `ROLE_TBL` | `LoggedUserJTO:228-229` |
+| Everything else | `BillingPowerUser`, `OpsAnalyst`, … | No — firm-defined, variable count & names | `ROLE_TBL` rows (§1.7a) |
+
+**→ Two firm-universal roles plus one global flag are the only role-like facts that mean the same thing across all firms.** That is the empirical ceiling on a fixed coarse vocabulary: the shipped `client`/`advisor`/`admin` triad is precisely this anchor set (All Employees → `client`/`advisor` split by `isAdvisor()`; Admins → `admin`; `gwAdminFlag` → the open `gw-superadmin` question in §2.7). Per-domain roles (`billing-admin`, `trading-trader`) are demo refinements layered on top, not P1 universals.
+
+**How master's other SAML SPs answer the same question** (master has no Keycloak/`derivePocRoles` integration — that is POC-branch only, §1.8 — so these three are the only precedents):
+
+| SP | Role strategy on master | Evidence |
+|---|---|---|
+| **FireLight** | Hardcoded constant — `USER_ROLE = "Agent"` for every assertion (alongside `USER_RIGHTS="Full"`, `ORGANIZATION_ID="CRO"`) | `SsoSAMLHelper.java:188-189` |
+| **55IP** | **No role attribute at all** — the statement carries only identity + account/strategy data (`GeoWealthUserId`, `Strategy`, `AccountNumber`, `Custodian`, …) | `FiftyFiveIpAttributeStatementBuilder.java:12-24` |
+| **iCapital** | Has a `role` SAML attribute, but the value is `""` with `//TODO: figure out where roles come from` (same for `team`) | `ICapitalAttributeStatementBuilder.java:18`, `ICapitalSamlAttributesHelper.java:37-38` |
+
+Two things this settles:
+
+1. **No existing SP projects P1's firm-defined roles.** They send a constant, nothing, or a stubbed-empty field. There is no precedent for forwarding the per-firm `ROLE_TBL` catalogue over SAML — which is exactly why a 1:1 projection is the wrong default and a small fixed vocabulary is the right one.
+2. **The per-firm-config precedent the proposal leans on is already live in iCapital.** `ICapitalSamlAttributesHelper` resolves the per-firm SSO `firm_id` through `CustomFieldHelper.getCustomFieldString(firmCd, …)` (`:60-61`) — the same `CustomFieldHelper`/`FirmSSOConfig` shape `sso-role-mapping.md` recommends for the data-driven `derivePocRoles` replacement. The translation layer is not greenfield; it follows a pattern P1 SSO code already uses for firm-scoped lookups.
+
 ---
 
 ## Part 2 — Proposal: how external domains should obtain roles & permissions

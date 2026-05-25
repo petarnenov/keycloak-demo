@@ -40,6 +40,14 @@ Three findings from analysing the P1 codebase decide the design:
    explode the realm and require dynamic role creation. It also rules out
    "Keycloak groups bundling composite roles per firm" — that duplicates a model
    P1 already owns.
+   **Two exceptions** are baked into the model and exist for *every* firm:
+   `Firm.adminsRole` (`"Admins"`) and `Firm.allEmployeesRole` (`"All Employees"`,
+   `isDefault=true`) — the only `new Role(name,…)` sites in production
+   (`Firm.java:58-59`), wired up at firm/user provisioning
+   (`UserHibernateDAO.java:248-281`). Together with the cross-firm `gwAdminFlag`
+   boolean they are the only role-like facts stable across firms, and they are
+   exactly what the coarse `client`/`advisor`/`admin` vocabulary anchors onto.
+   See `p1-auth-flow.md` §1.9.
 
 2. **One firm per user per session.** `User.firmCd` is a single value
    (`User.java`); `LoggedUserJTO.firms[]` looks like a list but the constructor
@@ -66,10 +74,10 @@ The other SAML integrations were checked for an established
 
 | SP | Role strategy |
 |---|---|
-| FireLight | hardcoded `USER_ROLE="Agent"` for every user (`SsoSAMLHelper.java`) |
-| 55IP | sends no roles at all |
-| iCapital | has a `role` field but `// TODO: figure out where roles come from` |
-| Keycloak | `derivePocRoles` — conditional; the most advanced, but a self-declared POC |
+| FireLight | hardcoded `USER_ROLE="Agent"` for every user (`SsoSAMLHelper.java:188-189`) |
+| 55IP | sends no roles at all — identity + account/strategy data only (`FiftyFiveIpAttributeStatementBuilder.java:12-24`) |
+| iCapital | has a `role` field but value is `""` — `// TODO: figure out where roles come from` (`ICapitalSamlAttributesHelper.java:37`) |
+| Keycloak | `derivePocRoles` — conditional; the most advanced, but a self-declared POC (POC branch only; not on master) |
 
 There **is** a precedent for *per-firm configuration in the database*:
 `FirmSSO` / `FirmSSOConfig` (per-firm SSO metadata as JSON) and `CustomFieldHelper`
