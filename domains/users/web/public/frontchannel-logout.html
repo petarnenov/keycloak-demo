@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Signing out…</title>
+  <meta name="referrer" content="no-referrer">
+</head>
+<body>
+<p>Signing out…</p>
+<!--
+  Front-channel logout iframe. Keycloak embeds this URL inside the
+  signout flow when any client in this browser triggers an OIDC
+  logout, so each SPA gets a same-origin script-execution moment to
+  clean up its own state without waiting for token expiry.
+
+  What this page does for the users SPA:
+    1. Wipe sessionStorage + localStorage on the users.geowealth.int
+       origin. keycloak-js stashes nonce / state / pkce-verifier here
+       between auth round-trips; clearing them prevents a state
+       mismatch on the very next login attempt.
+    2. Broadcast a "logout" message via BroadcastChannel("auth"). Any
+       open users tab subscribes to that channel in
+       AuthProvider.tsx and reacts by reloading itself, which re-runs
+       keycloak.init({ check-sso }) → KC has no session →
+       keycloak.login() → fresh sign-in.
+
+  The iframe runs once per logout flow and is not part of the SPA's
+  long-lived tab; the only persistent effect is the broadcast.
+-->
+<script>
+  (function () {
+    // Selective wipe: only delete keys belonging to auth/identity
+    // libraries we know about (keycloak-js + our own conventions). The
+    // SPA may also store unrelated user state — UI preferences, draft
+    // orders, cached market data — which should survive a logout in a
+    // sibling SPA.
+    var AUTH_KEY_PREFIXES = ['kc-', 'oidc.', 'auth.'];
+    function isAuthKey(key) {
+      if (!key) return false;
+      for (var i = 0; i < AUTH_KEY_PREFIXES.length; i++) {
+        if (key.indexOf(AUTH_KEY_PREFIXES[i]) === 0) return true;
+      }
+      return false;
+    }
+    function wipe(storage) {
+      try {
+        var doomed = [];
+        for (var i = 0; i < storage.length; i++) {
+          var k = storage.key(i);
+          if (isAuthKey(k)) doomed.push(k);
+        }
+        doomed.forEach(function (k) { storage.removeItem(k); });
+      } catch (e) {}
+    }
+    wipe(sessionStorage);
+    wipe(localStorage);
+    try {
+      // BroadcastChannel scope is per-origin, so this only reaches
+      // tabs at https://users.geowealth.int:5186 — the live users
+      // SPA picks it up and self-logs-out.
+      var ch = new BroadcastChannel('auth');
+      ch.postMessage({ type: 'logout', source: 'frontchannel' });
+      ch.close();
+    } catch (e) {}
+  })();
+</script>
+</body>
+</html>

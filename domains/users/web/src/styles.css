@@ -1,0 +1,491 @@
+/* Users dashboard styling — same palette as billing / trading for visual parity.
+   Layout is a fixed-sidebar shell (sidebar nav + content area). */
+
+:root {
+  --text: #1a1a1a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --bg: #f9fafb;
+  --accent: #307492;
+  --pos: #047857;
+  --neg: #b91c1c;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.pos   { color: var(--pos); }
+.neg   { color: var(--neg); }
+
+/* ---- splash (pre-auth / loading) ---------------------------------------- */
+
+.splash {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- app shell ---------------------------------------------------------- */
+
+.app-shell {
+  display: flex;
+  min-height: 100%;
+}
+
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 700;
+  padding: 0 8px;
+  margin-bottom: 28px;
+}
+
+.brand-mark {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background: #f3f4f6;
+}
+
+.nav-link.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.sidebar-foot p { margin: 2px 0; }
+
+.who-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.main {
+  flex: 1;
+  padding: 32px 40px;
+  max-width: 1400px;
+}
+
+/* ---- page header -------------------------------------------------------- */
+
+.page-head {
+  margin-bottom: 24px;
+}
+
+.page-head h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.page-head p { margin: 0; }
+
+/* ---- panels / content cards --------------------------------------------- */
+
+.panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+}
+
+.panel h2 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+
+.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+/* ---- summary list ------------------------------------------------------- */
+
+.summary {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.summary-row:last-child { border-bottom: none; }
+
+.summary-row .label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* ---- tables ------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+/* ---- order status pills ------------------------------------------------- */
+
+.pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.pill-filled    { background: #ecfdf5; color: #047857; }
+.pill-working   { background: #fef3c7; color: #92400e; }
+.pill-cancelled { background: #fee2e2; color: #991b1b; }
+.pill-on        { background: #ecfdf5; color: #047857; }
+.pill-off       { background: #f3f4f6; color: #6b7280; }
+
+/* ---- toolbar / firm picker ---------------------------------------------- */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+/* ---- form fields -------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.field input[type='text'],
+.field input[type='email'],
+.field input[type='password'],
+.field input:not([type]),
+.field select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  background: #fff;
+  min-width: 180px;
+}
+
+.field input:disabled,
+.field select:disabled {
+  background: #f3f4f6;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+/* ---- users grid --------------------------------------------------------- */
+
+.grid-wrap {
+  overflow-x: auto;
+}
+
+.users-grid {
+  min-width: 980px;
+}
+
+.users-grid td {
+  vertical-align: middle;
+}
+
+.row-actions {
+  text-align: right;
+}
+
+.row-error {
+  background: #fef2f2;
+}
+
+/* ---- buttons / variants ------------------------------------------------- */
+
+.link-button {
+  background: transparent;
+  color: var(--accent);
+  border: none;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+.link-button:hover { opacity: 0.85; }
+
+.link-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.ghost-button {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.ghost-button:hover {
+  background: #f3f4f6;
+  opacity: 1;
+}
+
+.icon-button {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 4px 8px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.icon-button:hover { color: var(--text); background: #f3f4f6; }
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* ---- modal -------------------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 24px;
+  z-index: 50;
+  overflow-y: auto;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.35);
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-wide { max-width: 960px; }
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 20px 24px;
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: #f9fafb;
+  border-radius: 0 0 10px 10px;
+}
+
+.footer-right {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+
+.roles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-top: 4px;
+}
+
+code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ---- buttons ------------------------------------------------------------ */
+
+button {
+  padding: 8px 18px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:hover { opacity: 0.92; }
+
+.signout {
+  margin-top: 14px;
+  width: 100%;
+  background: #fff;
+  color: var(--accent);
+}
+
+.signout:hover {
+  background: #f3f4f6;
+  opacity: 1;
+}
