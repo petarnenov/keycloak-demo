@@ -14,6 +14,11 @@ micronaut:
       p1authz:
         url: ${P1_AUTHZ_URL:http://localhost:8888}
         read-timeout: 2s
+      # Keycloak token endpoint, used by TokenRefreshFilter for the
+      # refresh_token grant (BFF / Token Handler keeps tokens fresh server-side).
+      kc:
+        url: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
+        read-timeout: 5s
   session:
     http:
       cookie: true

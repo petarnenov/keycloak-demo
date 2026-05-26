@@ -16,6 +16,7 @@ dependencies {
     annotationProcessor("io.micronaut.security:micronaut-security-annotations")
 
     implementation("io.micronaut:micronaut-http-client")
+    implementation("io.micronaut.reactor:micronaut-reactor")
     implementation("io.micronaut.security:micronaut-security-jwt")
     implementation("io.micronaut.security:micronaut-security-oauth2")
     implementation("io.micronaut.security:micronaut-security-session")
