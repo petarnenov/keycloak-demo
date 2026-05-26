@@ -1,0 +1,58 @@
+micronaut:
+  application:
+    name: ${MICRONAUT_APPLICATION_NAME:users-bff}
+  server:
+    cors:
+      enabled: true
+      configurations:
+        all:
+          allowedOrigins:
+            - ${CORS_ORIGIN:https://users.geowealth.int:5186}
+          allowedMethods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          allowedHeaders:
+            - "*"
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 8MB
+  security:
+    enabled: true
+    authentication: bearer
+    token:
+      name-key: preferred_username
+      roles-name: roles
+      jwt:
+        signatures:
+          jwks:
+            keycloak:
+              url: ${KEYCLOAK_AUTH_SERVER_URL:http://localhost:8080/realms/demo-realm}/protocol/openid-connect/certs
+    intercept-url-map:
+      - pattern: /**
+        http-method: OPTIONS
+        access:
+          - isAnonymous()
+      - pattern: /health
+        access:
+          - isAnonymous()
+      - pattern: /api/**
+        access:
+          - isAuthenticated()
+
+endpoints:
+  health:
+    enabled: true
+    sensitive: false
+
+app:
+  source: ${APP_SOURCE:users-bff}
+
+p1:
+  # P1 monolith base URL (Tomcat). The users-bff forwards the caller's
+  # Keycloak bearer to /saml/idp/bff-users.do on this host. Defaults to
+  # host.docker.internal:8080 so reads/writes reach the geowealth Tomcat
+  # running on the developer's host.
+  base-url: ${P1_BASE_URL:http://host.docker.internal:8080}

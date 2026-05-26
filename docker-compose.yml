@@ -7,9 +7,10 @@
 #   auth.geowealth.int:5180   — nginx → keycloak:8080 (TLS terminator)
 #   billing.geowealth.int:5184 — nginx → SPA + /api/billing → bff-billing
 #   trading.geowealth.int:5185 — nginx → SPA + /api/trading → bff-trading
+#   users.geowealth.int:5186   — nginx → SPA + /api/users   → bff-users
 #
 # Internal only (no host port):
-#   keycloak:8080, bff-billing:8080, bff-trading:8080, postgres:5432
+#   keycloak:8080, bff-billing:8080, bff-trading:8080, bff-users:8080, postgres:5432
 #
 # Login flow: SPA's keycloak-js redirects the browser to
 # https://auth.geowealth.int:5180/realms/demo-realm/...&kc_idp_hint=p1 →
@@ -198,6 +199,47 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
+
+  # ---- domain: users (Firm Admin · Users & Access replica) -------------------
+  # Standalone replica of P1's FirmAdmin → Users & Access page. FE at
+  # users.geowealth.int:5186 (mkcert TLS, /etc/hosts entry required). BFF is
+  # internal-only, reached by nginx as bff-users:8080. Reads/writes hit the
+  # P1 monolith via the bearer-auth endpoint at /saml/idp/bff-users.do
+  # (com.geowealth.bff.BffUsersAction) — a user created here shows up in P1's
+  # Operations → Firm Admin → Users grid and vice versa. P1_BASE_URL points
+  # at the host geowealth Tomcat (same pattern as P1_AUTHZ_URL on the other BFFs).
+
+  demo-users:
+    build:
+      context: ./domains/users/web
+    image: keycloak-demo-users-web:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "5186:5186"
+    volumes:
+      - ./proxy/certs/users.geowealth.int.crt:/certs/users.crt:ro
+      - ./proxy/certs/users.geowealth.int.key:/certs/users.key:ro
+
+  bff-users:
+    build:
+      context: ./domains/users/bff
+    image: keycloak-demo-users-bff:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      MICRONAUT_APPLICATION_NAME: users-bff
+      APP_SOURCE: users-bff
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+      P1_BASE_URL: "${P1_BASE_URL:-http://host.docker.internal:8080}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:

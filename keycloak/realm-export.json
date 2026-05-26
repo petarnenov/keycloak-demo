@@ -328,6 +328,71 @@
       ]
     },
     {
+      "clientId": "demo-users-client",
+      "enabled": true,
+      "name": "Demo Users Client",
+      "description": "Public OIDC client for the demo-users standalone app at https://users.geowealth.int:5186. P1-only auth via kc_idp_hint=p1.",
+      "publicClient": true,
+      "bearerOnly": false,
+      "webOrigins": [
+        "https://users.geowealth.int:5186",
+        "http://localhost:5186",
+        "http://127.0.0.1:5186"
+      ],
+      "redirectUris": [
+        "https://users.geowealth.int:5186",
+        "https://users.geowealth.int:5186/",
+        "https://users.geowealth.int:5186/*",
+        "http://localhost:5186",
+        "http://localhost:5186/",
+        "http://localhost:5186/*",
+        "http://127.0.0.1:5186",
+        "http://127.0.0.1:5186/",
+        "http://127.0.0.1:5186/*"
+      ],
+      "baseUrl": "https://users.geowealth.int:5186/",
+      "rootUrl": "https://users.geowealth.int:5186",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "attributes": {
+        "post.logout.redirect.uris": "https://users.geowealth.int:5186/*##http://localhost:5186/*",
+        "frontchannel.logout.url": "https://users.geowealth.int:5186/frontchannel-logout.html"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm-roles-flat",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "firm-cd-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "firmCd",
+            "claim.name": "firmCd",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "p1-self-client",
       "enabled": true,
       "name": "P1 Self OIDC Client",
@@ -399,6 +464,14 @@
       {
         "name": "trading-viewer",
         "description": "Per-domain capability: read-only access to the trading domain (portfolio/positions/orders)."
+      },
+      {
+        "name": "users-admin",
+        "description": "Per-domain capability: write access to the users domain (Firm Admin · create/edit users, bulk import, refresh policy)."
+      },
+      {
+        "name": "users-viewer",
+        "description": "Per-domain capability: read-only access to the users domain."
       },
       {
         "name": "gwAdmin",
@@ -556,6 +629,28 @@
         "attribute.name": "roles",
         "attribute.value": "trading-viewer",
         "role": "trading-viewer"
+      }
+    },
+    {
+      "name": "roles-users-admin-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "users-admin",
+        "role": "users-admin"
+      }
+    },
+    {
+      "name": "roles-users-viewer-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-role-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "roles",
+        "attribute.value": "users-viewer",
+        "role": "users-viewer"
       }
     },
     {
