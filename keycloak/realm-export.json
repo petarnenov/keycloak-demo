@@ -230,7 +230,10 @@
       "frontchannelLogout": true,
       "attributes": {
         "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*##http://localhost:8888/*",
-        "frontchannel.logout.url": "https://billing.geowealth.int:5184/frontchannel-logout.html"
+        "frontchannel.logout.url": "https://billing.geowealth.int:5184/frontchannel-logout.html",
+        "backchannel.logout.url": "http://bff-billing:8080/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "protocolMappers": [
         {
@@ -295,7 +298,10 @@
       "frontchannelLogout": true,
       "attributes": {
         "post.logout.redirect.uris": "https://trading.geowealth.int:5185/*##http://localhost:5185/*",
-        "frontchannel.logout.url": "https://trading.geowealth.int:5185/frontchannel-logout.html"
+        "frontchannel.logout.url": "https://trading.geowealth.int:5185/frontchannel-logout.html",
+        "backchannel.logout.url": "http://bff-trading:8080/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "protocolMappers": [
         {
@@ -360,7 +366,10 @@
       "frontchannelLogout": true,
       "attributes": {
         "post.logout.redirect.uris": "https://users.geowealth.int:5186/*##http://localhost:5186/*",
-        "frontchannel.logout.url": "https://users.geowealth.int:5186/frontchannel-logout.html"
+        "frontchannel.logout.url": "https://users.geowealth.int:5186/frontchannel-logout.html",
+        "backchannel.logout.url": "http://bff-users:8080/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
       },
       "protocolMappers": [
         {
