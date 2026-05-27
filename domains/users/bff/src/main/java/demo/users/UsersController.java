@@ -1,7 +1,6 @@
 package demo.users;
 
 import io.micronaut.context.annotation.Value;
-import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Body;
@@ -41,6 +40,12 @@ import java.util.Map;
  * ({@code isAllowedFor} in {@code BffUsersAction}) so a token
  * forged with extra roles still cannot reach another firm.</p>
  *
+ * <p>BFF / Token Handler model: the SPA carries no token — it talks to
+ * the BFF over the {@code USESSION} httpOnly cookie. The controller takes
+ * the user's access token from the server-side session
+ * ({@link Authentication#getAttributes()}) and forwards it to P1, so
+ * authority stays user-bound (§2.6).</p>
+ *
  * <p>Bulk-CSV upload stays BFF-local: the CSV is parsed here and
  * each parsed row is created via {@link P1Client#createUpdate} one
  * by one. Keeps the P1 surface narrow (no multipart-CSV ingestion
@@ -67,10 +72,9 @@ public class UsersController {
     @Get("/getUsers")
     @Secured({"users-admin", "users-viewer", "admin", "gwAdmin"})
     public Map<String, Object> getUsers(@QueryValue("firmCd") int firmCd,
-                                        HttpRequest<?> request,
                                         Authentication authentication) {
         enforceFirmScope(authentication, firmCd);
-        Map<String, Object> upstream = p1.list(firmCd, bearer(request));
+        Map<String, Object> upstream = p1.list(firmCd, bearer(authentication));
 
         // upstream is the GsonUtil-serialised RowsJTO from
         // UserManager.getActiveUsers — re-export under the
@@ -86,9 +90,8 @@ public class UsersController {
     @Get("/getEmployeeById")
     @Secured({"users-admin", "users-viewer", "admin", "gwAdmin"})
     public Map<String, Object> getEmployeeById(@QueryValue("userId") String userId,
-                                               HttpRequest<?> request,
                                                Authentication authentication) {
-        Map<String, Object> u = p1.getById(userId, bearer(request));
+        Map<String, Object> u = p1.getById(userId, bearer(authentication));
         // P1 has already checked firm-scope, but apply defence-in-depth here too.
         Object firmCdObj = u.get("firmCd");
         if (firmCdObj instanceof Number n) {
@@ -101,10 +104,9 @@ public class UsersController {
     @Get("/getManageUsersDropdownsByFirm")
     @Secured({"users-admin", "users-viewer", "admin", "gwAdmin"})
     public Map<String, Object> getDropdowns(@QueryValue("firmCd") int firmCd,
-                                            HttpRequest<?> request,
                                             Authentication authentication) {
         enforceFirmScope(authentication, firmCd);
-        return p1.dropdowns(firmCd, bearer(request));
+        return p1.dropdowns(firmCd, bearer(authentication));
     }
 
     /** Returns the firms the caller is allowed to administer — drives the firm picker. */
@@ -139,22 +141,19 @@ public class UsersController {
     @Post(value = "/createUpdateUser", consumes = MediaType.MULTIPART_FORM_DATA)
     @Secured({"users-admin", "admin", "gwAdmin"})
     public Map<String, Object> createUpdateUserMultipart(@Part("q") String q,
-                                                         HttpRequest<?> request,
                                                          Authentication authentication) {
         Map<String, Object> incoming = readJson(q);
-        return doCreateUpdate(incoming, request, authentication);
+        return doCreateUpdate(incoming, authentication);
     }
 
     @Post(value = "/createUpdateUser", consumes = MediaType.APPLICATION_JSON)
     @Secured({"users-admin", "admin", "gwAdmin"})
     public Map<String, Object> createUpdateUserJson(@Body Map<String, Object> body,
-                                                    HttpRequest<?> request,
                                                     Authentication authentication) {
-        return doCreateUpdate(body, request, authentication);
+        return doCreateUpdate(body, authentication);
     }
 
     private Map<String, Object> doCreateUpdate(Map<String, Object> incoming,
-                                               HttpRequest<?> request,
                                                Authentication authentication) {
         if (incoming == null || incoming.isEmpty()) {
             throw new HttpStatusException(HttpStatus.BAD_REQUEST, "missing payload");
@@ -164,7 +163,7 @@ public class UsersController {
             throw new HttpStatusException(HttpStatus.BAD_REQUEST, "firmCd is required");
         }
         enforceFirmScope(authentication, firmCdNum.intValue());
-        Map<String, Object> p1Response = p1.createUpdate(incoming, bearer(request));
+        Map<String, Object> p1Response = p1.createUpdate(incoming, bearer(authentication));
 
         // P1 returns {status, userId}; preserve and add the wire field the SPA expects.
         Map<String, Object> body = new LinkedHashMap<>();
@@ -211,7 +210,6 @@ public class UsersController {
     @Secured({"users-admin", "admin", "gwAdmin"})
     @SuppressWarnings("unchecked")
     public Map<String, Object> bulkCreateUsers(@Part("q") String q,
-                                               HttpRequest<?> request,
                                                Authentication authentication) {
         Object parsed = readJsonAny(q);
         List<Map<String, Object>> users;
@@ -221,7 +219,7 @@ public class UsersController {
             throw new HttpStatusException(HttpStatus.BAD_REQUEST, "expected JSON array");
         }
 
-        String bearer = bearer(request);
+        String bearer = bearer(authentication);
         List<Map<String, Object>> failed = new ArrayList<>();
         int created = 0;
         for (Map<String, Object> u : users) {
@@ -257,16 +255,17 @@ public class UsersController {
 
     // ---- helpers -------------------------------------------------------------
 
-    private static String bearer(HttpRequest<?> request) {
-        String h = request.getHeaders().get("Authorization");
-        if (h == null) {
-            throw new HttpStatusException(HttpStatus.UNAUTHORIZED, "missing Authorization header");
+    /**
+     * The user's own access token from the server-side session (Token Handler
+     * model). Forwarded to P1 so authority stays user-bound (§2.6) — never an
+     * inbound Authorization header (the SPA doesn't carry one in this model).
+     */
+    private static String bearer(Authentication authentication) {
+        Object token = authentication.getAttributes().get("accessToken");
+        if (token == null) {
+            throw new HttpStatusException(HttpStatus.UNAUTHORIZED, "missing access token in session");
         }
-        h = h.trim();
-        if (h.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            return h.substring(7).trim();
-        }
-        throw new HttpStatusException(HttpStatus.UNAUTHORIZED, "Authorization is not a Bearer token");
+        return token.toString();
     }
 
     private static void addFirmIf(List<Map<String, Object>> dst, int cd, String name, boolean include) {
