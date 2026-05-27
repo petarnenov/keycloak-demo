@@ -1,0 +1,424 @@
+<mxfile host="65bd71144e">
+    <diagram id="topology" name="Topology">
+        <mxGraphModel dx="741" dy="503" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="OIDC / SAML Topology — keycloak-demo identity tier" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="200" y="30" width="1000" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="subtitle" value="The three BFFs speak OIDC to Keycloak; Keycloak speaks SAML to P1. KC is the translator." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="200" y="70" width="1000" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="browser" value="Browser&#xa;&#xa;User-Agent&#xa;(httpOnly BSESSION cookie only — no tokens)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="280" width="220" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="ngweb" value="domain nginx&#xa;(demo-billing / demo-trading / demo-users)&#xa;TLS · proxy /api/* /auth/* /oauth/* → BFF" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="350" y="200" width="280" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="bff" value="BFF (Micronaut)&#xa;&#xa;OIDC Relying Party&#xa;Token Handler pattern&#xa;&#xa;holds access/id/refresh server-side" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="350" y="320" width="280" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="authnginx" value="auth nginx&#xa;TLS terminator&#xa;https://auth.geowealth.int:5180" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="700" y="200" width="240" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="kc" value="Keycloak (Quarkus)&#xa;&#xa;OIDC Provider (OP)&#xa;outward to BFFs&#xa;&#xa;SAML SP&#xa;inward toward P1&#xa;&#xa;realm: demo-realm" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="700" y="320" width="240" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="postgres" value="Postgres&#xa;&#xa;KC&#39;s only persistence:&#xa;realm config, federated identities,&#xa;sessions, events, signing keys" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="730" y="580" width="180" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="p1" value="P1 (SAML IdP)&#xa;&#xa;legacy enterprise app&#xa;Struts IdpSsoAction&#xa;localhost:8888&#xa;&#xa;authoritative on user identity" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="1040" y="320" width="240" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.25;entryX=0;entryY=0.5;strokeColor=#6c8ebf;strokeWidth=2" parent="1" source="browser" target="ngweb" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1lbl" value="HTTPS&#xa;BSESSION cookie" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2" parent="e1" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e2" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#9673a6;strokeWidth=2" parent="1" source="ngweb" target="bff" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e2lbl" value="HTTP (internal)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2" parent="e2" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e3" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#6c8ebf;strokeWidth=2;dashed=1" parent="1" source="browser" target="authnginx" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="660" y="240"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e3lbl" value="HTTPS top-level redirects to KC&#xa;(authorize, logout, broker)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2" parent="e3" vertex="1" connectable="0">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e4" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#9673a6;strokeWidth=2" parent="1" source="authnginx" target="kc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e4lbl" value="HTTP (internal)&#xa;X-Forwarded-* set" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2" parent="e4" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e5" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#82b366;strokeWidth=3;startArrow=classic" parent="1" source="bff" target="kc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e5lbl" value="OIDC server-to-server&#xa;• /token (code exchange, refresh)&#xa;• /certs (JWKS)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#206020;rounded=1;whiteSpace=wrap;fillColor=#f0fff0;strokeColor=#82b366" parent="e5" vertex="1" connectable="0">
+                    <mxGeometry x="-0.05" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e6" style="endArrow=classic;html=1;rounded=0;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeColor=#666666;strokeWidth=2" parent="1" source="kc" target="postgres" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6lbl" value="JDBC" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=2" parent="e6" vertex="1" connectable="0">
+                    <mxGeometry x="-0.1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e7" style="endArrow=classic;html=1;rounded=0;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeColor=#b85450;strokeWidth=3;startArrow=classic" parent="1" source="kc" target="p1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e7lbl" value="SAML 2.0 (browser-mediated)&#xa;• AuthnRequest (signed)&#xa;• AuthnResponse (signed)&#xa;• LogoutRequest / LogoutResponse" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1;fontColor=#802020;rounded=1;whiteSpace=wrap;fillColor=#fff0f0;strokeColor=#b85450" parent="e7" vertex="1" connectable="0">
+                    <mxGeometry x="-0.05" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="legend" value="Protocol legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666;fontSize=12;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="60" y="580" width="320" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="legendOIDC" value="━━━ OIDC (OAuth 2.0 + identity layer)&#xa;        JWT tokens, JSON over HTTPS" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#206020" parent="1" vertex="1">
+                    <mxGeometry x="75" y="610" width="295" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="legendSAML" value="━━━ SAML 2.0 (XML, browser-mediated)&#xa;        Signed AuthnRequest/Response" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11;fontColor=#802020" parent="1" vertex="1">
+                    <mxGeometry x="75" y="650" width="295" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="legendTLS" value="━ ━ TLS hop with cookie&#xa;        From browser to auth.geowealth.int" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="75" y="690" width="295" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="boundary" value="OIDC ↔ SAML boundary&#xa;Keycloak as bilingual translator" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=12;fontStyle=2;fontColor=#666" parent="1" vertex="1">
+                    <mxGeometry x="970" y="560" width="220" height="40" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="login" name="Login Flow">
+        <mxGraphModel dx="741" dy="503" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1700" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="lt" value="OIDC Authorization Code + PKCE login flow (with SAML federation to P1)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="100" y="30" width="1200" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="lhBrowser" value="Browser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="100" y="100" width="180" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="lhBFF" value="BFF (RP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="450" y="100" width="180" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="lhKC" value="Keycloak (OP / SAML SP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="800" y="100" width="220" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="lhP1" value="P1 (SAML IdP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="1180" y="100" width="180" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="llBrowser" value="" style="endArrow=none;html=1;rounded=0;dashed=1;strokeColor=#6c8ebf;strokeWidth=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="150" as="sourcePoint"/>
+                        <mxPoint x="190" y="1620" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="llBFF" value="" style="endArrow=none;html=1;rounded=0;dashed=1;strokeColor=#82b366;strokeWidth=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="150" as="sourcePoint"/>
+                        <mxPoint x="540" y="1620" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="llKC" value="" style="endArrow=none;html=1;rounded=0;dashed=1;strokeColor=#d6b656;strokeWidth=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="910" y="150" as="sourcePoint"/>
+                        <mxPoint x="910" y="1620" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="llP1" value="" style="endArrow=none;html=1;rounded=0;dashed=1;strokeColor=#b85450;strokeWidth=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="1270" y="150" as="sourcePoint"/>
+                        <mxPoint x="1270" y="1620" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s01" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="200" as="sourcePoint"/>
+                        <mxPoint x="540" y="200" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s01l" value="1) GET / (SPA shell)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="240" y="178" width="260" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s02" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="230" as="sourcePoint"/>
+                        <mxPoint x="190" y="230" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s02l" value="2) 200 OK (HTML + JS bundle)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="240" y="240" width="260" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s03" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="280" as="sourcePoint"/>
+                        <mxPoint x="540" y="280" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s03l" value="3) GET /auth/me (BSESSION cookie if any)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="240" y="258" width="260" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s04" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1;strokeColor=#b85450" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="310" as="sourcePoint"/>
+                        <mxPoint x="190" y="310" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s04l" value="4) 401 Unauthorized (no session)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontColor=#802020" parent="1" vertex="1">
+                    <mxGeometry x="240" y="320" width="260" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s05" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="360" as="sourcePoint"/>
+                        <mxPoint x="540" y="360" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s05l" value="5) GET /oauth/login/keycloak (top-level navigation)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="220" y="338" width="320" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s06box" value="6) BFF builds authorize URL&#xa;• state=eyJ… (anti-CSRF, server-stored)&#xa;• nonce=… (anti-replay)&#xa;• PKCE: code_challenge = SHA256(code_verifier)&#xa;• kc_idp_hint=p1 added by IdpHintFilter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#82b366;fontSize=10;align=left;spacingLeft=10;spacingTop=5" parent="1" vertex="1">
+                    <mxGeometry x="430" y="385" width="320" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="s07" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="490" as="sourcePoint"/>
+                        <mxPoint x="190" y="490" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s07l" value="7) 302 Location: KC /authorize?response_type=code&amp;..." style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="220" y="500" width="320" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s08" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="540" as="sourcePoint"/>
+                        <mxPoint x="910" y="540" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s08l" value="8) GET KC /protocol/openid-connect/auth?...&amp;kc_idp_hint=p1" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="340" y="518" width="420" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s09" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#b85450" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="910" y="590" as="sourcePoint"/>
+                        <mxPoint x="1270" y="590" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s09l" value="9) 302 → P1 /saml/idp/sso.do?SAMLRequest=&lt;signed XML&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1;fontColor=#802020" parent="1" vertex="1">
+                    <mxGeometry x="950" y="568" width="380" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s10" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1;strokeColor=#b85450" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="1270" y="640" as="sourcePoint"/>
+                        <mxPoint x="190" y="640" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s10l" value="10) 200 + HTML login form (P1)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontColor=#802020" parent="1" vertex="1">
+                    <mxGeometry x="500" y="650" width="460" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s11" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#b85450" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="690" as="sourcePoint"/>
+                        <mxPoint x="1270" y="690" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s11l" value="11) User submits credentials → POST to P1" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1;fontColor=#802020" parent="1" vertex="1">
+                    <mxGeometry x="500" y="668" width="460" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s12" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1;strokeColor=#b85450" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="1270" y="740" as="sourcePoint"/>
+                        <mxPoint x="190" y="740" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s12l" value="12) HTML auto-submit form with signed SAMLResponse → KC broker endpoint" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontColor=#802020" parent="1" vertex="1">
+                    <mxGeometry x="380" y="750" width="700" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s13" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#b85450" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="800" as="sourcePoint"/>
+                        <mxPoint x="910" y="800" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s13l" value="13) POST /realms/demo-realm/broker/p1/endpoint (SAMLResponse)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1;fontColor=#802020" parent="1" vertex="1">
+                    <mxGeometry x="220" y="778" width="640" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s14box" value="14) KC processes SAML Response&#xa;• verifies signature against P1&#39;s signingCertificate&#xa;• extracts email, firmCd, roles claims&#xa;• first-broker-login auto-link by email&#xa;• creates / finds KC user&#xa;• starts KC SSO session (sets KEYCLOAK_IDENTITY)&#xa;• runs saml-role-idp-mappers → realm roles" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffdf0;strokeColor=#d6b656;fontSize=10;align=left;spacingLeft=10;spacingTop=5" parent="1" vertex="1">
+                    <mxGeometry x="800" y="830" width="380" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="s15" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="910" y="960" as="sourcePoint"/>
+                        <mxPoint x="190" y="960" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s15l" value="15) 302 Location: /oauth/callback/keycloak?code=ABC&amp;state=eyJ…" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="240" y="970" width="540" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s16" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="1010" as="sourcePoint"/>
+                        <mxPoint x="540" y="1010" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s16l" value="16) GET /oauth/callback/keycloak?code=ABC&amp;state=eyJ…" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="220" y="988" width="320" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s17box" value="17) BFF validates state matches server-stored value&#xa;(rejects if tampered or stale)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fff0;strokeColor=#82b366;fontSize=10;align=left;spacingLeft=10;spacingTop=5" parent="1" vertex="1">
+                    <mxGeometry x="430" y="1035" width="320" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="s18" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#206020" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="1100" as="sourcePoint"/>
+                        <mxPoint x="910" y="1100" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s18l" value="18) POST KC /token (grant_type=authorization_code, code, code_verifier, client_id)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1;fontColor=#206020" parent="1" vertex="1">
+                    <mxGeometry x="430" y="1078" width="600" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s19box" value="19) KC validates PKCE: SHA256(code_verifier) == code_challenge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffdf0;strokeColor=#d6b656;fontSize=10;align=center" parent="1" vertex="1">
+                    <mxGeometry x="800" y="1125" width="380" height="35" as="geometry"/>
+                </mxCell>
+                <mxCell id="s20" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1;strokeColor=#206020" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="910" y="1185" as="sourcePoint"/>
+                        <mxPoint x="540" y="1185" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s20l" value="20) 200 { access_token, id_token, refresh_token, expires_in }" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontColor=#206020" parent="1" vertex="1">
+                    <mxGeometry x="500" y="1195" width="460" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s21box" value="21) BFF stores tokens in server-side session (Authentication.attributes)&#xa;       Sets BSESSION httpOnly cookie on browser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fff0;strokeColor=#82b366;fontSize=10;align=left;spacingLeft=10;spacingTop=5" parent="1" vertex="1">
+                    <mxGeometry x="430" y="1225" width="380" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="s22" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="1310" as="sourcePoint"/>
+                        <mxPoint x="190" y="1310" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s22l" value="22) 302 Location: /  +  Set-Cookie: BSESSION=…" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="220" y="1320" width="320" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s23" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="190" y="1370" as="sourcePoint"/>
+                        <mxPoint x="540" y="1370" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s23l" value="23) SPA mounts → GET /auth/me (BSESSION cookie)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="220" y="1348" width="320" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="s24" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;dashed=1;strokeColor=#206020" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="1400" as="sourcePoint"/>
+                        <mxPoint x="190" y="1400" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="s24l" value="24) 200 { username, email, firmCd, roles }" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontColor=#206020" parent="1" vertex="1">
+                    <mxGeometry x="240" y="1410" width="280" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="final" value="✓ Dashboard rendered. The SPA carries no tokens — only the httpOnly BSESSION cookie.&#xa;Subsequent API calls reuse the session; the BFF refreshes tokens server-side before they expire." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f7e6;strokeColor=#206020;fontSize=12;fontStyle=1;align=center" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1460" width="1200" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="seqlegend" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666;align=left;verticalAlign=top" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1550" width="1200" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="seqlegend1" value="━━━ request   ┄┄┄ response (dashed)   green ⟶ OIDC server-to-server   red ⟶ SAML hops   black ⟶ browser navigations" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=11;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="100" y="1560" width="1200" height="30" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="tokens" name="Tokens">
+        <mxGraphModel dx="741" dy="503" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="tok_title" value="The Three OIDC Tokens — where they live, what they&#39;re for" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="100" y="30" width="1200" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="tok_at" value="access_token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;fontStyle=1;align=center;verticalAlign=top;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="80" y="120" width="380" height="540" as="geometry"/>
+                </mxCell>
+                <mxCell id="tok_at_body" value="Format: JWT (RS256, in Keycloak)&#xa;&#xa;Purpose: Authorization to resource&#xa;servers — &quot;I&#39;m allowed to call /api/foo&quot;&#xa;&#xa;Lifetime: short (~5 min default)&#xa;&#xa;Where it lives:&#xa;• In the BFF&#39;s server-side session&#xa;• Forwarded to P1 as Bearer when&#xa;     the BFF calls P1 as the user&#xa;     (see UsersController, P1AuthzClient)&#xa;&#xa;Stored claims (subset):&#xa;• iss, sub, aud, exp, iat&#xa;• azp (authorized party)&#xa;• scope: openid profile email&#xa;• realm_access.roles&#xa;• firmCd&#xa;&#xa;NEVER reaches the browser." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=12;spacingLeft=20;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="80" y="150" width="380" height="510" as="geometry"/>
+                </mxCell>
+                <mxCell id="tok_it" value="id_token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;fontStyle=1;align=center;verticalAlign=top;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="500" y="120" width="380" height="540" as="geometry"/>
+                </mxCell>
+                <mxCell id="tok_it_body" value="Format: JWT (RS256) — always.&#xa;&#xa;Purpose: Authentication proof —&#xa;&quot;here&#39;s who I am and when I&#xa;authenticated&quot;.&#xa;&#xa;Lifetime: short (~30 min); refreshed&#xa;along with access_token.&#xa;&#xa;Where it lives:&#xa;• In the BFF&#39;s server-side session&#xa;• Sent to KC as id_token_hint on&#xa;     OIDC end-session (RP-initiated&#xa;     logout) — when that works&#xa;&#xa;Standard claims:&#xa;• iss, sub, aud, exp, iat&#xa;• auth_time (original auth time)&#xa;• nonce (anti-replay, matches /authorize)&#xa;• sid (KC SSO session id)&#xa;• preferred_username, email, name&#xa;• Custom: firmCd, roles" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=12;spacingLeft=20;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="500" y="150" width="380" height="510" as="geometry"/>
+                </mxCell>
+                <mxCell id="tok_rt" value="refresh_token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=16;fontStyle=1;align=center;verticalAlign=top;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="920" y="120" width="380" height="540" as="geometry"/>
+                </mxCell>
+                <mxCell id="tok_rt_body" value="Format: opaque (or JWT in KC).&#xa;&#xa;Purpose: Exchange for a fresh&#xa;access_token + id_token before&#xa;they expire — without re-prompting&#xa;the user.&#xa;&#xa;Lifetime: longer (hours to days).&#xa;&#xa;Where it lives:&#xa;• In the BFF&#39;s server-side session&#xa;• Used by TokenRefreshFilter when&#xa;     access_token is within 60s of&#xa;     expiry: POST /token with&#xa;     grant_type=refresh_token&#xa;&#xa;Security notes:&#xa;• Single-use (KC rotates on each use)&#xa;• Revoked at logout via the OIDC&#xa;     revocation / back-channel logout&#xa;     endpoints&#xa;• NEVER reaches the browser.&#xa;&#xa;Standard claims (when JWT):&#xa;• iss, sub, aud, exp, iat, jti, sid, azp" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=12;spacingLeft=20;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="920" y="150" width="380" height="510" as="geometry"/>
+                </mxCell>
+                <mxCell id="tok_rule" value="The Token Handler / BFF rule: not a single token ever reaches the browser. Only the httpOnly BSESSION cookie does." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8dc;strokeColor=#d6b656;fontSize=14;fontStyle=1;align=center" parent="1" vertex="1">
+                    <mxGeometry x="80" y="700" width="1220" height="60" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="logout" name="Logout Flows">
+        <mxGraphModel dx="741" dy="503" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="logt" value="OIDC Logout Flows — three standards, plus the one this demo actually uses" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="100" y="30" width="1200" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="c1" value="1) RP-Initiated Logout&#xa;(OIDC spec)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1;align=center;verticalAlign=top;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="40" y="100" width="320" height="640" as="geometry"/>
+                </mxCell>
+                <mxCell id="c1body" value="Browser redirect:&#xa;&#xa;/protocol/openid-connect/logout?&#xa;  id_token_hint=…&#xa;  client_id=…&#xa;  post_logout_redirect_uri=…&#xa;&#xa;KC validates id_token_hint:&#xa;• signature against JWKS&#xa;• sid claim matches an active&#xa;     KC user_session&#xa;&#xa;If valid:&#xa;• KC ends the SSO session&#xa;• KC fires SAML SLO to P1&#xa;     (via browser auto-submit)&#xa;• Browser redirected back to&#xa;     post_logout_redirect_uri&#xa;&#xa;If invalid:&#xa;• KC renders &quot;Do you want&#xa;     to log out?&quot; confirm page&#xa;• User must click through&#xa;&#xa;⚠ In this demo: the stored&#xa;id_token&#39;s sid drifts from&#xa;KC&#39;s current session as KC&#xa;rotates it (refresh, silent&#xa;re-auth). The confirm page&#xa;triggers reliably." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=11;spacingLeft=15;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="40" y="140" width="320" height="600" as="geometry"/>
+                </mxCell>
+                <mxCell id="c2" value="2) Front-Channel Logout&#xa;(OIDC spec)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;align=center;verticalAlign=top;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="380" y="100" width="320" height="640" as="geometry"/>
+                </mxCell>
+                <mxCell id="c2body" value="When the KC SSO session ends:&#xa;&#xa;KC renders an HTML page with&#xa;one &lt;iframe&gt; per registered&#xa;client (each with its own&#xa;frontchannel.logout.url).&#xa;&#xa;Each iframe loads on the&#xa;client&#39;s own origin → JS can&#xa;clean up same-origin state.&#xa;&#xa;In this demo:&#xa;• domains/&lt;name&gt;/web/public/&#xa;     frontchannel-logout.html&#xa;     wipes auth-prefixed&#xa;     localStorage keys&#xa;• Broadcasts via&#xa;     BroadcastChannel(&#39;auth&#39;)&#xa;     so any open SPA tab on&#xa;     the same origin reloads&#xa;&#xa;Best-effort, not authoritative.&#xa;Mostly useful for clearing UI&#xa;state in still-open tabs." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=11;spacingLeft=15;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="380" y="140" width="320" height="600" as="geometry"/>
+                </mxCell>
+                <mxCell id="c3" value="3) Back-Channel Logout&#xa;(OIDC BCL 1.0)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;align=center;verticalAlign=top;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="720" y="100" width="320" height="640" as="geometry"/>
+                </mxCell>
+                <mxCell id="c3body" value="Server-to-server (no browser):&#xa;&#xa;KC POSTs a logout_token (JWT)&#xa;to each client&#39;s registered&#xa;backchannel.logout.url.&#xa;&#xa;Receiver (BFF) validates:&#xa;• signature against JWKS&#xa;• iss == KC issuer&#xa;• aud contains client_id&#xa;• events claim has the&#xa;     backchannel-logout event&#xa;• typ header = logout+jwt&#xa;• returns sid claim&#xa;&#xa;In this demo:&#xa;• LogoutTokenValidator does&#xa;     all of the above&#xa;• BackchannelLogoutController&#xa;     receives the POST&#xa;• SidSessionRegistry maps&#xa;     OIDC sid → BFF session id&#xa;     so we destroy the right&#xa;     server-side session&#xa;&#xa;Most reliable mechanism for&#xa;out-of-band logout (P1 logout&#xa;triggers KC SLO triggers this)." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=11;spacingLeft=15;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="720" y="140" width="320" height="600" as="geometry"/>
+                </mxCell>
+                <mxCell id="c4" value="4) P1 IdP-Initiated SLO&#xa;(this demo&#39;s actual route)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1;align=center;verticalAlign=top;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="1060" y="100" width="320" height="640" as="geometry"/>
+                </mxCell>
+                <mxCell id="c4body" value="Workaround for a P1-side bug:&#xa;cross-port SAML LogoutRequest&#xa;from KC loses JSESSIONID, so&#xa;P1 can&#39;t identify the session&#xa;to invalidate and silently does&#xa;nothing → P1 stays logged in&#xa;and the next authorize silently&#xa;re-auths the user.&#xa;&#xa;BFF /auth/logout:&#xa;1. Deletes its own session&#xa;2. Invalidates SidSessionRegistry&#xa;3. 303 → http://localhost:8888/&#xa;     saml/idp/initiate-slo.do&#xa;&#xa;P1 IdpInitiateSloAction:&#xa;1. Runs same-origin →&#xa;     reads JSESSIONID&#xa;2. Invalidates P1 HttpSession&#xa;3. Builds signed SAML&#xa;     LogoutRequest&#xa;4. Returns HTML auto-submit&#xa;     POST form → KC broker SLO&#xa;&#xa;KC ends its session and sends&#xa;LogoutResponse back to P1.&#xa;P1 lands the user on its login&#xa;form.&#xa;&#xa;Trade-off: URL bar ends at&#xa;localhost:8888, not the SPA." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=11;spacingLeft=15;spacingTop=10" parent="1" vertex="1">
+                    <mxGeometry x="1060" y="140" width="320" height="600" as="geometry"/>
+                </mxCell>
+                <mxCell id="bnote" value="Standards 1–3 are part of the OIDC family. Route #4 is a non-standard workaround for a P1-side SAML SLO bug — fixing P1 (back-channel SAML SLO, or session correlation by NameID) lets route #1 work cleanly and removes the URL-bar discontinuity." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f8ff;strokeColor=#6c8ebf;fontSize=12;fontStyle=2;align=center;verticalAlign=middle;spacingLeft=15;spacingRight=15" parent="1" vertex="1">
+                    <mxGeometry x="40" y="780" width="1340" height="70" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
