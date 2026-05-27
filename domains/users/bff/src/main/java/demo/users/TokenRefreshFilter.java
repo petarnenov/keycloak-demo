@@ -57,6 +57,18 @@ public class TokenRefreshFilter implements HttpServerFilter {
     /** Refresh this many seconds before the access token actually expires. */
     private static final long SKEW_SECONDS = 60;
 
+    /**
+     * Re-validate the Keycloak SSO session at least this often, by refreshing
+     * even when the access token is not yet near expiry. Catches out-of-band
+     * session ends (P1 SLO, admin revoke) that Keycloak's broker-initiated SLO
+     * fails to propagate back-channel to this client. Throttled to avoid
+     * rotating refresh tokens on every concurrent /api/* call.
+     */
+    private static final long VALIDATE_INTERVAL_SECONDS = 30;
+
+    /** Session attribute name carrying the last successful refresh's epoch millis. */
+    private static final String LAST_VALIDATED_AT = "kc.lastValidatedAt";
+
     private final HttpClient kc;
     private final String tokenEndpoint;
     private final String clientId;
@@ -89,7 +101,7 @@ public class TokenRefreshFilter implements HttpServerFilter {
         if (!(accessToken instanceof String) || !(refreshToken instanceof String)) {
             return chain.proceed(request);
         }
-        if (!nearExpiry((String) accessToken)) {
+        if (!shouldValidate((String) accessToken, session(request).orElse(null))) {
             return chain.proceed(request);
         }
 
@@ -100,7 +112,10 @@ public class TokenRefreshFilter implements HttpServerFilter {
                         return Mono.from(chain.proceed(request));
                     }
                     request.setAttribute(SecurityFilter.AUTHENTICATION, refreshed);
-                    session(request).ifPresent(s -> s.put(SecurityFilter.AUTHENTICATION, refreshed));
+                    session(request).ifPresent(s -> {
+                        s.put(SecurityFilter.AUTHENTICATION, refreshed);
+                        s.put(LAST_VALIDATED_AT, System.currentTimeMillis());
+                    });
                     return Mono.from(chain.proceed(request));
                 })
                 .onErrorResume(err -> {
@@ -110,6 +125,28 @@ public class TokenRefreshFilter implements HttpServerFilter {
                     session(request).ifPresent(Session::clear);
                     return Mono.just(HttpResponse.unauthorized());
                 });
+    }
+
+    /**
+     * Decide whether this request should refresh the access token. Two reasons:
+     * <ul>
+     *   <li>the access token is within {@link #SKEW_SECONDS} of natural expiry,
+     *       so we'd 401 on the next backend call without a refresh; or</li>
+     *   <li>more than {@link #VALIDATE_INTERVAL_SECONDS} have passed since the
+     *       last successful refresh — re-validates the KC SSO session so an
+     *       out-of-band session end (P1 SLO, admin revoke) doesn't leave the
+     *       BFF serving a zombie session.</li>
+     * </ul>
+     */
+    private boolean shouldValidate(String accessToken, Session session) {
+        if (nearExpiry(accessToken)) {
+            return true;
+        }
+        if (session == null) {
+            return true;
+        }
+        Long lastValidated = session.get(LAST_VALIDATED_AT, Long.class).orElse(0L);
+        return System.currentTimeMillis() - lastValidated > VALIDATE_INTERVAL_SECONDS * 1000;
     }
 
     private boolean nearExpiry(String jwt) {
