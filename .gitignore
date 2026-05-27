@@ -7,6 +7,12 @@ node_modules/
 
 # Frontend build output (each Vite workspace emits its own dist/)
 frontend/apps/*/dist/
+domains/*/web/dist/
+
+# npm install artifact — package.json is tracked, lock file is regenerated
+# locally and intentionally not part of the repo (matches existing practice
+# in this codebase).
+domains/*/web/package-lock.json
 
 # Private keys (mkcert-issued or otherwise). Regenerate locally with mkcert
 # per the demo-billing setup notes in CLAUDE.md.
