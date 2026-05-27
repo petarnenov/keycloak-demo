@@ -7,7 +7,7 @@ import { OrdersPage } from './pages/OrdersPage';
 export function App() {
   const auth = useAuth();
 
-  // keycloak-js init in flight: nothing to route yet.
+  // BFF /auth/me in flight: nothing to route yet.
   if (!auth.ready) {
     return (
       <div className="splash">
