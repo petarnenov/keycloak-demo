@@ -19,17 +19,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Identity + logout endpoints for the SPA in the BFF / Token Handler model. The
- * SPA holds no tokens; it talks to the BFF over the session cookie.
- *
- * <ul>
- *   <li>{@code GET /auth/me} — who am I (401 when signed out); also records the
- *       OIDC {@code sid} → BFF-session mapping for back-channel logout.</li>
- *   <li>{@code GET /auth/logout} — RP-initiated logout: destroy the BFF session,
- *       then redirect to Keycloak's end-session so the KC SSO session (and, via
- *       SAML SLO, P1) is terminated too. Without this the SPA would just
- *       re-SSO silently against the still-live KC session.</li>
- * </ul>
+ * Identity + logout endpoints for the SPA in the BFF / Token Handler model. See
+ * {@code domains/billing/bff/.../AuthController.java} for the full rationale.
  */
 @Controller("/auth")
 public class AuthController {
@@ -37,13 +28,16 @@ public class AuthController {
     private final SidSessionRegistry registry;
     private final SessionStore<?> sessionStore;
     private final String endSessionEndpoint;
+    private final String clientId;
 
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
-                          @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer) {
+                          @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
+                          @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId) {
         this.registry = registry;
         this.sessionStore = sessionStore;
         this.endSessionEndpoint = issuer + "/protocol/openid-connect/logout";
+        this.clientId = clientId;
     }
 
     @Get("/me")
@@ -77,16 +71,14 @@ public class AuthController {
         if (sid != null) {
             registry.invalidateBySid(sid.toString());
         }
-        // Post-logout target = the SPA origin this request came through (nginx
-        // sets X-Forwarded-Host with the :port); matches the client's registered
-        // post.logout.redirect.uris.
         String host = request.getHeaders().get("X-Forwarded-Host");
         if (host == null) {
             host = request.getHeaders().get("Host");
         }
         String postLogout = "https://" + host + "/";
         StringBuilder url = new StringBuilder(endSessionEndpoint)
-                .append("?post_logout_redirect_uri=").append(enc(postLogout));
+                .append("?post_logout_redirect_uri=").append(enc(postLogout))
+                .append("&client_id=").append(enc(clientId));
         if (idToken != null) {
             url.append("&id_token_hint=").append(idToken);
         }

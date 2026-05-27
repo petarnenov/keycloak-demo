@@ -25,10 +25,16 @@ import java.util.Map;
  * <ul>
  *   <li>{@code GET /auth/me} — who am I (401 when signed out); also records the
  *       OIDC {@code sid} → BFF-session mapping for back-channel logout.</li>
- *   <li>{@code GET /auth/logout} — RP-initiated logout: destroy the BFF session,
- *       then redirect to Keycloak's end-session so the KC SSO session (and, via
- *       SAML SLO, P1) is terminated too. Without this the SPA would just
- *       re-SSO silently against the still-live KC session.</li>
+ *   <li>{@code GET /auth/logout} — RP-initiated logout via Keycloak. Destroy
+ *       the BFF session, then redirect the browser to KC's end-session endpoint
+ *       with {@code id_token_hint} so KC terminates its SSO session silently
+ *       (no "Do you want to log out?" confirmation page) and fires SAML SLO to
+ *       P1. After P1 acknowledges, KC redirects to the SPA root; the SPA's
+ *       reactive 401 → {@code /oauth/login/keycloak} → KC → P1 chain then
+ *       lands the user back on the P1 login screen. We pass {@code client_id}
+ *       alongside {@code id_token_hint} because KC validates them as a pair
+ *       (RP-Initiated Logout 1.0 §3) and refuses to silent-logout if the pair
+ *       can't be resolved to an active session.</li>
  * </ul>
  */
 @Controller("/auth")
@@ -37,13 +43,16 @@ public class AuthController {
     private final SidSessionRegistry registry;
     private final SessionStore<?> sessionStore;
     private final String endSessionEndpoint;
+    private final String clientId;
 
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
-                          @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer) {
+                          @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
+                          @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId) {
         this.registry = registry;
         this.sessionStore = sessionStore;
         this.endSessionEndpoint = issuer + "/protocol/openid-connect/logout";
+        this.clientId = clientId;
     }
 
     @Get("/me")
@@ -86,7 +95,8 @@ public class AuthController {
         }
         String postLogout = "https://" + host + "/";
         StringBuilder url = new StringBuilder(endSessionEndpoint)
-                .append("?post_logout_redirect_uri=").append(enc(postLogout));
+                .append("?post_logout_redirect_uri=").append(enc(postLogout))
+                .append("&client_id=").append(enc(clientId));
         if (idToken != null) {
             url.append("&id_token_hint=").append(idToken);
         }
