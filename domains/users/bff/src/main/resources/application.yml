@@ -109,6 +109,9 @@ app:
     # coarse-only @Secured behaviour until P1's authz endpoints are reachable.
     fine-enabled: ${AUTHZ_FINE_ENABLED:false}
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}
+  p1:
+    # P1's IdP-initiated SLO endpoint — see billing's twin for the rationale.
+    initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
 
 p1:
   # P1 monolith base URL (Tomcat). The users-bff forwards the caller's

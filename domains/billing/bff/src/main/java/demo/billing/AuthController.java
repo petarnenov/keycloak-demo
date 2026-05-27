@@ -2,8 +2,9 @@ package demo.billing;
 
 import io.micronaut.context.annotation.Value;
 import io.micronaut.core.annotation.Nullable;
-import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpHeaders;
 import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.security.annotation.Secured;
@@ -11,10 +12,9 @@ import io.micronaut.security.authentication.Authentication;
 import io.micronaut.security.rules.SecurityRule;
 import io.micronaut.session.Session;
 import io.micronaut.session.SessionStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -25,34 +25,47 @@ import java.util.Map;
  * <ul>
  *   <li>{@code GET /auth/me} — who am I (401 when signed out); also records the
  *       OIDC {@code sid} → BFF-session mapping for back-channel logout.</li>
- *   <li>{@code GET /auth/logout} — RP-initiated logout via Keycloak. Destroy
- *       the BFF session, then redirect the browser to KC's end-session endpoint
- *       with {@code id_token_hint} so KC terminates its SSO session silently
- *       (no "Do you want to log out?" confirmation page) and fires SAML SLO to
- *       P1. After P1 acknowledges, KC redirects to the SPA root; the SPA's
- *       reactive 401 → {@code /oauth/login/keycloak} → KC → P1 chain then
- *       lands the user back on the P1 login screen. We pass {@code client_id}
- *       alongside {@code id_token_hint} because KC validates them as a pair
- *       (RP-Initiated Logout 1.0 §3) and refuses to silent-logout if the pair
- *       can't be resolved to an active session.</li>
+ *   <li>{@code GET /auth/logout} — sign the user out everywhere. The BFF clears
+ *       its own session and then redirects the browser to P1's
+ *       <b>IdP-initiated SLO</b> endpoint (the same one P1's own React UI calls
+ *       on sign-out). That action invalidates P1's {@code HttpSession}
+ *       (same-origin, so {@code JSESSIONID} reaches it), emits a signed SAML
+ *       LogoutRequest to Keycloak via a browser auto-submit POST, Keycloak
+ *       terminates its SSO session and sends a LogoutResponse back, and P1
+ *       lands the user on its own login form. End state: both P1 and KC
+ *       sessions are gone, so a subsequent attempt to revisit the demo bounces
+ *       through P1's login form (which is what the user expects to see).
+ *
+ *       Why not Keycloak's OIDC end-session ({@code /protocol/openid-connect/
+ *       logout?id_token_hint=…})? That path needs the stored id_token's
+ *       {@code sid} to still match KC's <i>current</i> session record, and in
+ *       practice it drifts (KC silently rotates the session id, the
+ *       refresh-token grant returns the OLD sid even after the session was
+ *       destroyed by a previous sign-out, etc.). When the sid no longer
+ *       matches, KC rejects the hint as {@code session_expired} and renders
+ *       "Do you want to log out?" — exactly the KC "flash" the user complained
+ *       about. KC's back-channel logout doesn't fix it either: it can revoke
+ *       the refresh token but has no browser to relay the SAML LogoutRequest
+ *       through, so P1's HttpSession stays alive and the next authorize
+ *       silently re-auths the user.</li>
  * </ul>
  */
 @Controller("/auth")
 public class AuthController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(AuthController.class);
+
     private final SidSessionRegistry registry;
     private final SessionStore<?> sessionStore;
-    private final String endSessionEndpoint;
-    private final String clientId;
+    private final String p1InitiateSloUrl;
 
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
-                          @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
-                          @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId) {
+                          @Value("${app.p1.initiate-slo-url}") String p1InitiateSloUrl) {
         this.registry = registry;
         this.sessionStore = sessionStore;
-        this.endSessionEndpoint = issuer + "/protocol/openid-connect/logout";
-        this.clientId = clientId;
+        this.p1InitiateSloUrl = p1InitiateSloUrl;
+        LOG.info("Resolved p1InitiateSloUrl='{}'", p1InitiateSloUrl);
     }
 
     @Get("/me")
@@ -73,8 +86,7 @@ public class AuthController {
 
     @Get("/logout")
     @Secured(SecurityRule.IS_AUTHENTICATED)
-    public HttpResponse<?> logout(HttpRequest<?> request, Authentication authentication, @Nullable Session session) {
-        Object idToken = authentication.getAttributes().get("idToken");
+    public HttpResponse<?> logout(Authentication authentication, @Nullable Session session) {
         Object sid = authentication.getAttributes().get("sid");
         if (session != null) {
             try {
@@ -86,24 +98,12 @@ public class AuthController {
         if (sid != null) {
             registry.invalidateBySid(sid.toString());
         }
-        // Post-logout target = the SPA origin this request came through (nginx
-        // sets X-Forwarded-Host with the :port); matches the client's registered
-        // post.logout.redirect.uris.
-        String host = request.getHeaders().get("X-Forwarded-Host");
-        if (host == null) {
-            host = request.getHeaders().get("Host");
-        }
-        String postLogout = "https://" + host + "/";
-        StringBuilder url = new StringBuilder(endSessionEndpoint)
-                .append("?post_logout_redirect_uri=").append(enc(postLogout))
-                .append("&client_id=").append(enc(clientId));
-        if (idToken != null) {
-            url.append("&id_token_hint=").append(idToken);
-        }
-        return HttpResponse.redirect(URI.create(url.toString()));
-    }
-
-    private static String enc(String s) {
-        return URLEncoder.encode(s, StandardCharsets.UTF_8);
+        // Use a literal Location header rather than HttpResponse.redirect(URI)
+        // — passing an http://localhost:8888/… URI through URI.create makes
+        // Micronaut/Netty re-emit it as a relative path (the scheme + host
+        // get dropped on the way out), and the browser then resolves it
+        // against billing.geowealth.int instead of localhost:8888.
+        return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)
+                .header(HttpHeaders.LOCATION, p1InitiateSloUrl);
     }
 }

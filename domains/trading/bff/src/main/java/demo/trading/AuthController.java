@@ -2,8 +2,9 @@ package demo.trading;
 
 import io.micronaut.context.annotation.Value;
 import io.micronaut.core.annotation.Nullable;
-import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpHeaders;
 import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.security.annotation.Secured;
@@ -11,33 +12,33 @@ import io.micronaut.security.authentication.Authentication;
 import io.micronaut.security.rules.SecurityRule;
 import io.micronaut.session.Session;
 import io.micronaut.session.SessionStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Identity + logout endpoints for the SPA in the BFF / Token Handler model. See
- * {@code domains/billing/bff/.../AuthController.java} for the full rationale.
+ * {@code domains/billing/bff/.../AuthController.java} for why sign-out routes
+ * through P1's IdP-initiated SLO rather than KC's OIDC end-session endpoint.
  */
 @Controller("/auth")
 public class AuthController {
 
+    private static final Logger LOG = LoggerFactory.getLogger(AuthController.class);
+
     private final SidSessionRegistry registry;
     private final SessionStore<?> sessionStore;
-    private final String endSessionEndpoint;
-    private final String clientId;
+    private final String p1InitiateSloUrl;
 
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
-                          @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
-                          @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId) {
+                          @Value("${app.p1.initiate-slo-url}") String p1InitiateSloUrl) {
         this.registry = registry;
         this.sessionStore = sessionStore;
-        this.endSessionEndpoint = issuer + "/protocol/openid-connect/logout";
-        this.clientId = clientId;
+        this.p1InitiateSloUrl = p1InitiateSloUrl;
+        LOG.info("Resolved p1InitiateSloUrl='{}'", p1InitiateSloUrl);
     }
 
     @Get("/me")
@@ -58,8 +59,7 @@ public class AuthController {
 
     @Get("/logout")
     @Secured(SecurityRule.IS_AUTHENTICATED)
-    public HttpResponse<?> logout(HttpRequest<?> request, Authentication authentication, @Nullable Session session) {
-        Object idToken = authentication.getAttributes().get("idToken");
+    public HttpResponse<?> logout(Authentication authentication, @Nullable Session session) {
         Object sid = authentication.getAttributes().get("sid");
         if (session != null) {
             try {
@@ -71,21 +71,9 @@ public class AuthController {
         if (sid != null) {
             registry.invalidateBySid(sid.toString());
         }
-        String host = request.getHeaders().get("X-Forwarded-Host");
-        if (host == null) {
-            host = request.getHeaders().get("Host");
-        }
-        String postLogout = "https://" + host + "/";
-        StringBuilder url = new StringBuilder(endSessionEndpoint)
-                .append("?post_logout_redirect_uri=").append(enc(postLogout))
-                .append("&client_id=").append(enc(clientId));
-        if (idToken != null) {
-            url.append("&id_token_hint=").append(idToken);
-        }
-        return HttpResponse.redirect(URI.create(url.toString()));
-    }
-
-    private static String enc(String s) {
-        return URLEncoder.encode(s, StandardCharsets.UTF_8);
+        // See billing's twin for why we set Location literally instead of
+        // letting HttpResponse.redirect(URI) reshape the URL.
+        return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)
+                .header(HttpHeaders.LOCATION, p1InitiateSloUrl);
     }
 }

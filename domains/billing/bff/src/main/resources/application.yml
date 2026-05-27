@@ -100,6 +100,12 @@ endpoints:
 
 app:
   source: ${APP_SOURCE:billing-bff}
+  p1:
+    # P1's IdP-initiated SLO endpoint. /auth/logout redirects the browser here;
+    # P1 invalidates its HttpSession + emits a signed SAML LogoutRequest to KC,
+    # which ends the KC SSO session and lands the user on P1's login form.
+    # (Override via the P1_INITIATE_SLO_URL env var if P1 isn't on localhost:8888.)
+    initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
   authz:
     # Tier 2/3 fine checks (p1-auth-flow.md §2.2/§2.9). Opt-in: off keeps the
     # coarse-only @Secured behaviour until P1's authz endpoints are reachable.
