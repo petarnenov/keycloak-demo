@@ -195,6 +195,12 @@ public class TokenRefreshFilter implements HttpServerFilter {
             attrs.put("email", str(claims.get("email")));
             attrs.put("firmCd", str(claims.get("firmCd")));
             attrs.put("sid", str(claims.get("sid")));
+            // Re-read the linked-identity ACR from the refreshed id_token.
+            // KC will keep emitting it as long as the user attribute on the
+            // KC user is still set; the FORCE-syncMode IdP mapper clears it
+            // only on a subsequent cold (non-swap) federation.
+            attrs.put("linkedIdentityAcr", str(claims.get("linked_identity_acr")));
+            attrs.put("linkedIdentitySource", str(claims.get("linked_identity_source")));
             attrs.put("accessToken", access);
             attrs.put("refreshToken", refresh != null ? refresh : current.getAttributes().get("refreshToken"));
             attrs.put("idToken", id);

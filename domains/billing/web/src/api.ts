@@ -42,6 +42,14 @@ export interface UsageReport {
 }
 
 const LOGIN_URL = '/oauth/login/keycloak';
+// Step-up login URL: same OAuth2 login endpoint, but tells the BFF to forward
+// `prompt=login` to Keycloak so KC re-authenticates the user (and KC's
+// `Force Authentication` setting on the p1 IdP propagates ForceAuthn=true to
+// P1). After this, the session's linked-identity ACR is cleared and the
+// previously-stepped-up endpoint succeeds. micronaut-security's OAuth2
+// controller passes through unknown query params, so `prompt=login` reaches
+// the upstream authorize call.
+const STEP_UP_LOGIN_URL = '/oauth/login/keycloak?prompt=login';
 
 // Thrown on 403: the BFF session is valid but the user's roles don't satisfy
 // the endpoint. This is NOT a "signed out" state — bouncing a forbidden user
@@ -56,6 +64,32 @@ export class ForbiddenError extends Error {
 
 export function isForbidden(err: unknown): err is ForbiddenError {
   return err instanceof ForbiddenError;
+}
+
+/**
+ * RFC 9470 step-up signal: the BFF returned 401 + `WWW-Authenticate: Bearer
+ * error="insufficient_user_authentication"`. The session is valid but the
+ * endpoint demands a stronger assertion than the current ACR
+ * (`linked_identity_acr` from the cross-domain swap, see
+ * keycloak-demo/cross-domain-sso.md §4.4). The UI handles this with an
+ * explicit "Re-authenticate" CTA — auto-redirecting would land in a loop
+ * because KC's existing session is still the linked-identity one until
+ * `prompt=login` forces a fresh authn.
+ */
+export class StepUpRequiredError extends Error {
+  constructor(public readonly path: string, public readonly acrRequired: string | null) {
+    super(`${path} → 401 (step-up required; acr=${acrRequired ?? 'unknown'})`);
+    this.name = 'StepUpRequiredError';
+  }
+}
+
+export function isStepUpRequired(err: unknown): err is StepUpRequiredError {
+  return err instanceof StepUpRequiredError;
+}
+
+/** Navigate to the step-up login URL — clears the linked-identity ACR. */
+export function startStepUpLogin(): void {
+  window.location.assign(STEP_UP_LOGIN_URL);
 }
 
 // Loop guard for the reactive-401 → login redirect. A 401 means "no session",
@@ -95,8 +129,19 @@ async function get<T>(path: string): Promise<T> {
   if (res.status === 403) {
     throw new ForbiddenError(path);
   }
-  // 401 = no/expired BFF session → (re)start login once (loop-guarded).
+  // 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"`
+  // (RFC 9470) is a step-up signal, not a sign-out. The session is valid but
+  // the endpoint needs a fresh authentication assertion — we surface it as a
+  // distinct error so the UI can render a "Re-authenticate" CTA. Auto-
+  // redirecting would loop: KC's existing session is still the linked-identity
+  // one until prompt=login is used.
   if (res.status === 401) {
+    const wwwAuth = res.headers.get('WWW-Authenticate');
+    if (wwwAuth && wwwAuth.includes('insufficient_user_authentication')) {
+      const acrMatch = /acr_values="([^"]+)"/.exec(wwwAuth);
+      throw new StepUpRequiredError(path, acrMatch ? acrMatch[1] : null);
+    }
+    // Genuine "no session" 401 → (re)start login once (loop-guarded).
     if (startLogin()) {
       throw new Error(`${path} → 401 (signed out, redirecting to login)`);
     }

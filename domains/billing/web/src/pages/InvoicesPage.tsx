@@ -1,5 +1,5 @@
 import { useInvoices } from '../queries';
-import { isForbidden } from '../api';
+import { isForbidden, isStepUpRequired, startStepUpLogin } from '../api';
 import { money } from '../format';
 
 export function InvoicesPage() {
@@ -13,7 +13,19 @@ export function InvoicesPage() {
         <p className="muted">Recent billing history</p>
       </header>
 
-      {isForbidden(invoicesQ.error) ? (
+      {isStepUpRequired(invoicesQ.error) ? (
+        <div className="error">
+          <p>
+            This page requires fresh authentication. Your current session was
+            established via a cross-domain identity swap (Switch from Trading);
+            the firm policy classifies invoice data as sensitive and requires
+            a direct credential presentation.
+          </p>
+          <button type="button" className="signout" onClick={() => startStepUpLogin()}>
+            Re-authenticate
+          </button>
+        </div>
+      ) : isForbidden(invoicesQ.error) ? (
         <p className="error">
           You don&rsquo;t have access to billing. Ask an administrator for the
           billing-viewer or billing-admin role.

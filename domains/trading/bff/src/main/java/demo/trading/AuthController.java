@@ -42,6 +42,7 @@ public class AuthController {
     private final SidSessionRegistry registry;
     private final SessionStore<?> sessionStore;
     private final HttpClient kc;
+    private final P1AuthzClient authz;
     private final String clientId;
     private final String clientSecret;
     private final String tokenEndpoint;
@@ -51,6 +52,7 @@ public class AuthController {
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
                           @Client("kc") HttpClient kc,
+                          P1AuthzClient authz,
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-secret}") String clientSecret,
@@ -58,6 +60,7 @@ public class AuthController {
         this.registry = registry;
         this.sessionStore = sessionStore;
         this.kc = kc;
+        this.authz = authz;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.tokenEndpoint = issuer + "/protocol/openid-connect/token";
@@ -82,7 +85,15 @@ public class AuthController {
         out.put("email", authentication.getAttributes().get("email"));
         out.put("firmCd", authentication.getAttributes().get("firmCd"));
         out.put("roles", authentication.getRoles());
+        // Cross-domain SSO discoverability (cross-domain-sso.md §8.6) — see
+        // billing's twin for the rationale.
+        out.put("linkedTargets", authz.linkedTargets(bearer(authentication)));
         return out;
+    }
+
+    private static String bearer(Authentication authentication) {
+        Object token = authentication.getAttributes().get("accessToken");
+        return token == null ? null : "Bearer " + token;
     }
 
     @Get("/logout")
@@ -90,6 +101,8 @@ public class AuthController {
     public HttpResponse<?> logout(Authentication authentication, @Nullable Session session) {
         Object sid = authentication.getAttributes().get("sid");
         Object refreshToken = authentication.getAttributes().get("refreshToken");
+        Object linkedSource = authentication.getAttributes().get("linkedIdentitySource");
+        boolean isSwapOrigin = linkedSource != null && !linkedSource.toString().isBlank();
 
         endSessionAtKeycloak(refreshToken);
 
@@ -103,6 +116,16 @@ public class AuthController {
         if (sid != null) {
             registry.invalidateBySid(sid.toString());
         }
+
+        // Per-audience logout for swap-origin sessions (cross-domain-sso.md §8.5).
+        // See billing's twin for the full rationale.
+        if (isSwapOrigin) {
+            LOG.info("Swap-origin logout for sid={} source={}: skipping P1 SLO chain (§8.5)",
+                    sid, linkedSource);
+            return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)
+                    .header(HttpHeaders.LOCATION, "/?logged_out=swap");
+        }
+
         // See billing's twin for why we set Location literally instead of
         // letting HttpResponse.redirect(URI) reshape the URL.
         return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)

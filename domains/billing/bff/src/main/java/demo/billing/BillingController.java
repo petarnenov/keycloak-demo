@@ -3,8 +3,10 @@ package demo.billing;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.http.HttpHeaders;
 import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
+import io.micronaut.http.MutableHttpResponse;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
@@ -68,7 +70,16 @@ public class BillingController {
 
     @Get("/invoices")
     @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1
-    public Map<String, Object> invoices(HttpRequest<?> request, Authentication authentication) {
+    public HttpResponse<?> invoices(HttpRequest<?> request, Authentication authentication) {
+        // RFC 9470 step-up: invoices are firm-classified as sensitive — a
+        // session minted by the cross-domain linked-identity swap (acr =
+        // urn:geowealth:ac:classes:linked-identity-from-prior-session) must
+        // re-authenticate before viewing. The 401 carries WWW-Authenticate
+        // with the required acr so the SPA can drive a new authorize call.
+        MutableHttpResponse<?> stepUp = StepUpGuard.requireFreshAuthOr401(authentication);
+        if (stepUp != null) {
+            return stepUp;
+        }
         requirePermission(request, authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> invoices = new ArrayList<>();
@@ -87,7 +98,7 @@ public class BillingController {
         body.put("username", authentication.getName());
         body.put("firmCd", firmCd(authentication));
         body.put("invoices", invoices);
-        return body;
+        return HttpResponse.ok(body);
     }
 
     @Get("/usage")

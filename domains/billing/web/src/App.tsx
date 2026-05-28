@@ -27,6 +27,26 @@ export function App() {
     );
   }
 
+  // Post-swap-logout landing (cross-domain-sso.md §8.5). The user explicitly
+  // signed out of this audience via the cross-domain identity swap; do not
+  // auto-redirect them back through KC (would loop them in as the source
+  // identity, often without roles for this audience). Render an explicit
+  // sign-in CTA.
+  if (!auth.authenticated && auth.signedOutAfterSwap) {
+    return (
+      <div className="splash">
+        <p>You&rsquo;ve been signed out of this domain.</p>
+        <p className="muted small">
+          Your other domain session (if any) is unaffected — that&rsquo;s the SoD
+          guarantee: each linked identity has its own session lifecycle.
+        </p>
+        <button type="button" className="signout" onClick={() => window.location.assign('/oauth/login/keycloak')}>
+          Sign back in
+        </button>
+      </div>
+    );
+  }
+
   // AuthProvider drives the redirect to P1 when there is no session; this
   // is the brief window before the browser leaves for the IdP.
   if (!auth.authenticated) {

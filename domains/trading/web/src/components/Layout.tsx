@@ -9,6 +9,23 @@ import { useAuth } from '../auth/AuthProvider';
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   isActive ? 'nav-link active' : 'nav-link';
 
+// Cross-domain SSO link to the billing SPA — see billing/web/src/components/
+// Layout.tsx for the design rationale. P1 swaps the identity for this
+// physical person and brokers a billing-side session as the bound identity.
+const P1_IDP_SSO_URL =
+  (import.meta.env.VITE_P1_IDP_SSO_URL as string | undefined) ??
+  'http://localhost:8888/saml/idp/sso.do';
+const BILLING_HOME =
+  (import.meta.env.VITE_BILLING_HOME as string | undefined) ??
+  'https://billing.geowealth.int:5184/';
+
+const SWITCH_TO_BILLING_HREF = (() => {
+  const u = new URL(P1_IDP_SSO_URL);
+  u.searchParams.set('targetClient', 'demo-billing-client');
+  u.searchParams.set('RelayState', BILLING_HOME);
+  return u.toString();
+})();
+
 export function Layout({ children }: { children: ReactNode }) {
   const auth = useAuth();
 
@@ -28,6 +45,16 @@ export function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/orders" className={navLinkClass}>
             Orders
           </NavLink>
+          {/*
+            Cross-domain SSO link — pre-flight hide: only rendered when
+            /auth/me's linkedTargets list includes demo-billing-client
+            (cross-domain-sso.md §8.6). See top-of-file note.
+          */}
+          {auth.linkedTargets.includes('demo-billing-client') && (
+            <a href={SWITCH_TO_BILLING_HREF} className="nav-link">
+              Switch to Billing →
+            </a>
+          )}
         </nav>
 
         <div className="sidebar-foot">

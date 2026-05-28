@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { Layout } from './components/Layout';
+import { LinkedIdentitiesPage } from './pages/LinkedIdentitiesPage';
 import { UsersAndAccessPage } from './pages/UsersAndAccessPage';
 import { useFirms } from './queries';
 
@@ -44,6 +45,9 @@ export function App() {
         <Route path="/users/:firmCd" element={<UsersAndAccessRoute />} />
         {/* Mirrors P1's path: /platformOne/firmAdmin/users/:firmCd? */}
         <Route path="/firmAdmin/users/:firmCd?" element={<UsersAndAccessRoute />} />
+        {/* gw-admin only; BFF + P1 both re-check. Non-admins hitting this URL
+            directly see a 403 surfaced as the ForbiddenError branch. */}
+        <Route path="/linked-identities" element={<LinkedIdentitiesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

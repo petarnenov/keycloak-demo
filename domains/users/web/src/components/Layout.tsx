@@ -24,6 +24,17 @@ export function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/" end className={navLinkClass}>
             Users &amp; Access
           </NavLink>
+          {/*
+            Linked identities — gw-admin only. The BFF endpoint is also
+            @Secured("gwAdmin") and P1 re-checks gwAdminFlag, so a user who
+            navigates here without the role gets 403 from the API anyway —
+            hiding the nav link is purely UX.
+          */}
+          {auth.roles.includes('gwAdmin') && (
+            <NavLink to="/linked-identities" className={navLinkClass}>
+              Linked identities
+            </NavLink>
+          )}
         </nav>
 
         <div className="sidebar-foot">

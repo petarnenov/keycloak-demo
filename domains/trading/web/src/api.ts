@@ -50,6 +50,11 @@ export interface OrdersResponse {
 }
 
 const LOGIN_URL = '/oauth/login/keycloak';
+// Step-up login URL: tells the BFF to forward `prompt=login` to Keycloak so
+// KC re-authenticates the user. Used to clear a `linked_identity_acr` from a
+// cross-domain swap before viewing sensitive endpoints (cross-domain-sso.md
+// §4.4).
+const STEP_UP_LOGIN_URL = '/oauth/login/keycloak?prompt=login';
 
 // Thrown on 403: the BFF session is valid but the user's roles don't satisfy
 // the endpoint. This is NOT a "signed out" state — bouncing a forbidden user
@@ -64,6 +69,25 @@ export class ForbiddenError extends Error {
 
 export function isForbidden(err: unknown): err is ForbiddenError {
   return err instanceof ForbiddenError;
+}
+
+/**
+ * RFC 9470 step-up signal: 401 + `WWW-Authenticate: Bearer
+ * error="insufficient_user_authentication"`. See cross-domain-sso.md §4.4.
+ */
+export class StepUpRequiredError extends Error {
+  constructor(public readonly path: string, public readonly acrRequired: string | null) {
+    super(`${path} → 401 (step-up required; acr=${acrRequired ?? 'unknown'})`);
+    this.name = 'StepUpRequiredError';
+  }
+}
+
+export function isStepUpRequired(err: unknown): err is StepUpRequiredError {
+  return err instanceof StepUpRequiredError;
+}
+
+export function startStepUpLogin(): void {
+  window.location.assign(STEP_UP_LOGIN_URL);
 }
 
 // Loop guard for the reactive-401 → login redirect. A 401 means "no session",
@@ -100,8 +124,16 @@ async function get<T>(path: string): Promise<T> {
   if (res.status === 403) {
     throw new ForbiddenError(path);
   }
-  // 401 = no/expired BFF session → (re)start login once (loop-guarded).
+  // 401 with `WWW-Authenticate: Bearer error="insufficient_user_authentication"`
+  // (RFC 9470) is a step-up signal, not a sign-out. Surface as a distinct
+  // error so the UI renders a "Re-authenticate" CTA.
   if (res.status === 401) {
+    const wwwAuth = res.headers.get('WWW-Authenticate');
+    if (wwwAuth && wwwAuth.includes('insufficient_user_authentication')) {
+      const acrMatch = /acr_values="([^"]+)"/.exec(wwwAuth);
+      throw new StepUpRequiredError(path, acrMatch ? acrMatch[1] : null);
+    }
+    // Genuine "no session" 401 → (re)start login once (loop-guarded).
     if (startLogin()) {
       throw new Error(`${path} → 401 (signed out, redirecting to login)`);
     }

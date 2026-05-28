@@ -1,5 +1,5 @@
 import { useOrders } from '../queries';
-import { isForbidden } from '../api';
+import { isForbidden, isStepUpRequired, startStepUpLogin } from '../api';
 import { money } from '../format';
 
 export function OrdersPage() {
@@ -13,7 +13,19 @@ export function OrdersPage() {
         <p className="muted">Recent order activity</p>
       </header>
 
-      {isForbidden(ordersQ.error) ? (
+      {isStepUpRequired(ordersQ.error) ? (
+        <div className="error">
+          <p>
+            This page requires fresh authentication. Your current session was
+            established via a cross-domain identity swap (Switch from Billing);
+            the firm policy classifies order data as sensitive and requires
+            a direct credential presentation.
+          </p>
+          <button type="button" className="signout" onClick={() => startStepUpLogin()}>
+            Re-authenticate
+          </button>
+        </div>
+      ) : isForbidden(ordersQ.error) ? (
         <p className="error">
           You don&rsquo;t have access to trading. Ask an administrator for the
           trading-viewer or trading-trader role.

@@ -168,3 +168,54 @@ export const usersApi = {
   uploadBulk:     (firmCd: number, file: File) => postForm<{ results: BulkUploadRow[] }>('/api/users/uploadBulkEmployeesFile', { firmCd }, { bulkCreateEmployeesFile: file }),
   bulkCreate:     (users: Partial<User>[]) => postForm<{ failedRecords: BulkUploadRow[]; createdCount: number }>('/api/users/bulkCreateEmployees', null, { q: JSON.stringify(users) })
 };
+
+// ---- linked-identity admin (gw-admin only) -------------------------------
+// Cross-domain SSO binding CRUD. Backed by domains/users/bff's
+// LinkedIdentityAdminController, which forwards to P1's gw-admin endpoint.
+// See keycloak-demo/cross-domain-sso.md §3.1 / §4.2.
+
+export interface LinkedIdentityBinding {
+  sourceUserUuid: string;
+  targetClient: string;
+  targetUserUuid: string;
+  mfaRequired: boolean;
+  active: boolean;
+  provisionedBy: string | null;
+  provisionedAt: number | null;
+  lastModifiedBy: string | null;
+  lastModifiedAt: number | null;
+}
+
+export interface LinkedIdentityListResponse {
+  bindings: LinkedIdentityBinding[];
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  await handleStatus(res, path);
+  return res.json() as Promise<T>;
+}
+
+export interface UpsertBindingInput {
+  sourceUserUuid: string;
+  targetClient: string;
+  targetUserUuid: string;
+  mfaRequired?: boolean;
+  active?: boolean;
+}
+
+export const linkedIdentitiesApi = {
+  list:    (sourceUserUuid?: string) =>
+            getJson<LinkedIdentityListResponse>('/api/linked-identities',
+              sourceUserUuid ? { sourceUserUuid } : undefined),
+  upsert:  (binding: UpsertBindingInput) =>
+            postJson<LinkedIdentityBinding>('/api/linked-identities/upsert', binding),
+  remove:  (key: { sourceUserUuid: string; targetClient: string; hard?: boolean }) =>
+            postJson<LinkedIdentityBinding | { deleted: true; hard: true }>(
+              '/api/linked-identities/delete', key)
+};

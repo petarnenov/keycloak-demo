@@ -51,6 +51,14 @@ public class KeycloakAuthenticationMapper implements OpenIdAuthenticationMapper 
         attrs.put("email", str(claims.get("email")));
         attrs.put("firmCd", str(claims.get("firmCd")));
         attrs.put("sid", str(claims.get("sid")));
+        // Cross-domain linked-identity ACR (cross-domain-sso.md §3.4 / §4.4).
+        // Non-null only when this session was minted via the silent-swap path
+        // AND not MFA-elevated — BFF endpoints can refuse sensitive operations
+        // until the user re-authenticates (RFC 9470 step-up).
+        attrs.put("linkedIdentityAcr", str(claims.get("linked_identity_acr")));
+        // Source identity's UUID — non-null on any swap (independent of MFA).
+        // Controls per-audience logout (§8.5).
+        attrs.put("linkedIdentitySource", str(claims.get("linked_identity_source")));
         attrs.put("accessToken", tokenResponse.getAccessToken());
         attrs.put("refreshToken", tokenResponse.getRefreshToken());
         attrs.put("idToken", tokenResponse.getIdToken());

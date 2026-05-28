@@ -18,15 +18,18 @@ const httpsConfig = (HTTPS_CERT && HTTPS_KEY)
   : undefined;
 
 // BFF / Token Handler proxies: /api/users → the domain BFF (rewriting the
-// /api/users prefix to /api); /oauth, /auth, /logout pass through unchanged
-// (BFF's OIDC + session endpoints). /backchannel-logout is server-to-server
-// (KC → bff-users) and never hits the SPA preview.
+// /api/users prefix to /api); /api/linked-identities passes through to the
+// BFF's LinkedIdentityAdminController which lives at the literal path
+// /api/linked-identities (no rewrite needed); /oauth, /auth, /logout pass
+// through unchanged (BFF's OIDC + session endpoints). /backchannel-logout is
+// server-to-server (KC → bff-users) and never hits the SPA preview.
 const apiProxy = {
   '/api/users': {
     target: BFF_URL,
     changeOrigin: true,
     rewrite: (path: string) => path.replace(/^\/api\/users/, '/api')
   },
+  '/api/linked-identities': { target: BFF_URL, changeOrigin: true },
   '/oauth':  { target: BFF_URL, changeOrigin: true },
   '/auth':   { target: BFF_URL, changeOrigin: true },
   '/logout': { target: BFF_URL, changeOrigin: true }

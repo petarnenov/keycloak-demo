@@ -81,6 +81,7 @@ public class AuthController {
     private final SidSessionRegistry registry;
     private final SessionStore<?> sessionStore;
     private final HttpClient kc;
+    private final P1AuthzClient authz;
     private final String clientId;
     private final String clientSecret;
     private final String tokenEndpoint;
@@ -90,6 +91,7 @@ public class AuthController {
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
                           @Client("kc") HttpClient kc,
+                          P1AuthzClient authz,
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-secret}") String clientSecret,
@@ -97,6 +99,7 @@ public class AuthController {
         this.registry = registry;
         this.sessionStore = sessionStore;
         this.kc = kc;
+        this.authz = authz;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         // Use full URLs (issuer + path) because @Client("kc")'s base path is
@@ -125,7 +128,17 @@ public class AuthController {
         out.put("email", authentication.getAttributes().get("email"));
         out.put("firmCd", authentication.getAttributes().get("firmCd"));
         out.put("roles", authentication.getRoles());
+        // Cross-domain SSO discoverability (cross-domain-sso.md §8.6) — SPA
+        // hides the "Switch to ..." link to any target audience not in this
+        // list. One extra call to P1 per /auth/me (called once at SPA boot),
+        // fail-closed: empty list on failure → links hidden.
+        out.put("linkedTargets", authz.linkedTargets(bearer(authentication)));
         return out;
+    }
+
+    private static String bearer(Authentication authentication) {
+        Object token = authentication.getAttributes().get("accessToken");
+        return token == null ? null : "Bearer " + token;
     }
 
     @Get("/logout")
@@ -133,7 +146,14 @@ public class AuthController {
     public HttpResponse<?> logout(Authentication authentication, @Nullable Session session) {
         Object sid = authentication.getAttributes().get("sid");
         Object refreshToken = authentication.getAttributes().get("refreshToken");
+        Object linkedSource = authentication.getAttributes().get("linkedIdentitySource");
+        boolean isSwapOrigin = linkedSource != null && !linkedSource.toString().isBlank();
 
+        // RP-initiated logout to KC kills THIS BFF's SSO session at KC, and
+        // KC's back-channel logout fans out to every OIDC client in that
+        // session. For a primary session that's all clients sharing the same
+        // KC user; for a swap session it's just this client (the swap user
+        // is a separate KC user).
         endSessionAtKeycloak(refreshToken);
 
         if (session != null) {
@@ -146,6 +166,26 @@ public class AuthController {
         if (sid != null) {
             registry.invalidateBySid(sid.toString());
         }
+
+        // Per-audience logout for swap-origin sessions (cross-domain-sso.md §8.5).
+        // The P1 SLO chain — initiate-slo.do → P1 invalidates HttpSession +
+        // emits SAML LogoutRequest → KC ends the SOURCE identity's SSO
+        // session → back-channel-logout to the source BFF — would
+        // cascade-kill the source's session. That defeats SoD: the user
+        // expected to log out of THIS audience only. So when the session is
+        // swap-origin we skip P1 SLO and land on a neutral "logged out"
+        // page instead.
+        //
+        // Primary sessions (linkedIdentitySource absent) keep the existing
+        // SLO cascade — they own the P1 HttpSession, so logging out of any
+        // primary session is the same as "log me out of P1".
+        if (isSwapOrigin) {
+            LOG.info("Swap-origin logout for sid={} source={}: skipping P1 SLO chain (§8.5)",
+                    sid, linkedSource);
+            return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)
+                    .header(HttpHeaders.LOCATION, "/?logged_out=swap");
+        }
+
         // Use a literal Location header rather than HttpResponse.redirect(URI)
         // — passing an http://localhost:8888/… URI through URI.create makes
         // Micronaut/Netty re-emit it as a relative path (the scheme + host

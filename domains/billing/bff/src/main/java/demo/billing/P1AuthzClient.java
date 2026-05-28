@@ -42,6 +42,13 @@ public class P1AuthzClient {
     private static final String ME_PATH = "/saml/idp/p1-authz-me.do";
     private static final String CAN_PATH = "/saml/idp/p1-authz-can.do";
     private static final String REFINE_PATH = "/saml/idp/p1-authz-refine.do";
+    /**
+     * Caller-scoped linked-identity discovery (cross-domain-sso.md §8.6) —
+     * Bearer-auth, no role required. Co-hosted with the Tier 2/3 surface
+     * because the same HTTP client + base URL covers all P1 bearer-auth
+     * endpoints.
+     */
+    private static final String LINKED_IDENTITY_DISCOVERY_PATH = "/saml/idp/linked-identity-discovery.do";
 
     private final HttpClient http;
     private final boolean fineEnabled;
@@ -128,6 +135,33 @@ public class P1AuthzClient {
         } catch (Exception e) {
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Caller-scoped linked-identity targets — list of OIDC client IDs the
+     * authenticated user has active bindings to. Used by the SPA at boot time
+     * to pre-flight-hide cross-domain links whose audience the user is not
+     * provisioned for ({@code cross-domain-sso.md} §8.6).
+     *
+     * <p>Fail-closed: returns an empty list when P1 is unreachable or
+     * returns a non-2xx. This means a transient P1 outage <i>hides</i> the
+     * cross-domain link rather than showing it broken — clicking a link the
+     * user can't follow is worse UX than missing one momentarily.</p>
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> linkedTargets(String authorizationHeader) {
+        try {
+            Map<String, Object> resp = exchange(
+                    HttpRequest.GET(LINKED_IDENTITY_DISCOVERY_PATH)
+                            .header("Authorization", authorizationHeader));
+            Object t = resp == null ? null : resp.get("targets");
+            if (t instanceof List) {
+                return (List<String>) t;
+            }
+        } catch (Exception e) {
+            // fail closed — empty list hides the link
+        }
+        return Collections.emptyList();
     }
 
     private Map<String, Object> exchange(HttpRequest<?> request) {

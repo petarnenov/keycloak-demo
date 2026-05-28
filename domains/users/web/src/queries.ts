@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { usersApi, type User, type UsersResponse, type BulkUploadRow } from './api';
+import {
+  linkedIdentitiesApi,
+  usersApi,
+  type LinkedIdentityListResponse,
+  type UpsertBindingInput,
+  type User,
+  type UsersResponse,
+  type BulkUploadRow
+} from './api';
 
 // TanStack Query hooks over the BFF. Mirrors the GeoWealth Firm Admin →
 // Users & Access query layout, so future refactors can lift this almost
@@ -67,6 +75,43 @@ export function useBulkCreate(firmCd: number | null) {
     },
     onSuccess: () => {
       if (firmCd != null) qc.invalidateQueries({ queryKey: QK.list(firmCd) });
+    }
+  });
+}
+
+// ---- linked-identity admin hooks (gw-admin only) -------------------------
+
+const LI_QK = {
+  list: (sourceUserUuid: string | null) =>
+    ['linked-identities', 'list', sourceUserUuid ?? null] as const
+};
+
+export function useLinkedIdentities(sourceUserUuid?: string) {
+  return useQuery<LinkedIdentityListResponse>({
+    queryKey: LI_QK.list(sourceUserUuid ?? null),
+    queryFn: () => linkedIdentitiesApi.list(sourceUserUuid)
+  });
+}
+
+export function useUpsertLinkedIdentity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (binding: UpsertBindingInput) => linkedIdentitiesApi.upsert(binding),
+    onSuccess: () => {
+      // Invalidate every list query (no source filter and source-filtered)
+      // so any rendered table refreshes.
+      qc.invalidateQueries({ queryKey: ['linked-identities', 'list'] });
+    }
+  });
+}
+
+export function useDeleteLinkedIdentity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: { sourceUserUuid: string; targetClient: string; hard?: boolean }) =>
+      linkedIdentitiesApi.remove(key),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['linked-identities', 'list'] });
     }
   });
 }

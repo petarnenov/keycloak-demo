@@ -5,10 +5,24 @@ interface AuthContextValue {
   ready: boolean;
   authenticated: boolean;
   authError: boolean;
+  /**
+   * True when the user landed on this SPA via the swap-origin logout
+   * redirect (`?logged_out=swap`). UI renders an explicit "signed out"
+   * state with a "sign back in" CTA instead of auto-redirecting to login
+   * (cross-domain-sso.md §8.5).
+   */
+  signedOutAfterSwap: boolean;
   username: string | null;
   email: string | null;
   firmCd: string | null;
   roles: string[];
+  /**
+   * OIDC client IDs the user has active cross-domain linked-identity
+   * bindings to (cross-domain-sso.md §8.6). Empty when none provisioned or
+   * P1 discovery call failed (fail-closed on the BFF side). The UI hides
+   * cross-domain links whose audience is not in this list.
+   */
+  linkedTargets: string[];
   logout: () => void;
 }
 
@@ -26,6 +40,7 @@ interface Me {
   email: string | null;
   firmCd: string | null;
   roles: string[];
+  linkedTargets?: string[];
 }
 
 type MeResult = { status: 'ok'; me: Me } | { status: 'unauth' } | { status: 'error' };
@@ -52,6 +67,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [authError, setAuthError] = useState(false);
+  // Per-audience swap-origin logout (cross-domain-sso.md §8.5) lands on
+  // /?logged_out=swap. We deliberately suppress the auto-login here: KC's
+  // SSO session for the swap user is gone, but the source identity's P1
+  // session is still alive, so an auto-login would silently re-broker the
+  // user in as a different identity (the source's federated user for THIS
+  // audience), often without the roles to use this domain. Render a
+  // "signed out" landing instead and let the user explicitly sign in.
+  const [signedOutAfterSwap, setSignedOutAfterSwap] = useState(
+    () => typeof window !== 'undefined'
+          && new URLSearchParams(window.location.search).get('logged_out') === 'swap'
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // start login again.
         clearLoginGuard();
         setMe(r.me);
+        setSignedOutAfterSwap(false);
+        setReady(true);
+      } else if (signedOutAfterSwap) {
+        // Post-swap-logout landing: do NOT auto-redirect. Let the UI render
+        // the "signed out" state and a "sign back in" CTA.
         setReady(true);
       } else {
         // 'unauth' (no session) or a transient 'error' on first load → start the
@@ -87,16 +118,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [signedOutAfterSwap]);
 
   const value: AuthContextValue = {
     ready,
     authenticated: me !== null,
     authError,
+    signedOutAfterSwap,
     username: me?.username ?? null,
     email: me?.email ?? null,
     firmCd: me?.firmCd ?? null,
     roles: me?.roles ?? [],
+    linkedTargets: me?.linkedTargets ?? [],
     logout: () => window.location.assign(LOGOUT_URL)
   };
 

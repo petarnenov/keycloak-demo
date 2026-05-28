@@ -262,6 +262,34 @@
             "id.token.claim": "true",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "linked-identity-acr-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "linkedIdentityAcr",
+            "claim.name": "linked_identity_acr",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "linked-identity-source-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "linkedIdentitySource",
+            "claim.name": "linked_identity_source",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
         }
       ]
     },
@@ -324,6 +352,34 @@
           "config": {
             "user.attribute": "firmCd",
             "claim.name": "firmCd",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "linked-identity-acr-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "linkedIdentityAcr",
+            "claim.name": "linked_identity_acr",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "linked-identity-source-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "linkedIdentitySource",
+            "claim.name": "linked_identity_source",
             "jsonType.label": "String",
             "multivalued": "false",
             "userinfo.token.claim": "true",
@@ -561,6 +617,28 @@
         "syncMode": "INHERIT",
         "attribute.name": "firmCd",
         "user.attribute": "firmCd"
+      }
+    },
+    {
+      "_comment_linkedIdentityAcr_from_saml": "Cross-domain-sso.md §3.4: P1 emits 'linkedIdentityAcr' SAML attribute on the swap path. FORCE syncMode means the KC user attribute is reset every login — so cold sign-ins (which don't emit the SAML attribute) clear it. BFFs read the resulting OIDC claim 'linked_identity_acr'.",
+      "name": "linked-identity-acr-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "linkedIdentityAcr",
+        "user.attribute": "linkedIdentityAcr"
+      }
+    },
+    {
+      "_comment_linkedIdentitySource_from_saml": "Cross-domain-sso.md §8.5: source identity's UUID, emitted on every swap regardless of MFA. BFFs read the OIDC claim 'linked_identity_source' to make logout per-audience (skip the P1 SLO chain for swap-origin sessions).",
+      "name": "linked-identity-source-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "FORCE",
+        "attribute.name": "linkedIdentitySource",
+        "user.attribute": "linkedIdentitySource"
       }
     },
     {
