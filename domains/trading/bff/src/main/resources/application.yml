@@ -50,7 +50,11 @@ micronaut:
               url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080/realms/demo-realm}/protocol/openid-connect/certs
     redirect:
       login-success: /
-      login-failure: /?login_error=true
+      # Silent-first SSO: bff-core's AuthController#loginFailed inspects the
+      # session marker set by SilentLoginController and either upgrades to an
+      # interactive login (when the silent attempt produced
+      # `error=login_required`) or falls back to the SPA error page.
+      login-failure: /auth/login-failed
       logout: /
       unauthorized:
         enabled: false
@@ -69,6 +73,10 @@ micronaut:
           - isAnonymous()
       - pattern: /backchannel-logout
         http-method: POST
+        access:
+          - isAnonymous()
+      # Silent-first SSO recovery hook — see bff-core SilentLoginController.
+      - pattern: /auth/login-failed
         access:
           - isAnonymous()
       - pattern: /auth/me

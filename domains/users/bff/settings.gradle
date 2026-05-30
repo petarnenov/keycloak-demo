@@ -1,1 +1,7 @@
 rootProject.name = 'users-bff'
+
+// Composite build: pull the shared BFF infra (demo.bff:bff-core) from the
+// sibling source tree. Gradle substitutes the dependency declared in
+// build.gradle.kts from this included build. At repo-split this line is
+// replaced by a registry repository; the dependency coordinate stays the same.
+includeBuild('../../../bff-core')

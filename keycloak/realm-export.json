@@ -227,7 +227,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "frontchannelLogout": true,
+      "frontchannelLogout": false,
       "attributes": {
         "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*##http://localhost:8888/*",
         "frontchannel.logout.url": "https://billing.geowealth.int:5184/frontchannel-logout.html",
@@ -237,10 +237,11 @@
       },
       "protocolMappers": [
         {
-          "name": "realm-roles-flat",
+          "name": "roles-tenant-scoped",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": {
+            "user.attribute": "roles_billing",
             "claim.name": "roles",
             "jsonType.label": "String",
             "multivalued": "true",
@@ -258,6 +259,47 @@
             "claim.name": "firmCd",
             "jsonType.label": "String",
             "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "person-id-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "personId",
+            "claim.name": "personId",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "tenant-identity-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenantIdentity_billing",
+            "claim.name": "tenant_identity",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "active-tenant-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "active_tenant",
+            "claim.value": "billing",
+            "jsonType.label": "String",
             "userinfo.token.claim": "true",
             "id.token.claim": "true",
             "access.token.claim": "true"
@@ -295,7 +337,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "frontchannelLogout": true,
+      "frontchannelLogout": false,
       "attributes": {
         "post.logout.redirect.uris": "https://trading.geowealth.int:5185/*##http://localhost:5185/*",
         "frontchannel.logout.url": "https://trading.geowealth.int:5185/frontchannel-logout.html",
@@ -305,10 +347,11 @@
       },
       "protocolMappers": [
         {
-          "name": "realm-roles-flat",
+          "name": "roles-tenant-scoped",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": {
+            "user.attribute": "roles_trading",
             "claim.name": "roles",
             "jsonType.label": "String",
             "multivalued": "true",
@@ -326,6 +369,47 @@
             "claim.name": "firmCd",
             "jsonType.label": "String",
             "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "person-id-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "personId",
+            "claim.name": "personId",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "tenant-identity-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenantIdentity_trading",
+            "claim.name": "tenant_identity",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "active-tenant-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "active_tenant",
+            "claim.value": "trading",
+            "jsonType.label": "String",
             "userinfo.token.claim": "true",
             "id.token.claim": "true",
             "access.token.claim": "true"
@@ -363,7 +447,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "frontchannelLogout": true,
+      "frontchannelLogout": false,
       "attributes": {
         "post.logout.redirect.uris": "https://users.geowealth.int:5186/*##http://localhost:5186/*",
         "frontchannel.logout.url": "https://users.geowealth.int:5186/frontchannel-logout.html",
@@ -373,10 +457,11 @@
       },
       "protocolMappers": [
         {
-          "name": "realm-roles-flat",
+          "name": "roles-tenant-scoped",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": {
+            "user.attribute": "roles_users",
             "claim.name": "roles",
             "jsonType.label": "String",
             "multivalued": "true",
@@ -394,6 +479,47 @@
             "claim.name": "firmCd",
             "jsonType.label": "String",
             "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "person-id-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "personId",
+            "claim.name": "personId",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "tenant-identity-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenantIdentity_users",
+            "claim.name": "tenant_identity",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "active-tenant-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "active_tenant",
+            "claim.value": "users",
+            "jsonType.label": "String",
             "userinfo.token.claim": "true",
             "id.token.claim": "true",
             "access.token.claim": "true"
@@ -561,6 +687,76 @@
         "syncMode": "INHERIT",
         "attribute.name": "firmCd",
         "user.attribute": "firmCd"
+      }
+    },
+    {
+      "name": "person-id-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "personId",
+        "user.attribute": "personId"
+      }
+    },
+    {
+      "name": "tenant-identity-billing-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "tenantIdentity_billing",
+        "user.attribute": "tenantIdentity_billing"
+      }
+    },
+    {
+      "name": "tenant-identity-trading-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "tenantIdentity_trading",
+        "user.attribute": "tenantIdentity_trading"
+      }
+    },
+    {
+      "name": "tenant-identity-users-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "tenantIdentity_users",
+        "user.attribute": "tenantIdentity_users"
+      }
+    },
+    {
+      "name": "roles-billing-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "roles_billing",
+        "user.attribute": "roles_billing"
+      }
+    },
+    {
+      "name": "roles-trading-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "roles_trading",
+        "user.attribute": "roles_trading"
+      }
+    },
+    {
+      "name": "roles-users-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "roles_users",
+        "user.attribute": "roles_users"
       }
     },
     {

@@ -1,14 +1,12 @@
 package demo.billing;
 
+import demo.bff.core.AuthClaims;
+import demo.bff.core.Tier23Gate;
 import io.micronaut.context.annotation.Value;
-import io.micronaut.http.HttpHeaders;
-import io.micronaut.http.HttpRequest;
-import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
-import io.micronaut.http.exceptions.HttpStatusException;
 import io.micronaut.security.annotation.Secured;
 import io.micronaut.security.authentication.Authentication;
 
@@ -25,8 +23,9 @@ import java.util.Map;
  * eventually come back from a real billing service; the values are mock.
  *
  * Authorization model (see sso-role-mapping.md):
- *   - read endpoints: any of billing-admin / billing-viewer / admin
- *   - write endpoints (not present in this stub): billing-admin / admin
+ *   - Tier 1 (coarse role): the {@code @Secured} lists below.
+ *   - Tier 2/3 (fine, opt-in): {@link Tier23Gate}, keyed by this domain's
+ *     {@link DemoAuthz} ObjectType codes.
  * `firmCd` is read from the JWT and echoed back so the FE / downstream can
  * verify the tenant scoping that any real service would enforce.
  */
@@ -35,22 +34,21 @@ import java.util.Map;
 public class BillingController {
 
     private final String source;
-    private final P1AuthzClient authz;
+    private final Tier23Gate gate;
 
-    public BillingController(@Value("${app.source:billing-bff}") String source, P1AuthzClient authz) {
+    public BillingController(@Value("${app.source:billing-bff}") String source, Tier23Gate gate) {
         this.source = source;
-        this.authz = authz;
+        this.gate = gate;
     }
 
     @Get("/summary")
     @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1: can this user reach billing (gwAdmin = global override)
-    public Map<String, Object> summary(HttpRequest<?> request, Authentication authentication) {
-        // tier 2: can this user VIEW invoices specifically (opt-in; see P1AuthzClient)
-        requirePermission(request, authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);
+    public Map<String, Object> summary(Authentication authentication) {
+        gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2: can this user VIEW invoices specifically
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
-        body.put("firmCd", firmCd(authentication));
+        body.put("firmCd", AuthClaims.firmCd(authentication));
         body.put("accountId", "ACCT-90217");
         body.put("plan", "Professional");
         body.put("planRenewsOn", LocalDate.now().plusDays(18).toString());
@@ -68,8 +66,8 @@ public class BillingController {
 
     @Get("/invoices")
     @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1
-    public Map<String, Object> invoices(HttpRequest<?> request, Authentication authentication) {
-        requirePermission(request, authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
+    public Map<String, Object> invoices(Authentication authentication) {
+        gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> invoices = new ArrayList<>();
         invoices.add(invoice("INV-2026-005", LocalDate.now().minusDays(2),  499.00, "open"));
@@ -78,14 +76,16 @@ public class BillingController {
         invoices.add(invoice("INV-2026-002", LocalDate.now().minusDays(92), 449.00, "paid"));
         invoices.add(invoice("INV-2026-001", LocalDate.now().minusDays(120), 449.00, "paid"));
 
-        // tier 3 (lists): refine the page to the invoices this user may VIEW — the
-        // loadCustomerViewableAccounts pattern (one /refine call, P1 intersects).
-        invoices = refineByObjectAccess(request, authentication, invoices, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);
+        // tier 3 (lists): refine the page to the invoices this user may VIEW — P1's
+        // refine pattern (one call, P1 intersects). Rows are keyed by "number".
+        invoices = gate.refine(authentication, invoices,
+                inv -> { Object id = inv.get("number"); return id == null ? null : id.toString(); },
+                DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);
 
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
-        body.put("firmCd", firmCd(authentication));
+        body.put("firmCd", AuthClaims.firmCd(authentication));
         body.put("invoices", invoices);
         return body;
     }
@@ -102,76 +102,11 @@ public class BillingController {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
-        body.put("firmCd", firmCd(authentication));
+        body.put("firmCd", AuthClaims.firmCd(authentication));
         body.put("periodStart", LocalDate.now().withDayOfMonth(1).toString());
         body.put("periodEnd",   LocalDate.now().withDayOfMonth(1).plusMonths(1).minusDays(1).toString());
         body.put("lines", lines);
         return body;
-    }
-
-    private static String firmCd(Authentication authentication) {
-        Object v = authentication.getAttributes().get("firmCd");
-        return v == null ? null : v.toString();
-    }
-
-    /** Tier 2 gate: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gwAdmin. */
-    private void requirePermission(HttpRequest<?> request, Authentication authentication, int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
-            return; // opt-in; coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
-        }
-        String bearer = bearer(authentication);
-        if (bearer == null || !authz.hasPermission(bearer, sub(authentication), objectType, permission)) {
-            throw new HttpStatusException(HttpStatus.FORBIDDEN, "fine permission denied");
-        }
-    }
-
-    /** Tier 3 list gate: keep only the items the user may act on, via P1's refine. No-op when off or gwAdmin. */
-    private List<Map<String, Object>> refineByObjectAccess(HttpRequest<?> request, Authentication authentication,
-                                                           List<Map<String, Object>> items,
-                                                           int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
-            return items; // gwAdmin sees every row (gwAdmin || canX)
-        }
-        String bearer = bearer(authentication);
-        if (bearer == null) {
-            return List.of(); // fail closed
-        }
-        List<String> ids = new ArrayList<>();
-        for (Map<String, Object> it : items) {
-            Object id = it.get("number");
-            if (id != null) {
-                ids.add(id.toString());
-            }
-        }
-        java.util.Set<String> allowed = new java.util.HashSet<>(authz.refine(bearer, objectType, permission, ids));
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> it : items) {
-            Object id = it.get("number");
-            if (id != null && allowed.contains(id.toString())) {
-                out.add(it);
-            }
-        }
-        return out;
-    }
-
-    /**
-     * The user's own access token, taken from the server-side session (Token
-     * Handler model) rather than an inbound Authorization header. Forwarded to
-     * P1 so authority stays user-bound (§2.6).
-     */
-    private static String bearer(Authentication authentication) {
-        Object token = authentication.getAttributes().get("accessToken");
-        return token == null ? null : "Bearer " + token;
-    }
-
-    private static String sub(Authentication authentication) {
-        Object v = authentication.getAttributes().get("sub");
-        return v == null ? authentication.getName() : v.toString();
-    }
-
-    /** Global cross-firm override carried as the gwAdmin realm role (gwAdminFlag). */
-    private static boolean isGwAdmin(Authentication authentication) {
-        return authentication.getRoles().contains("gwAdmin");
     }
 
     private static Map<String, Object> invoice(String number, LocalDate issued, double amount, String status) {

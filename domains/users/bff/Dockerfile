@@ -1,15 +1,16 @@
+# Build context is the repo root (see docker-compose.yml) so the composite
+# build can reach the sibling bff-core source: domains/users/bff/settings.gradle
+# does includeBuild('../../../bff-core'), which resolves to /build/bff-core below.
 FROM gradle:8.5-jdk17 AS builder
-WORKDIR /app
-
-COPY settings.gradle build.gradle.kts gradle.properties ./
-RUN gradle --no-daemon dependencies > /dev/null 2>&1 || true
-
-COPY src ./src
+WORKDIR /build
+COPY bff-core/ bff-core/
+COPY domains/users/bff/ domains/users/bff/
+WORKDIR /build/domains/users/bff
 RUN gradle --no-daemon shadowJar -x test
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app
-COPY --from=builder /app/build/libs/*-all.jar /app/users-bff.jar
+COPY --from=builder /build/domains/users/bff/build/libs/*-all.jar /app/users-bff.jar
 EXPOSE 8080
 # Token Handler: import the mkcert root CA (mounted at /certs/mkcert-rootCA.pem)
 # so the BFF trusts Keycloak's mkcert cert for the server-side OIDC code

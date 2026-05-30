@@ -49,7 +49,11 @@ export interface OrdersResponse {
   username: string;
 }
 
-const LOGIN_URL = '/oauth/login/keycloak';
+// Silent-first SSO (cross-subdomain-sso-implementation.md § 4.2): redirect to
+// the silent BFF entry-point so a cross-subdomain navigation completes
+// without an IdP UI flash when the realm SSO session is alive. The BFF
+// upgrades to interactive login if KC says `error=login_required`.
+const LOGIN_URL = '/oauth/login/silent';
 
 // Thrown on 403: the BFF session is valid but the user's roles don't satisfy
 // the endpoint. This is NOT a "signed out" state — bouncing a forbidden user

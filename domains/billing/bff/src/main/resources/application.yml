@@ -62,7 +62,11 @@ micronaut:
               url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080/realms/demo-realm}/protocol/openid-connect/certs
     redirect:
       login-success: /
-      login-failure: /?login_error=true
+      # Route OAuth callback failures through AuthController#loginFailed so the
+      # silent-first flow can recognise an `error=login_required` outcome and
+      # upgrade it to an interactive login instead of bouncing to the error
+      # page. See bff-core SilentLoginController javadoc.
+      login-failure: /auth/login-failed
       logout: /
       # Protected endpoints must answer 401/403 to the SPA's fetch (so it can
       # redirect the browser to /oauth/login/keycloak), NOT 302-redirect the
@@ -84,6 +88,12 @@ micronaut:
           - isAnonymous()
       - pattern: /backchannel-logout
         http-method: POST
+        access:
+          - isAnonymous()
+      # Silent-first SSO recovery hook — invoked by micronaut-security on
+      # OAuth callback failure (e.g. error=login_required). Must be reachable
+      # without auth so the redirect can fire even when there's no session.
+      - pattern: /auth/login-failed
         access:
           - isAnonymous()
       - pattern: /auth/me

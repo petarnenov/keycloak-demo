@@ -54,6 +54,30 @@ public class P1Client {
         return get("dropdowns", "&firmCd=" + firmCd, bearer);
     }
 
+    /** GET /saml/idp/bff-users.do?op=firms — DB-driven picker list. */
+    public Map<String, Object> firms(String bearer) {
+        return get("firms", "", bearer);
+    }
+
+    /** POST /saml/idp/bff-users.do?op=createFirm  body=JSON({firmCd?, firmName, code?}). */
+    public Map<String, Object> createFirm(Map<String, Object> body, String bearer) {
+        String url = baseUrl + "/saml/idp/bff-users.do?op=createFirm";
+        HttpRequest<Map<String, Object>> req = HttpRequest.POST(url, body)
+            .header("Authorization", "Bearer " + bearer)
+            .contentType(MediaType.APPLICATION_JSON)
+            .accept(MediaType.APPLICATION_JSON);
+        return exchange(req);
+    }
+
+    /** POST /saml/idp/bff-users.do?op=deactivateFirm&firmCd=N — soft-delete. */
+    public Map<String, Object> deactivateFirm(int firmCd, String bearer) {
+        String url = baseUrl + "/saml/idp/bff-users.do?op=deactivateFirm&firmCd=" + firmCd;
+        return exchange(HttpRequest.POST(url, java.util.Map.of())
+            .header("Authorization", "Bearer " + bearer)
+            .contentType(MediaType.APPLICATION_JSON)
+            .accept(MediaType.APPLICATION_JSON));
+    }
+
     /** POST /saml/idp/bff-users.do?op=createUpdate  body=JSON(GenericUserJTO) */
     public Map<String, Object> createUpdate(Map<String, Object> body, String bearer) {
         String url = baseUrl + "/saml/idp/bff-users.do?op=createUpdate";
@@ -62,6 +86,42 @@ public class P1Client {
             .contentType(MediaType.APPLICATION_JSON)
             .accept(MediaType.APPLICATION_JSON);
         return exchange(req);
+    }
+
+    // ---- person-registry endpoints (Persons tab) -----------------------------
+
+    /** GET /saml/idp/bff-persons.do?op=list */
+    public Map<String, Object> listPersons(String bearer) {
+        String url = baseUrl + "/saml/idp/bff-persons.do?op=list";
+        return exchange(HttpRequest.GET(url)
+            .header("Authorization", "Bearer " + bearer)
+            .accept(MediaType.APPLICATION_JSON));
+    }
+
+    /** GET /saml/idp/bff-persons.do?op=get&personId=… */
+    public Map<String, Object> getPerson(String personId, String bearer) {
+        String url = baseUrl + "/saml/idp/bff-persons.do?op=get&personId=" + urlEncode(personId);
+        return exchange(HttpRequest.GET(url)
+            .header("Authorization", "Bearer " + bearer)
+            .accept(MediaType.APPLICATION_JSON));
+    }
+
+    /** POST /saml/idp/bff-persons.do?op=upsert  body = the person JSON. */
+    public Map<String, Object> upsertPerson(Map<String, Object> body, String bearer) {
+        String url = baseUrl + "/saml/idp/bff-persons.do?op=upsert";
+        return exchange(HttpRequest.POST(url, body)
+            .header("Authorization", "Bearer " + bearer)
+            .contentType(MediaType.APPLICATION_JSON)
+            .accept(MediaType.APPLICATION_JSON));
+    }
+
+    /** POST /saml/idp/bff-persons.do?op=delete&personId=… */
+    public Map<String, Object> deletePerson(String personId, String bearer) {
+        String url = baseUrl + "/saml/idp/bff-persons.do?op=delete&personId=" + urlEncode(personId);
+        return exchange(HttpRequest.POST(url, java.util.Map.of())
+            .header("Authorization", "Bearer " + bearer)
+            .contentType(MediaType.APPLICATION_JSON)
+            .accept(MediaType.APPLICATION_JSON));
     }
 
     // ---- internals -----------------------------------------------------------
@@ -82,10 +142,34 @@ public class P1Client {
             Map body = res.body();
             return body == null ? Map.of() : (Map<String, Object>) body;
         } catch (HttpClientResponseException e) {
-            // Surface P1's status verbatim so the web client sees the same
-            // 401/403/400/404 instead of an opaque 500 from the BFF.
+            // Status translation:
+            //   400/404 — about THIS request → pass through verbatim;
+            //   403     — authenticated but not authorised at P1 → pass through
+            //             (SPA renders an access-denied state, doesn't relogin);
+            //   401     — P1 rejected the bearer token → REMAP to 502.
+            //             A naive pass-through here would tell the SPA "your
+            //             BFF session is gone", but the BFF session is in fact
+            //             still valid — what failed is the upstream
+            //             validation. The SPA's api.ts treats 401 as
+            //             "signed out" and bounces through silent login;
+            //             silent login succeeds (BFF session is fine), the
+            //             SPA retries the same /api/* call, P1 rejects again,
+            //             loop. Mapping to 502 puts the call into the
+            //             "downstream error" branch and surfaces a normal
+            //             error instead. See
+            //             cross-subdomain-sso-multi-username-analysis.md:
+            //             this is the integration failure mode the
+            //             personId-based BffUsersAction lookup hasn't
+            //             implemented yet.
+            //   5xx     — pass through verbatim.
             String message = e.getResponse().getBody(String.class).orElse(e.getMessage());
-            throw new HttpStatusException(HttpStatus.valueOf(e.getStatus().getCode()), message);
+            int code = e.getStatus().getCode();
+            if (code == 401) {
+                throw new HttpStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "P1 rejected the bearer token (502): " + message);
+            }
+            throw new HttpStatusException(HttpStatus.valueOf(code), message);
         }
     }
 

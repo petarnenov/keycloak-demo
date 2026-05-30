@@ -39,6 +39,21 @@ export function Layout({ children }: { children: ReactNode }) {
           <p className="muted small">
             Roles: <strong>{auth.roles.length ? auth.roles.join(', ') : '—'}</strong>
           </p>
+          {/* Cross-subdomain SSO visualisation — see
+              cross-subdomain-sso-implementation.md. personId stays the same
+              when navigating to a sibling subdomain; tenantIdentity changes
+              to the per-tenant alias. */}
+          <div className="sso-claims">
+            <p className="muted small">
+              personId: <strong>{auth.personId ?? '—'}</strong>
+            </p>
+            <p className="muted small">
+              active_tenant: <strong>{auth.activeTenant ?? '—'}</strong>
+            </p>
+            <p className="muted small">
+              tenant_identity: <strong>{auth.tenantIdentity ?? '—'}</strong>
+            </p>
+          </div>
           <button type="button" className="signout" onClick={auth.logout}>
             Sign out
           </button>

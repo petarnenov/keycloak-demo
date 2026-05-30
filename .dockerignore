@@ -1,0 +1,15 @@
+# Applies to builds whose context is the repo root — i.e. the bff-* services
+# (see docker-compose.yml). They only need bff-core/ and their own
+# domains/<name>/bff/ tree; everything else is excluded to keep the context lean.
+# (The web builds use their own ./domains/<name>/web context and are unaffected.)
+.git
+.idea
+**/.gradle
+**/build
+**/node_modules
+**/dist
+domains/*/web
+keycloak
+proxy
+*.md
+*.drawio

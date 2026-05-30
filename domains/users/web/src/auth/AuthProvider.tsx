@@ -8,6 +8,13 @@ interface AuthContextValue {
   username: string | null;
   email: string | null;
   firmCd: string | null;
+  // Cross-subdomain SSO triple (cross-subdomain-sso-implementation.md):
+  // personId stays the same per physical person across subdomains;
+  // tenantIdentity is the per-tenant alias; activeTenant is this app's
+  // tenant slug ("users").
+  personId: string | null;
+  tenantIdentity: string | null;
+  activeTenant: string | null;
   roles: string[];
   logout: () => void;
 }
@@ -25,6 +32,9 @@ interface Me {
   username: string;
   email: string | null;
   firmCd: string | null;
+  personId: string | null;
+  tenantIdentity: string | null;
+  activeTenant: string | null;
   roles: string[];
 }
 
@@ -96,6 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: me?.username ?? null,
     email: me?.email ?? null,
     firmCd: me?.firmCd ?? null,
+    personId: me?.personId ?? null,
+    tenantIdentity: me?.tenantIdentity ?? null,
+    activeTenant: me?.activeTenant ?? null,
     roles: me?.roles ?? [],
     logout: () => window.location.assign(LOGOUT_URL)
   };

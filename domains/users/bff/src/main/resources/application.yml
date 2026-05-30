@@ -10,6 +10,10 @@ micronaut:
       # the cert is mkcert-signed, so trust it for this demo.
       ssl:
         insecure-trust-all-certs: true
+      # Default 10s isn't enough for the firm-create flow (3 INSERTs + ROLE_SEQ
+      # lookups inside Struts' open-session-in-view transaction). Bump it for
+      # the @Client(no-name) client P1Client uses.
+      read-timeout: 30s
     services:
       p1authz:
         url: ${P1_AUTHZ_URL:http://localhost:8888}
@@ -66,7 +70,11 @@ micronaut:
               url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080/realms/demo-realm}/protocol/openid-connect/certs
     redirect:
       login-success: /
-      login-failure: /?login_error=true
+      # Silent-first SSO: bff-core's AuthController#loginFailed inspects the
+      # session marker set by SilentLoginController and either upgrades to an
+      # interactive login (when the silent attempt produced
+      # `error=login_required`) or falls back to the SPA error page.
+      login-failure: /auth/login-failed
       logout: /
       # Protected endpoints must answer 401/403 to the SPA's fetch (so it can
       # redirect the browser to /oauth/login/keycloak), NOT 302-redirect the
@@ -88,6 +96,10 @@ micronaut:
           - isAnonymous()
       - pattern: /backchannel-logout
         http-method: POST
+        access:
+          - isAnonymous()
+      # Silent-first SSO recovery hook — see bff-core SilentLoginController.
+      - pattern: /auth/login-failed
         access:
           - isAnonymous()
       - pattern: /auth/me

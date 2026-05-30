@@ -39,3 +39,6 @@ bin/
 # Ephemeral Playwright MCP artifacts (per-run snapshots/screenshots).
 .playwright-mcp/
 
+
+# Playwright runner state (root-level, distinct from e2e/test-results)
+/test-results/

@@ -15,6 +15,11 @@ dependencies {
     annotationProcessor("io.micronaut:micronaut-http-validation")
     annotationProcessor("io.micronaut.security:micronaut-security-annotations")
 
+    // Shared BFF infra (filters, auth/logout controllers, P1 clients, Tier23Gate).
+    // Substituted from the sibling source via includeBuild (settings.gradle) today;
+    // from a registry after the repo split. Its Micronaut deps arrive transitively.
+    implementation("demo.bff:bff-core:1.0.0")
+
     implementation("io.micronaut:micronaut-http-client")
     implementation("io.micronaut.reactor:micronaut-reactor")
     implementation("io.micronaut.security:micronaut-security-jwt")
@@ -31,7 +36,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("demo.users.Application")
+    mainClass.set("demo.bff.core.Bff")
 }
 
 java {

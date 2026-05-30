@@ -41,7 +41,14 @@ export interface UsageReport {
   username: string;
 }
 
-const LOGIN_URL = '/oauth/login/keycloak';
+// Silent-first SSO (cross-subdomain-sso-implementation.md § 4.2): if a realm
+// SSO session already exists on Keycloak (because the user signed in on a
+// sibling subdomain), this endpoint redirects to KC with prompt=none and
+// completes without any IdP UI. If there's no SSO session, the BFF receives
+// `error=login_required` from KC and upgrades the flow to an interactive
+// login. Either way the browser ends up authenticated; the silent-first
+// variant just avoids a visible IdP round-trip on cross-subdomain navigation.
+const LOGIN_URL = '/oauth/login/silent';
 
 // Thrown on 403: the BFF session is valid but the user's roles don't satisfy
 // the endpoint. This is NOT a "signed out" state — bouncing a forbidden user

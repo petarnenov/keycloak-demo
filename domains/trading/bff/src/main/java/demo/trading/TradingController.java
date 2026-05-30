@@ -1,14 +1,12 @@
 package demo.trading;
 
-import io.micronaut.context.annotation.Value;
-import io.micronaut.http.HttpHeaders;
-import io.micronaut.http.HttpRequest;
-import io.micronaut.http.HttpStatus;
+import demo.bff.core.AuthClaims;
+import demo.bff.core.Tier23Gate;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
-import io.micronaut.http.exceptions.HttpStatusException;
+import io.micronaut.context.annotation.Value;
 import io.micronaut.security.annotation.Secured;
 import io.micronaut.security.authentication.Authentication;
 
@@ -26,8 +24,9 @@ import java.util.Map;
  * mock and pinned per-call.
  *
  * Authorization model (see sso-role-mapping.md):
- *   - read endpoints: any of trading-trader / trading-viewer / advisor / admin
- *   - write endpoints (not present in this stub): trading-trader / admin
+ *   - Tier 1 (coarse role): the {@code @Secured} lists below.
+ *   - Tier 2/3 (fine, opt-in): {@link Tier23Gate}, keyed by this domain's
+ *     {@link DemoAuthz} ObjectType codes.
  * `firmCd` is read from the JWT and echoed back so the FE / downstream can
  * verify the tenant scoping that any real service would enforce.
  */
@@ -36,11 +35,11 @@ import java.util.Map;
 public class TradingController {
 
     private final String source;
-    private final P1AuthzClient authz;
+    private final Tier23Gate gate;
 
-    public TradingController(@Value("${app.source:trading-bff}") String source, P1AuthzClient authz) {
+    public TradingController(@Value("${app.source:trading-bff}") String source, Tier23Gate gate) {
         this.source = source;
-        this.authz = authz;
+        this.gate = gate;
     }
 
     @Get("/portfolio")
@@ -49,7 +48,7 @@ public class TradingController {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
-        body.put("firmCd", firmCd(authentication));
+        body.put("firmCd", AuthClaims.firmCd(authentication));
         body.put("accountId", "TRD-44219");
         body.put("currency", "USD");
         body.put("marketValue",   1_247_812.55);
@@ -77,15 +76,15 @@ public class TradingController {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
-        body.put("firmCd", firmCd(authentication));
+        body.put("firmCd", AuthClaims.firmCd(authentication));
         body.put("positions", positions);
         return body;
     }
 
     @Get("/orders")
     @Secured({"trading-trader", "trading-viewer", "advisor", "admin", "gwAdmin"})   // tier 1
-    public Map<String, Object> orders(HttpRequest<?> request, Authentication authentication) {
-        requirePermission(request, authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
+    public Map<String, Object> orders(Authentication authentication) {
+        gate.require(authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> orders = new ArrayList<>();
         orders.add(order("ORD-91204", "AAPL", "buy",  100, "limit", 211.50, "filled",  LocalDate.now()));
@@ -95,79 +94,18 @@ public class TradingController {
         orders.add(order("ORD-91202", "AMZN", "sell",  25, "market",   null, "filled",  LocalDate.now().minusDays(1)));
         orders.add(order("ORD-91198", "GOOG", "buy",   60, "limit", 168.00, "cancelled", LocalDate.now().minusDays(3)));
 
-        // tier 3 (lists): refine to the orders this user may act on — P1's refine pattern.
-        orders = refineByObjectAccess(request, authentication, orders, DemoAuthz.ORDER, DemoAuthz.PERM_EXECUTE);
+        // tier 3 (lists): refine to the orders this user may EXECUTE — P1's refine
+        // pattern. Rows are keyed by "id".
+        orders = gate.refine(authentication, orders,
+                o -> { Object id = o.get("id"); return id == null ? null : id.toString(); },
+                DemoAuthz.ORDER, DemoAuthz.PERM_EXECUTE);
 
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
-        body.put("firmCd", firmCd(authentication));
+        body.put("firmCd", AuthClaims.firmCd(authentication));
         body.put("orders", orders);
         return body;
-    }
-
-    private static String firmCd(Authentication authentication) {
-        Object v = authentication.getAttributes().get("firmCd");
-        return v == null ? null : v.toString();
-    }
-
-    /** Tier 2 gate: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gwAdmin. */
-    private void requirePermission(HttpRequest<?> request, Authentication authentication, int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
-            return; // opt-in; coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
-        }
-        String bearer = bearer(authentication);
-        if (bearer == null || !authz.hasPermission(bearer, sub(authentication), objectType, permission)) {
-            throw new HttpStatusException(HttpStatus.FORBIDDEN, "fine permission denied");
-        }
-    }
-
-    /** Tier 3 list gate: keep only the items (keyed by "id") the user may act on, via P1's refine. No-op when off or gwAdmin. */
-    private List<Map<String, Object>> refineByObjectAccess(HttpRequest<?> request, Authentication authentication,
-                                                           List<Map<String, Object>> items,
-                                                           int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
-            return items; // gwAdmin sees every row (gwAdmin || canX)
-        }
-        String bearer = bearer(authentication);
-        if (bearer == null) {
-            return List.of(); // fail closed
-        }
-        List<String> ids = new ArrayList<>();
-        for (Map<String, Object> it : items) {
-            Object id = it.get("id");
-            if (id != null) {
-                ids.add(id.toString());
-            }
-        }
-        java.util.Set<String> allowed = new java.util.HashSet<>(authz.refine(bearer, objectType, permission, ids));
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> it : items) {
-            Object id = it.get("id");
-            if (id != null && allowed.contains(id.toString())) {
-                out.add(it);
-            }
-        }
-        return out;
-    }
-
-    /**
-     * The user's own access token, taken from the server-side session (Token
-     * Handler model) rather than an inbound Authorization header.
-     */
-    private static String bearer(Authentication authentication) {
-        Object token = authentication.getAttributes().get("accessToken");
-        return token == null ? null : "Bearer " + token;
-    }
-
-    private static String sub(Authentication authentication) {
-        Object v = authentication.getAttributes().get("sub");
-        return v == null ? authentication.getName() : v.toString();
-    }
-
-    /** Global cross-firm override carried as the gwAdmin realm role (gwAdminFlag). */
-    private static boolean isGwAdmin(Authentication authentication) {
-        return authentication.getRoles().contains("gwAdmin");
     }
 
     private static Map<String, Object> position(String symbol, String name, int qty, double avgCost, double last) {

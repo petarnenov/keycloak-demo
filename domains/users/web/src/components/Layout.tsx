@@ -24,6 +24,12 @@ export function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/" end className={navLinkClass}>
             Users &amp; Access
           </NavLink>
+          <NavLink to="/persons" className={navLinkClass}>
+            Persons
+          </NavLink>
+          <NavLink to="/firms" className={navLinkClass}>
+            Firms
+          </NavLink>
         </nav>
 
         <div className="sidebar-foot">
@@ -35,6 +41,21 @@ export function Layout({ children }: { children: ReactNode }) {
           <p className="muted small">
             Roles: <strong>{auth.roles.length ? auth.roles.join(', ') : '—'}</strong>
           </p>
+          {/* Cross-subdomain SSO visualisation — see
+              cross-subdomain-sso-implementation.md. personId is identical to
+              the value on billing/trading; tenantIdentity is this
+              subdomain's per-tenant alias. */}
+          <div className="sso-claims">
+            <p className="muted small">
+              personId: <strong>{auth.personId ?? '—'}</strong>
+            </p>
+            <p className="muted small">
+              active_tenant: <strong>{auth.activeTenant ?? '—'}</strong>
+            </p>
+            <p className="muted small">
+              tenant_identity: <strong>{auth.tenantIdentity ?? '—'}</strong>
+            </p>
+          </div>
           <button type="button" className="signout" onClick={auth.logout}>
             Sign out
           </button>

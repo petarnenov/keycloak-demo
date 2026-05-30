@@ -2,6 +2,8 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { Layout } from './components/Layout';
 import { UsersAndAccessPage } from './pages/UsersAndAccessPage';
+import { PersonsPage } from './pages/PersonsPage';
+import { FirmsPage } from './pages/FirmsPage';
 import { useFirms } from './queries';
 
 export function App() {
@@ -44,6 +46,8 @@ export function App() {
         <Route path="/users/:firmCd" element={<UsersAndAccessRoute />} />
         {/* Mirrors P1's path: /platformOne/firmAdmin/users/:firmCd? */}
         <Route path="/firmAdmin/users/:firmCd?" element={<UsersAndAccessRoute />} />
+        <Route path="/persons" element={<PersonsPage />} />
+        <Route path="/firms" element={<FirmsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

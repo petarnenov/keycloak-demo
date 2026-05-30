@@ -119,7 +119,10 @@ services:
   # bff-billing:8080 via the docker network; no host port mapping.
   bff-billing:
     build:
-      context: ./domains/billing/bff
+      # Context is the repo root so the Dockerfile can COPY the shared bff-core
+      # source alongside this domain (composite build). See the Dockerfile.
+      context: .
+      dockerfile: domains/billing/bff/Dockerfile
     image: keycloak-demo-billing-bff:latest
     networks:
       - keycloak-network
@@ -175,7 +178,10 @@ services:
 
   bff-trading:
     build:
-      context: ./domains/trading/bff
+      # Context is the repo root so the Dockerfile can COPY the shared bff-core
+      # source alongside this domain (composite build). See the Dockerfile.
+      context: .
+      dockerfile: domains/trading/bff/Dockerfile
     image: keycloak-demo-trading-bff:latest
     networks:
       - keycloak-network
@@ -226,7 +232,10 @@ services:
 
   bff-users:
     build:
-      context: ./domains/users/bff
+      # Context is the repo root so the Dockerfile can COPY the shared bff-core
+      # source alongside this domain (composite build). See the Dockerfile.
+      context: .
+      dockerfile: domains/users/bff/Dockerfile
     image: keycloak-demo-users-bff:latest
     networks:
       - keycloak-network

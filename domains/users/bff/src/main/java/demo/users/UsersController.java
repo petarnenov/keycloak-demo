@@ -109,24 +109,22 @@ public class UsersController {
         return p1.dropdowns(firmCd, bearer(authentication));
     }
 
-    /** Returns the firms the caller is allowed to administer — drives the firm picker. */
+    /**
+     * Returns the firms the caller is allowed to administer — drives the
+     * firm picker.
+     *
+     * <p>Previously a hardcoded list ("Demo Firm" / "Atlas Capital" /
+     * "Northwind Advisors") that didn't match what was actually in
+     * {@code FIRM_TBL}: firm 2 didn't exist at all, firm 3's real name was
+     * "CF Inc", and switching the picker to a non-existent firm broke
+     * downstream calls. Now forwards to P1's {@code bff-users.do?op=firms},
+     * which returns active firms straight out of the DB; gwAdmin from
+     * firm 1 still sees all of them, everyone else only their own.</p>
+     */
     @Get("/firms")
     @Secured({"users-admin", "users-viewer", "admin", "gwAdmin"})
     public Map<String, Object> firms(Authentication authentication) {
-        boolean cross = isGwAdmin(authentication);
-        Integer ownFirm = firmCdInt(authentication);
-
-        List<Map<String, Object>> options = new ArrayList<>();
-        addFirmIf(options, 1, "Demo Firm",          cross || equalsFirm(ownFirm, 1));
-        addFirmIf(options, 2, "Atlas Capital",      cross || equalsFirm(ownFirm, 2));
-        addFirmIf(options, 3, "Northwind Advisors", cross || equalsFirm(ownFirm, 3));
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("options", options);
-        body.put("hasCrossFirmAccess", cross);
-        body.put("ownFirmCd", ownFirm);
-        body.put("username", authentication.getName());
-        return body;
+        return p1.firms(bearer(authentication));
     }
 
     // ---- WRITES --------------------------------------------------------------
@@ -266,18 +264,6 @@ public class UsersController {
             throw new HttpStatusException(HttpStatus.UNAUTHORIZED, "missing access token in session");
         }
         return token.toString();
-    }
-
-    private static void addFirmIf(List<Map<String, Object>> dst, int cd, String name, boolean include) {
-        if (!include) return;
-        Map<String, Object> o = new LinkedHashMap<>();
-        o.put("firmCd", cd);
-        o.put("firmName", name);
-        dst.add(o);
-    }
-
-    private static boolean equalsFirm(Integer own, int cd) {
-        return own != null && own.intValue() == cd;
     }
 
     /** gwAdmin or admin can cross firms; everyone else is pinned to their own firmCd. */

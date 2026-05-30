@@ -1,15 +1,16 @@
+# Build context is the repo root (see docker-compose.yml) so the composite
+# build can reach the sibling bff-core source: domains/billing/bff/settings.gradle
+# does includeBuild('../../../bff-core'), which resolves to /build/bff-core below.
 FROM gradle:8.5-jdk17 AS builder
-WORKDIR /app
-
-COPY settings.gradle build.gradle.kts gradle.properties ./
-RUN gradle --no-daemon dependencies > /dev/null 2>&1 || true
-
-COPY src ./src
+WORKDIR /build
+COPY bff-core/ bff-core/
+COPY domains/billing/bff/ domains/billing/bff/
+WORKDIR /build/domains/billing/bff
 RUN gradle --no-daemon shadowJar -x test
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app
-COPY --from=builder /app/build/libs/*-all.jar /app/billing-bff.jar
+COPY --from=builder /build/domains/billing/bff/build/libs/*-all.jar /app/billing-bff.jar
 EXPOSE 8080
 # Token Handler: the BFF does the OIDC code flow server-side against Keycloak's
 # PUBLIC issuer (https://auth.geowealth.int:5180) so the `iss` claim matches the

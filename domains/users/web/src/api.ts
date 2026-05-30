@@ -61,7 +61,11 @@ export interface BulkUploadRow {
   errors: Array<{ field: string; error: string }>;
 }
 
-const LOGIN_URL = '/oauth/login/keycloak';
+// Silent-first SSO (cross-subdomain-sso-implementation.md § 4.2): redirect to
+// the silent BFF entry-point so a cross-subdomain navigation completes
+// without an IdP UI flash when the realm SSO session is alive. The BFF
+// upgrades to interactive login if KC says `error=login_required`.
+const LOGIN_URL = '/oauth/login/silent';
 
 // Thrown on 403: the BFF session is valid but the user's roles don't satisfy
 // the endpoint. This is NOT a "signed out" state — bouncing a forbidden user
@@ -167,4 +171,71 @@ export const usersApi = {
   redoPolicy:     (userId: string) => postForm<{ status: string }>('/api/users/redoPolicyRules', { userId }, {}),
   uploadBulk:     (firmCd: number, file: File) => postForm<{ results: BulkUploadRow[] }>('/api/users/uploadBulkEmployeesFile', { firmCd }, { bulkCreateEmployeesFile: file }),
   bulkCreate:     (users: Partial<User>[]) => postForm<{ failedRecords: BulkUploadRow[]; createdCount: number }>('/api/users/bulkCreateEmployees', null, { q: JSON.stringify(users) })
+};
+
+// ---- Persons (cross-subdomain SSO registry) -------------------------------
+
+export interface Person {
+  personId: string;
+  displayName: string | null;
+  usernames: string[];
+  aliases: Record<string, string>;
+  roles: Record<string, string[]>;
+}
+
+export interface PersonsListResponse {
+  persons: Person[];
+}
+
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body)
+  });
+  await handleStatus(res, path);
+  return res.json() as Promise<T>;
+}
+
+async function deleteReq<T>(path: string): Promise<T> {
+  const res = await fetch(path, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { Accept: 'application/json' }
+  });
+  await handleStatus(res, path);
+  return res.json() as Promise<T>;
+}
+
+export const personsApi = {
+  list:   () => getJson<PersonsListResponse>('/api/users/persons'),
+  get:    (personId: string) => getJson<Person>(`/api/users/persons/${encodeURIComponent(personId)}`),
+  upsert: (p: Person) => putJson<Person>(`/api/users/persons/${encodeURIComponent(p.personId)}`, p),
+  delete: (personId: string) => deleteReq<{ removed: boolean; personId: string }>(`/api/users/persons/${encodeURIComponent(personId)}`)
+};
+
+// ---- Firms (cross-firm admin) --------------------------------------------
+
+export interface NewFirmBody {
+  firmCd?: number;
+  firmName: string;
+  code?: string;
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body)
+  });
+  await handleStatus(res, path);
+  return res.json() as Promise<T>;
+}
+
+export const firmsApi = {
+  // The list endpoint already exists (usersApi.firms / FirmsResponse).
+  create:     (body: NewFirmBody) => postJson<{ firmCd: number; firmName: string; code: string }>('/api/users/firms', body),
+  deactivate: (firmCd: number) => deleteReq<{ deactivated: boolean; firmCd: number }>(`/api/users/firms/${firmCd}`)
 };

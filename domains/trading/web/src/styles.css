@@ -111,6 +111,16 @@ body {
 
 .sidebar-foot p { margin: 2px 0; }
 
+/* Cross-subdomain SSO claim block — see billing/styles.css for rationale. */
+.sso-claims {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
 .who-name {
   font-weight: 600;
   font-size: 14px;
