@@ -11,7 +11,7 @@ import { URLS } from './config.js';
 const CLIENTS = ['p1-self-client', 'demo-billing-client', 'demo-trading-client'] as const;
 export type DemoClient = (typeof CLIENTS)[number];
 
-async function adminToken(): Promise<string> {
+export async function adminToken(): Promise<string> {
   const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
   try {
     const res = await api.post(`${URLS.kcBase}/realms/master/protocol/openid-connect/token`, {
@@ -58,6 +58,46 @@ export async function logoutAllRealmSessions(): Promise<void> {
     await api.post(`${URLS.kcBase}/admin/realms/${URLS.realm}/logout-all`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+  } finally {
+    await api.dispose();
+  }
+}
+
+/**
+ * The KC user id behind a live session on a client — discovered from the
+ * session itself rather than a hard-coded email, so admin operations work
+ * against whatever seed user the backing DB carries.
+ */
+export async function userIdFromClientSession(client: DemoClient): Promise<string | null> {
+  const token = await adminToken();
+  const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+  try {
+    const lookup = await api.get(
+      `${URLS.kcBase}/admin/realms/${URLS.realm}/clients?clientId=${client}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const clients = (await lookup.json()) as Array<{ id: string }>;
+    if (clients.length === 0) return null;
+    const sessions = await api.get(
+      `${URLS.kcBase}/admin/realms/${URLS.realm}/clients/${clients[0].id}/user-sessions?max=1`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const rows = (await sessions.json()) as Array<{ userId?: string }>;
+    return rows[0]?.userId ?? null;
+  } finally {
+    await api.dispose();
+  }
+}
+
+/** Admin force-logout of a KC user (out-of-band session end). Returns HTTP status. */
+export async function revokeUserSessions(userId: string): Promise<number> {
+  const token = await adminToken();
+  const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+  try {
+    const res = await api.post(`${URLS.kcBase}/admin/realms/${URLS.realm}/users/${userId}/logout`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.status();
   } finally {
     await api.dispose();
   }

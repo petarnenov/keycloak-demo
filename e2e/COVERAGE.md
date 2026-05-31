@@ -113,3 +113,24 @@ firm switch and a true global logout. These specs drive P1 hosts directly
 See [`README.md`](README.md). All scenarios marked ✅ above run as part of
 `npm test`; gaps marked ❌ are tracked here so the next contributor can pick
 them up without re-reading the design docs from scratch.
+
+### Slow dev stack — run in batches, not one big serial pass
+
+Every spec passes in isolation (or small batches), but the **full serial
+`npm test` is flaky on the local dev P1**: a single P1 login takes ~45–90s on
+this box, the suite drives ~30 of them, and the P1/Keycloak/Oracle stack
+degrades under that sustained load until late logins blow their timeouts
+(observed 18/22 then 10/22 green across two identical back-to-back runs). This
+is an infrastructure constraint, not a test-logic bug.
+
+Practical guidance until the login cost is removed:
+
+- Run by area, e.g. `npx playwright test whitelabel-`, `npx playwright test sso-claims token-handler`, etc. Each batch goes green.
+- Restart the P1 Tomcat (and ideally Keycloak) before a full pass so the stack starts cold.
+- The asserts are written as **invariants** (personId is stable / consistent, claim set is complete, active sessions reach zero) and admin operations **discover the user dynamically** — so they hold against whatever person the backing DB seeds, with no hard-coded identity to drift.
+
+The proper fix for a reliable single-pass run is to stop re-logging-in per
+spec: a Playwright `storageState` captured once in a global setup and reused by
+the read-only assertion specs (the cold-start / logout specs that genuinely
+need a fresh session opt out). That cuts the login count by more than half and
+takes the stack out of the critical path. Not yet done.

@@ -39,15 +39,15 @@ export async function loginViaP1(page: Page, tenant: TenantSlug): Promise<MeResp
   const loginHeading = page.locator('text="Sign in"').first();
 
   await Promise.race([
-    loggedInMarker.waitFor({ state: 'visible', timeout: 45_000 }),
-    loginHeading.waitFor({ state: 'visible', timeout: 45_000 }),
+    loggedInMarker.waitFor({ state: 'visible', timeout: 90_000 }),
+    loginHeading.waitFor({ state: 'visible', timeout: 90_000 }),
   ]);
 
   if (await loginHeading.isVisible().catch(() => false)) {
     await page.getByRole('textbox', { name: 'username' }).fill(P1_CREDENTIALS.username);
     await page.getByRole('textbox', { name: 'password' }).fill(P1_CREDENTIALS.password);
     await page.getByRole('button', { name: 'Login' }).click();
-    await loggedInMarker.waitFor({ state: 'visible', timeout: 45_000 });
+    await loggedInMarker.waitFor({ state: 'visible', timeout: 90_000 });
   }
 
   return fetchMe(page, tenant);
@@ -83,46 +83,19 @@ export async function logoutEverywhere(page: Page, tenant: TenantSlug): Promise<
 }
 
 /**
- * Pre-emptively delete the demo's KC user via Keycloak's admin API. Used as a
- * `beforeAll` cleanup so the first-broker-login flow always runs clean,
- * preventing the "Handle Existing Account" path that requires native-user
- * verification (which the demo realm has no credentials for).
+ * Historically deleted the brokered KC user in `beforeAll` to force a fresh
+ * first-broker-login. Now a deliberate no-op: on the current backing DB the
+ * credential-form → SAML → first-broker-login re-link does NOT drive reliably
+ * from Playwright (Keycloak stalls on a required-action page), which breaks the
+ * very login the specs depend on. The specs assert architectural invariants
+ * against the persistent brokered user, so a pristine user isn't needed.
  *
- * Safe to call when the user doesn't exist (404 → noop). Uses Playwright's
- * own request context so the mkcert-signed Keycloak cert is honoured under
- * the suite's global {@code ignoreHTTPSErrors}.
+ * Kept as a stable seam (rather than ripped out of seven `beforeAll`s) so the
+ * day the demo DB seeds a clean, programmatically-resettable user this can
+ * become a real reset again in one place.
  */
 export async function deleteDemoKcUser(): Promise<void> {
-  const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
-  try {
-    const tokenRes = await api.post(
-      `${URLS.kcBase}/realms/master/protocol/openid-connect/token`,
-      {
-        form: {
-          client_id: 'admin-cli',
-          grant_type: 'password',
-          username: 'admin',
-          password: 'admin',
-        },
-      }
-    );
-    if (!tokenRes.ok()) throw new Error(`KC admin token: ${tokenRes.status()}`);
-    const { access_token: token } = (await tokenRes.json()) as { access_token: string };
-
-    const lookupRes = await api.get(
-      `${URLS.kcBase}/admin/realms/${URLS.realm}/users?email=tim.a@geo.com`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (!lookupRes.ok()) return;
-    const users = (await lookupRes.json()) as Array<{ id: string }>;
-    for (const user of users) {
-      await api.delete(`${URLS.kcBase}/admin/realms/${URLS.realm}/users/${user.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    }
-  } finally {
-    await api.dispose();
-  }
+  // intentionally empty — see doc comment
 }
 
 /** Helper: tap network requests for assertions about the SSO redirect chain. */

@@ -1,6 +1,7 @@
-import { test, expect, request as playwrightRequest } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { TENANT_SLUGS, URLS, P1_CREDENTIALS } from '../fixtures/config.js';
 import { deleteDemoKcUser, loginViaP1, fetchMeStatus } from '../fixtures/auth.js';
+import { userIdFromClientSession, revokeUserSessions } from '../fixtures/kcadmin.js';
 
 /**
  * Out-of-band session ends. The document (§ 7) calls out that the realm's
@@ -25,7 +26,7 @@ test.describe('external (non-BFF) logout cascades to every BFF', () => {
   });
 
   test('KC admin revoke invalidates trading + billing within seconds', async ({ browser }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(240_000); // multiple full P1 logins (~45-90s each) on the slow dev stack
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
 
     // Warm up all three subdomain sessions.
@@ -38,37 +39,12 @@ test.describe('external (non-BFF) logout cascades to every BFF', () => {
       expect(await fetchMeStatus(context, slug), `pre-revoke ${slug}`).toBe(200);
     }
 
-    // Admin revoke — POST /admin/realms/.../users/{id}/logout. Uses a
-    // separate Playwright request context so we don't pollute the test's
-    // browser cookies.
-    const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
-    try {
-      const tokenRes = await api.post(
-        `${URLS.kcBase}/realms/master/protocol/openid-connect/token`,
-        {
-          form: {
-            client_id: 'admin-cli',
-            grant_type: 'password',
-            username: 'admin',
-            password: 'admin',
-          },
-        }
-      );
-      const { access_token: token } = (await tokenRes.json()) as { access_token: string };
-      const lookup = await api.get(
-        `${URLS.kcBase}/admin/realms/${URLS.realm}/users?email=tim.a@geo.com`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const users = (await lookup.json()) as Array<{ id: string }>;
-      expect(users.length, 'KC user must exist before revoke').toBeGreaterThan(0);
-      const revoke = await api.post(
-        `${URLS.kcBase}/admin/realms/${URLS.realm}/users/${users[0].id}/logout`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      expect(revoke.status()).toBe(204);
-    } finally {
-      await api.dispose();
-    }
+    // Admin revoke — POST /admin/realms/.../users/{id}/logout. Discover the
+    // user from its live billing session rather than a hard-coded email, so
+    // the revoke targets whatever seed person the backing DB carries.
+    const userId = await userIdFromClientSession('demo-billing-client');
+    expect(userId, 'a logged-in user must exist before revoke').toBeTruthy();
+    expect(await revokeUserSessions(userId!), 'KC admin logout').toBe(204);
 
     // Back-channel fan-out is the fast path (≤2s). Allow a small buffer.
     for (const slug of TENANT_SLUGS) {
