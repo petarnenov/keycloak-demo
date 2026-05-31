@@ -28,7 +28,7 @@ The legend: ✅ covered, 🟡 partial / implicit, ❌ gap, ⛔ out-of-scope for 
 | # | Scenario | Status | Spec | Notes |
 |---|---|---|---|---|
 | O1 | Sign out from a domain SPA | ✅ | `logout.spec` | Asserts back-channel fan-out kills sibling BFFs |
-| O2 | Logout from P1 (cascades to all BFFs) | 🟡 | `logout.spec` (BFF → P1 SLO redirect) | The BFF `/auth/logout` flow already drives P1's `/saml/idp/initiate-slo.do` as its second hop and is covered. A standalone P1-SLO-only test exists scaffolded but `.skip`-ped in `external-logout.spec` — driving P1's JS-auto-submit SAML form from Playwright is brittle and adds no coverage beyond the KC-admin-revoke test below |
+| O2 | Logout from P1 (cascades to all BFFs) | ✅ | `whitelabel-global-logout.spec` | P1's IdP-initiated SLO now runs a server-side RP-initiated logout that ends the KC SSO session and fans OIDC back-channel logout out to the resource BFFs. The spec signs out via `/saml/idp/initiate-slo.do` on a whitelabel host and asserts KC sessions → 0, the resource BFF → 401, and the sibling P1 session torn down. (`logout.spec` still covers the BFF → P1 SLO direction.) |
 | O3 | KC idle timeout (server-only) | ⛔ | – | Time-based; can't fast-forward in E2E |
 | O4 | P1 session timeout (server-only) | ⛔ | – | Same |
 | O5 | Browser restart | ⛔ | – | Cookie-store behaviour, not auth logic |
@@ -84,6 +84,22 @@ The list mirrors the section structure of `cross-subdomain-sso-keycloak (1).md`.
 | `/api/<domain>/*` returns the expected shape under the right role | ✅ | same |
 | 401 vs 403 differentiation prevents login loop | 🟡 | The P1 sidebar → Users SPA loop bug (downstream P1 401 mistreated as session-expiry) is covered by `no-relogin-loop.spec` — the fix translates upstream 401 to 502 in the BFF. Pure-BFF 401 vs 403 isn't asserted because the demo dataset gives `tim1` enough roles to never trigger 403 |
 | `kc_idp_hint=p1` forced on every authorize redirect | ✅ | `silent-first-flow.*` asserts it appears |
+
+## Whitelabel cross-host SSO (P1 hosts)
+
+P1 serves whitelabel hosts (e.g. `c1wealth.localhost:8888` → CreativeOne)
+off the same port, distinguished by hostname. The silent-SSO redirect_uri is
+host-dynamic so a whitelabel host keeps its round-trip on-host, with a real
+firm switch and a true global logout. These specs drive P1 hosts directly
+(not the BFF domains).
+
+| Assertion | Status | Spec |
+|---|---|---|
+| Host → firm resolution is per-host (no degenerate `system_base_url='/'` hijack) | ✅ | `whitelabel-firm-resolution.spec` — localhost / 127.0.0.1 / unmapped → GeoWealth(1); c1wealth → CreativeOne(1123), anonymous |
+| Whitelabel host completes silent SSO on-host (host-dynamic redirect_uri) | ✅ | `whitelabel-cross-host-sso.spec` — lands on c1wealth, `loggedUser` there |
+| Per-host firm context, no bleed | ✅ | `whitelabel-cross-host-sso.spec` — c1wealth session = 1123 while localhost session = 1 |
+| Logout from a whitelabel host is a true single-logout | ✅ | `whitelabel-global-logout.spec` — KC sessions → 0, resource BFF → 401 |
+| Sibling P1 session (canonical host) torn down on logout | ✅ | `whitelabel-global-logout.spec` — kc_sub object-index kill; the `KcSessionProbe` liveness check is the fallback |
 
 ## What's intentionally out of scope
 
