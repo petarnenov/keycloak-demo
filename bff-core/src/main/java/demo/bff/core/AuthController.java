@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -89,10 +90,12 @@ public class AuthController {
     private final String tokenEndpoint;
     private final String logoutEndpoint;
     private final String p1InitiateSloUrl;
+    private final SubdomainRequirement requirement;
 
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
                           @Client("kc") HttpClient kc,
+                          SubdomainRequirement requirement,
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-secret}") String clientSecret,
@@ -100,6 +103,7 @@ public class AuthController {
         this.registry = registry;
         this.sessionStore = sessionStore;
         this.kc = kc;
+        this.requirement = requirement;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         // Use full URLs (issuer + path) because @Client("kc")'s base path is
@@ -122,20 +126,64 @@ public class AuthController {
         if (session != null && sid != null) {
             registry.register(sid.toString(), session.getId());
         }
+        List<String> memberships = AuthClaims.memberships(authentication);
+
         Map<String, Object> out = new HashMap<>();
         out.put("authenticated", true);
         out.put("username", authentication.getName());
         out.put("email", authentication.getAttributes().get("email"));
-        out.put("firmCd", authentication.getAttributes().get("firmCd"));
-        // Cross-subdomain SSO triple (see cross-subdomain-sso-implementation.md):
-        // personId stays the same per physical person across subdomains;
-        // tenantIdentity is the per-subdomain alias (the document's a1/a2);
-        // activeTenant is this BFF's tenant slug.
         out.put("personId", authentication.getAttributes().get("personId"));
-        out.put("tenantIdentity", authentication.getAttributes().get("tenantIdentity"));
-        out.put("activeTenant", authentication.getAttributes().get("activeTenant"));
+        // Subdomain-agnostic facts (person-identity-via-existing-linkdelink.md):
+        // the firms the person has an account in, as "<firmCd>:<ldapUid>".
+        out.put("memberships", memberships);
+        // Per-subdomain identity. For a firm-bound subdomain we surface the firm
+        // it is bound to and the person's username IN that firm (resolved from
+        // memberships) — not the login account — so billing always shows its own
+        // firm's identity regardless of which account the person logged in with.
+        if (requirement.isFirmType() && requirement.getFirmCd() != null) {
+            out.put("firmCd", requirement.getFirmCd().toString());
+            out.put("tenantIdentity", usernameForFirm(memberships, requirement.getFirmCd()));
+            out.put("activeTenant", "firm-" + requirement.getFirmCd());
+        } else {
+            // Resource (or ungated) subdomain: surface the login account's identity.
+            // authentication.getName() is the personId UUID (KC username = SAML
+            // NameID = personId), so resolve the human ldapUid for the login firm
+            // from memberships and fall back to the raw name only if absent.
+            Object firmCdAttr = authentication.getAttributes().get("firmCd");
+            out.put("firmCd", firmCdAttr);
+            String uname = usernameForFirm(memberships, parseFirm(firmCdAttr));
+            out.put("tenantIdentity", uname != null ? uname : authentication.getName());
+            out.put("activeTenant", requirement.getType());
+        }
         out.put("roles", authentication.getRoles());
         return out;
+    }
+
+    /** Parse the (login) {@code firmCd} attribute to an Integer; {@code null} when absent/non-numeric. */
+    private static Integer parseFirm(Object firmCd) {
+        if (firmCd == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(firmCd.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** The person's {@code ldapUid} in {@code firmCd}, parsed from the
+     *  {@code "<firmCd>:<ldapUid>"} memberships entries; {@code null} if absent. */
+    private static String usernameForFirm(List<String> memberships, Integer firmCd) {
+        if (memberships == null || firmCd == null) {
+            return null;
+        }
+        String prefix = firmCd + ":";
+        for (String m : memberships) {
+            if (m != null && m.startsWith(prefix)) {
+                return m.substring(prefix.length());
+            }
+        }
+        return null;
     }
 
     /**

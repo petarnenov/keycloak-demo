@@ -11,10 +11,17 @@ import io.micronaut.security.oauth2.endpoint.token.response.OpenIdClaims;
 import io.micronaut.security.oauth2.endpoint.token.response.OpenIdTokenResponse;
 import jakarta.inject.Singleton;
 import org.reactivestreams.Publisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Token Handler / BFF pattern (IETF "OAuth 2.0 for Browser-Based Apps").
@@ -34,6 +41,8 @@ import java.util.Map;
 @Replaces(DefaultOpenIdAuthenticationMapper.class)
 public class KeycloakAuthenticationMapper implements OpenIdAuthenticationMapper {
 
+    private static final Logger LOG = LoggerFactory.getLogger(KeycloakAuthenticationMapper.class);
+
     @Override
     @SuppressWarnings("unchecked")
     public Publisher<AuthenticationResponse> createAuthenticationResponse(String providerName,
@@ -46,20 +55,38 @@ public class KeycloakAuthenticationMapper implements OpenIdAuthenticationMapper 
         Object preferredUsername = claims.get("preferred_username");
         String username = preferredUsername != null ? preferredUsername.toString() : claims.getSubject();
 
+        // Subdomain-agnostic person facts (see person-identity-via-existing-linkdelink.md):
+        //   personId    — stable P1 person id; same on every subdomain.
+        //   memberships — multi-valued "<firmCd>:<ldapUid>" — the firms the person
+        //                 has an account in. Each subdomain's BFF authorizes access
+        //                 from this (firm-bound subdomain → is its firm present?).
+        // NB: OpenIdClaims.get() reliably surfaces scalar claims (personId, firmCd)
+        // but NOT multi-valued array claims like `memberships`, so read it straight
+        // from the raw JWT payload. The id_token passed to this mapper is not always
+        // populated by micronaut-security at the code-exchange step, so fall back to
+        // the access token (always present here — it carries the same claim and is
+        // forwarded to P1 for Tier 2/3 authz).
+        List<String> memberships = membershipsFromJwt(tokenResponse.getIdToken());
+        String source = "id_token";
+        if (memberships.isEmpty()) {
+            memberships = membershipsFromJwt(tokenResponse.getAccessToken());
+            source = "access_token";
+        }
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("memberships parsed from {} (idToken present={}): count={}",
+                    source, tokenResponse.getIdToken() != null, memberships.size());
+        }
+
         Map<String, Object> attrs = new HashMap<>();
         attrs.put("sub", claims.getSubject());
         attrs.put("email", str(claims.get("email")));
         attrs.put("firmCd", str(claims.get("firmCd")));
         attrs.put("sid", str(claims.get("sid")));
-        // Cross-subdomain SSO claims (see cross-subdomain-sso-implementation.md):
-        //   personId       — stable P1 person UUID; same on every subdomain
-        //                    for the same physical person.
-        //   tenant_identity — this subdomain's view of the user's login
-        //                    identity (the document's `a1`/`a2`).
-        //   active_tenant  — this client's tenant slug (billing/trading/users).
         attrs.put("personId", str(claims.get("personId")));
-        attrs.put("tenantIdentity", str(claims.get("tenant_identity")));
-        attrs.put("activeTenant", str(claims.get("active_tenant")));
+        // Stored as a single delimited String (not a List): micronaut-security's
+        // session-backed Authentication round-trips scalar attributes but drops
+        // List attributes. AuthClaims.memberships() splits it back on read.
+        attrs.put("memberships", String.join(AuthClaims.MEMBERSHIPS_DELIM, memberships));
         attrs.put("accessToken", tokenResponse.getAccessToken());
         attrs.put("refreshToken", tokenResponse.getRefreshToken());
         attrs.put("idToken", tokenResponse.getIdToken());
@@ -69,5 +96,40 @@ public class KeycloakAuthenticationMapper implements OpenIdAuthenticationMapper 
 
     private static String str(Object o) {
         return o == null ? null : o.toString();
+    }
+
+    private static final Pattern MEMBERSHIPS_ARRAY =
+            Pattern.compile("\"memberships\"\\s*:\\s*\\[([^\\]]*)\\]");
+    private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
+
+    /**
+     * Extract the multi-valued {@code memberships} claim ("&lt;firmCd&gt;:&lt;ldapUid&gt;")
+     * from a raw JWT payload (id_token or access_token). {@code OpenIdClaims.get("memberships")}
+     * returns null for array claims in this Micronaut version, so we decode the
+     * JWT body and pull the array out directly (values are firmCd:ldapUid — no
+     * embedded quotes — so a simple scan is safe). Best-effort: empty on failure.
+     */
+    private static List<String> membershipsFromJwt(String jwt) {
+        List<String> out = new ArrayList<>();
+        if (jwt == null) {
+            return out;
+        }
+        try {
+            String[] parts = jwt.split("\\.");
+            if (parts.length < 2) {
+                return out;
+            }
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            Matcher arr = MEMBERSHIPS_ARRAY.matcher(payload);
+            if (arr.find()) {
+                Matcher v = QUOTED.matcher(arr.group(1));
+                while (v.find()) {
+                    out.add(v.group(1));
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through to empty
+        }
+        return out;
     }
 }

@@ -9,6 +9,7 @@ import io.micronaut.http.annotation.Produces;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.security.annotation.Secured;
 import io.micronaut.security.authentication.Authentication;
+import io.micronaut.security.rules.SecurityRule;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -43,7 +44,7 @@ public class TradingController {
     }
 
     @Get("/portfolio")
-    @Secured({"trading-trader", "trading-viewer", "advisor", "admin", "gwAdmin"})
+    @Secured(SecurityRule.IS_AUTHENTICATED)
     public Map<String, Object> portfolio(Authentication authentication) {
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
@@ -62,7 +63,7 @@ public class TradingController {
     }
 
     @Get("/positions")
-    @Secured({"trading-trader", "trading-viewer", "advisor", "admin", "gwAdmin"})
+    @Secured(SecurityRule.IS_AUTHENTICATED)
     public Map<String, Object> positions(Authentication authentication) {
         List<Map<String, Object>> positions = new ArrayList<>();
         positions.add(position("AAPL", "Apple Inc.",          240, 198.42, 212.85));
@@ -82,7 +83,7 @@ public class TradingController {
     }
 
     @Get("/orders")
-    @Secured({"trading-trader", "trading-viewer", "advisor", "admin", "gwAdmin"})   // tier 1
+    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1
     public Map<String, Object> orders(Authentication authentication) {
         gate.require(authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
 

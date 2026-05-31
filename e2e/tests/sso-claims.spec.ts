@@ -28,7 +28,6 @@ test.describe('cross-subdomain SSO claims', () => {
     // Per-tenant scoping: the token must NOT carry another tenant's roles.
     // billing-admin yes, trading-trader no.
     expect(me.roles).not.toContain('trading-trader');
-    expect(me.roles).not.toContain('users-viewer');
   });
 
   test('trading emits the registry trading slot', async ({ page }) => {
@@ -38,17 +37,6 @@ test.describe('cross-subdomain SSO claims', () => {
     expect(me.tenantIdentity).toBe(PERSON.tenants.trading.identity);
     expect(me.roles).toEqual(expect.arrayContaining(PERSON.tenants.trading.roles));
     expect(me.roles).not.toContain('billing-admin');
-    expect(me.roles).not.toContain('users-viewer');
-  });
-
-  test('users emits the registry users slot', async ({ page }) => {
-    const me = await loginViaP1(page, 'users');
-    expect(me.personId).toBe(PERSON.personId);
-    expect(me.activeTenant).toBe('users');
-    expect(me.tenantIdentity).toBe(PERSON.tenants.users.identity);
-    expect(me.roles).toEqual(expect.arrayContaining(PERSON.tenants.users.roles));
-    expect(me.roles).not.toContain('billing-admin');
-    expect(me.roles).not.toContain('trading-trader');
   });
 
   test('personId is stable across all three subdomains in one context', async ({ context }) => {

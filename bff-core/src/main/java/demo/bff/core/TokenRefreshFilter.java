@@ -195,11 +195,15 @@ public class TokenRefreshFilter implements HttpServerFilter {
             attrs.put("email", str(claims.get("email")));
             attrs.put("firmCd", str(claims.get("firmCd")));
             attrs.put("sid", str(claims.get("sid")));
-            // Refresh path: re-read the cross-subdomain claims from the new
-            // id_token. Mirrors KeycloakAuthenticationMapper.
+            // Refresh path: re-read the subdomain-agnostic person facts from the
+            // new id_token. Mirrors KeycloakAuthenticationMapper — and critically
+            // must re-carry `memberships`, else this rebuild (which fires on the
+            // first request after login) would wipe it and every firm-gate 403s.
+            // Nimbus' getClaims() exposes the array claim as a List (unlike
+            // Micronaut's OpenIdClaims), so read it straight and re-pack as the
+            // delimited String the session round-trips (see AuthClaims).
             attrs.put("personId", str(claims.get("personId")));
-            attrs.put("tenantIdentity", str(claims.get("tenant_identity")));
-            attrs.put("activeTenant", str(claims.get("active_tenant")));
+            attrs.put("memberships", membershipsAsString(claims.get("memberships")));
             attrs.put("accessToken", access);
             attrs.put("refreshToken", refresh != null ? refresh : current.getAttributes().get("refreshToken"));
             attrs.put("idToken", id);
@@ -218,6 +222,25 @@ public class TokenRefreshFilter implements HttpServerFilter {
 
     private static String str(Object o) {
         return o == null ? null : o.toString();
+    }
+
+    /** Pack the {@code memberships} claim (a List from Nimbus, or a scalar) into
+     *  the delimited String the session-backed Authentication round-trips. */
+    private static String membershipsAsString(Object claim) {
+        if (claim instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder();
+            for (Object o : list) {
+                if (o == null) {
+                    continue;
+                }
+                if (sb.length() > 0) {
+                    sb.append(AuthClaims.MEMBERSHIPS_DELIM);
+                }
+                sb.append(o);
+            }
+            return sb.toString();
+        }
+        return claim == null ? "" : claim.toString();
     }
 
     private static String enc(String s) {

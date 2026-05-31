@@ -94,7 +94,7 @@ Pure IdP-init (P1 → Keycloak with unsolicited Response) does **not** work clea
 |---|---|
 | `domains/<name>/web/` source | `podman compose up -d --build --force-recreate demo-<name>` — its own image (`keycloak-demo-<name>-web`) built by `domains/<name>/web/Dockerfile`. No bind-mount, so a source edit needs the full build. |
 | `domains/<name>/bff/` source | `podman compose up -d --build --force-recreate bff-<name>` — its own image (`keycloak-demo-<name>-bff`). |
-| `bff-core/` source (shared infra) | rebuild **all three** BFFs — `podman compose up -d --build --force-recreate bff-billing bff-trading bff-users` (each fat-jar bundles `bff-core`; the composite build recompiles it per image). |
+| `bff-core/` source (shared infra) | rebuild **both** BFFs — `podman compose up -d --build --force-recreate bff-billing bff-trading` (each fat-jar bundles `bff-core`; the composite build recompiles it per image). |
 | Add a new domain | follow the recipe in "Adding a new domain" above. |
 | Env var on a service | `podman compose up -d --force-recreate <service>` |
 | `docker-compose.yml` structural change | `podman compose up -d` (compose picks up the diff) |

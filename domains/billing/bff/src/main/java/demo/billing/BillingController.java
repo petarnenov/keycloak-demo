@@ -9,6 +9,7 @@ import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
 import io.micronaut.security.annotation.Secured;
 import io.micronaut.security.authentication.Authentication;
+import io.micronaut.security.rules.SecurityRule;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -42,7 +43,7 @@ public class BillingController {
     }
 
     @Get("/summary")
-    @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1: can this user reach billing (gwAdmin = global override)
+    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1: any federated person; real per-firm roles are shown, not gated on demo caps
     public Map<String, Object> summary(Authentication authentication) {
         gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2: can this user VIEW invoices specifically
         Map<String, Object> body = new HashMap<>();
@@ -65,7 +66,7 @@ public class BillingController {
     }
 
     @Get("/invoices")
-    @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1
+    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1
     public Map<String, Object> invoices(Authentication authentication) {
         gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
 
@@ -91,7 +92,7 @@ public class BillingController {
     }
 
     @Get("/usage")
-    @Secured({"billing-admin", "billing-viewer", "admin", "gwAdmin"})   // tier 1
+    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1
     public Map<String, Object> usage(Authentication authentication) {
         List<Map<String, Object>> lines = new ArrayList<>();
         lines.add(Map.of("metric", "API requests",    "included", 100_000, "used", 42_318, "unit", "calls"));

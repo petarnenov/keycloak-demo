@@ -237,20 +237,6 @@
       },
       "protocolMappers": [
         {
-          "name": "roles-tenant-scoped",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "config": {
-            "user.attribute": "roles_billing",
-            "claim.name": "roles",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
           "name": "firm-cd-claim",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-attribute-mapper",
@@ -279,27 +265,28 @@
           }
         },
         {
-          "name": "tenant-identity-claim",
+          "name": "memberships-claim",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": {
-            "user.attribute": "tenantIdentity_billing",
-            "claim.name": "tenant_identity",
+            "user.attribute": "memberships",
+            "claim.name": "memberships",
             "jsonType.label": "String",
-            "multivalued": "false",
+            "multivalued": "true",
             "userinfo.token.claim": "true",
             "id.token.claim": "true",
             "access.token.claim": "true"
           }
         },
         {
-          "name": "active-tenant-claim",
+          "name": "roles-claim",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": {
-            "claim.name": "active_tenant",
-            "claim.value": "billing",
+            "user.attribute": "loginRoles",
+            "claim.name": "roles",
             "jsonType.label": "String",
+            "multivalued": "true",
             "userinfo.token.claim": "true",
             "id.token.claim": "true",
             "access.token.claim": "true"
@@ -347,20 +334,6 @@
       },
       "protocolMappers": [
         {
-          "name": "roles-tenant-scoped",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "config": {
-            "user.attribute": "roles_trading",
-            "claim.name": "roles",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
           "name": "firm-cd-claim",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-attribute-mapper",
@@ -389,80 +362,12 @@
           }
         },
         {
-          "name": "tenant-identity-claim",
+          "name": "memberships-claim",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": {
-            "user.attribute": "tenantIdentity_trading",
-            "claim.name": "tenant_identity",
-            "jsonType.label": "String",
-            "multivalued": "false",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "active-tenant-claim",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-hardcoded-claim-mapper",
-          "config": {
-            "claim.name": "active_tenant",
-            "claim.value": "trading",
-            "jsonType.label": "String",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        }
-      ]
-    },
-    {
-      "clientId": "demo-users-client",
-      "enabled": true,
-      "name": "Demo Users Client",
-      "description": "Public OIDC client for the demo-users standalone app at https://users.geowealth.int:5186. P1-only auth via kc_idp_hint=p1.",
-      "publicClient": true,
-      "bearerOnly": false,
-      "webOrigins": [
-        "https://users.geowealth.int:5186",
-        "http://localhost:5186",
-        "http://127.0.0.1:5186"
-      ],
-      "redirectUris": [
-        "https://users.geowealth.int:5186",
-        "https://users.geowealth.int:5186/",
-        "https://users.geowealth.int:5186/*",
-        "http://localhost:5186",
-        "http://localhost:5186/",
-        "http://localhost:5186/*",
-        "http://127.0.0.1:5186",
-        "http://127.0.0.1:5186/",
-        "http://127.0.0.1:5186/*"
-      ],
-      "baseUrl": "https://users.geowealth.int:5186/",
-      "rootUrl": "https://users.geowealth.int:5186",
-      "protocol": "openid-connect",
-      "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": false,
-      "frontchannelLogout": false,
-      "attributes": {
-        "post.logout.redirect.uris": "https://users.geowealth.int:5186/*##http://localhost:5186/*",
-        "frontchannel.logout.url": "https://users.geowealth.int:5186/frontchannel-logout.html",
-        "backchannel.logout.url": "http://bff-users:8080/backchannel-logout",
-        "backchannel.logout.session.required": "true",
-        "backchannel.logout.revoke.offline.tokens": "false"
-      },
-      "protocolMappers": [
-        {
-          "name": "roles-tenant-scoped",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "config": {
-            "user.attribute": "roles_users",
-            "claim.name": "roles",
+            "user.attribute": "memberships",
+            "claim.name": "memberships",
             "jsonType.label": "String",
             "multivalued": "true",
             "userinfo.token.claim": "true",
@@ -471,55 +376,14 @@
           }
         },
         {
-          "name": "firm-cd-claim",
+          "name": "roles-claim",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-usermodel-attribute-mapper",
           "config": {
-            "user.attribute": "firmCd",
-            "claim.name": "firmCd",
+            "user.attribute": "loginRoles",
+            "claim.name": "roles",
             "jsonType.label": "String",
-            "multivalued": "false",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "person-id-claim",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "config": {
-            "user.attribute": "personId",
-            "claim.name": "personId",
-            "jsonType.label": "String",
-            "multivalued": "false",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "tenant-identity-claim",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-attribute-mapper",
-          "config": {
-            "user.attribute": "tenantIdentity_users",
-            "claim.name": "tenant_identity",
-            "jsonType.label": "String",
-            "multivalued": "false",
-            "userinfo.token.claim": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true"
-          }
-        },
-        {
-          "name": "active-tenant-claim",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-hardcoded-claim-mapper",
-          "config": {
-            "claim.name": "active_tenant",
-            "claim.value": "users",
-            "jsonType.label": "String",
+            "multivalued": "true",
             "userinfo.token.claim": "true",
             "id.token.claim": "true",
             "access.token.claim": "true"
@@ -568,7 +432,10 @@
         "composite": true,
         "composites": {
           "client": {
-            "account": ["view-profile", "manage-account"]
+            "account": [
+              "view-profile",
+              "manage-account"
+            ]
           }
         }
       },
@@ -599,14 +466,6 @@
       {
         "name": "trading-viewer",
         "description": "Per-domain capability: read-only access to the trading domain (portfolio/positions/orders)."
-      },
-      {
-        "name": "users-admin",
-        "description": "Per-domain capability: write access to the users domain (Firm Admin · create/edit users, bulk import, refresh policy)."
-      },
-      {
-        "name": "users-viewer",
-        "description": "Per-domain capability: read-only access to the users domain."
       },
       {
         "name": "gwAdmin",
@@ -700,66 +559,6 @@
       }
     },
     {
-      "name": "tenant-identity-billing-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "tenantIdentity_billing",
-        "user.attribute": "tenantIdentity_billing"
-      }
-    },
-    {
-      "name": "tenant-identity-trading-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "tenantIdentity_trading",
-        "user.attribute": "tenantIdentity_trading"
-      }
-    },
-    {
-      "name": "tenant-identity-users-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "tenantIdentity_users",
-        "user.attribute": "tenantIdentity_users"
-      }
-    },
-    {
-      "name": "roles-billing-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "roles_billing",
-        "user.attribute": "roles_billing"
-      }
-    },
-    {
-      "name": "roles-trading-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "roles_trading",
-        "user.attribute": "roles_trading"
-      }
-    },
-    {
-      "name": "roles-users-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "roles_users",
-        "user.attribute": "roles_users"
-      }
-    },
-    {
       "name": "roles-client-from-saml",
       "identityProviderAlias": "p1",
       "identityProviderMapper": "saml-role-idp-mapper",
@@ -837,28 +636,6 @@
       }
     },
     {
-      "name": "roles-users-admin-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "users-admin",
-        "role": "users-admin"
-      }
-    },
-    {
-      "name": "roles-users-viewer-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "users-viewer",
-        "role": "users-viewer"
-      }
-    },
-    {
       "name": "roles-legacy-user-to-advisor-from-saml",
       "identityProviderAlias": "p1",
       "identityProviderMapper": "saml-role-idp-mapper",
@@ -878,6 +655,26 @@
         "attribute.name": "roles",
         "attribute.value": "gwAdmin",
         "role": "gwAdmin"
+      }
+    },
+    {
+      "name": "memberships-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "memberships",
+        "user.attribute": "memberships"
+      }
+    },
+    {
+      "name": "login-roles-from-saml",
+      "identityProviderAlias": "p1",
+      "identityProviderMapper": "saml-user-attribute-idp-mapper",
+      "config": {
+        "syncMode": "INHERIT",
+        "attribute.name": "roles",
+        "user.attribute": "loginRoles"
       }
     }
   ],

@@ -22,7 +22,7 @@ test.describe('logout fans out across all subdomains', () => {
     await deleteDemoKcUser();
   });
 
-  test('signing out on billing invalidates trading and users via back-channel POST', async ({ browser }) => {
+  test('signing out on billing invalidates trading via back-channel POST', async ({ browser }) => {
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
 
     // Warm up all three subdomain sessions inside ONE context — they share

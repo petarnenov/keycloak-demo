@@ -6,7 +6,7 @@ import { deleteDemoKcUser, loginViaP1 } from '../fixtures/auth.js';
  * BFF Tier-1 role gate. The {@code @Secured} list on each controller is the
  * coarse "can this user reach this domain" check; the per-tenant role
  * registry hands {@code P-tim} the right capability per subdomain
- * ({@code billing-admin} / {@code trading-trader} / {@code users-viewer}),
+ * ({@code billing-admin} / {@code trading-trader}),
  * so all of these endpoints should answer 200.
  *
  * These specs also confirm that the BFF actually forwards the request and
@@ -50,23 +50,9 @@ test.describe('BFF /api authorization', () => {
     expect(orders.status()).toBe(200);
   });
 
-  test('users — users-viewer can read /firms (stub) without hitting P1', async ({ page }) => {
-    await loginViaP1(page, 'users');
-
-    // /firms is a self-contained stub in the users BFF — no P1 round-trip,
-    // so it's the cleanest assertion that the Tier-1 role gate is what's
-    // letting the request through (rather than whether the geowealth
-    // monolith is up).
-    const firms = await page.request.get(`${URLS.domains.users}/api/users/firms`);
-    expect(firms.status()).toBe(200);
-    const firmsJson = (await firms.json()) as { firms?: unknown[] } | unknown[];
-    const list = Array.isArray(firmsJson) ? firmsJson : firmsJson.firms ?? [];
-    expect(Array.isArray(list)).toBe(true);
-  });
-
   test('firmCd is propagated to every BFF response', async ({ page }) => {
     // PERSON.tenants is keyed by slug; firmCd is realm-level and shared.
-    for (const slug of ['billing', 'trading', 'users'] as const) {
+    for (const slug of ['billing', 'trading'] as const) {
       const _ = PERSON.tenants[slug]; // tie test to the registry intent
       await loginViaP1(page, slug);
       const me = await page.request.get(`${URLS.domains[slug]}/auth/me`);

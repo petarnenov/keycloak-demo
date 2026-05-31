@@ -48,7 +48,7 @@ OIDC fixes that with:
 |---|---|
 | **End-User** | The actual person (`tim1`) |
 | **OpenID Provider (OP)** | Keycloak — the entity that issues tokens |
-| **Relying Party (RP)** | Each BFF (`bff-billing`, `bff-trading`, `bff-users`) — the entity that trusts the OP |
+| **Relying Party (RP)** | Each BFF (`bff-billing`, `bff-trading`) — the entity that trusts the OP |
 | **User-Agent** | The browser |
 
 ### The three tokens
@@ -258,7 +258,7 @@ auto-submit POST, ending both sessions cleanly.
 | Component | Role in OIDC terms |
 |---|---|
 | KC realm `demo-realm` | The OIDC OP for all three clients |
-| `demo-billing-client` / `demo-trading-client` / `demo-users-client` | OIDC clients (RPs) |
+| `demo-billing-client` / `demo-trading-client` | OIDC clients (RPs) |
 | The three BFFs (`bff-*`) | RP logic: hold tokens server-side, do code exchange + refresh |
 | `KeycloakAuthenticationMapper` | Translates `OpenIdTokenResponse` + `OpenIdClaims` into the Micronaut `Authentication` stored in the session |
 | `TokenRefreshFilter` | Runs the OIDC refresh_token grant before access tokens expire |

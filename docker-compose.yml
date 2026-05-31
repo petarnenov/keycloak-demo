@@ -7,10 +7,9 @@
 #   auth.geowealth.int:5180   — nginx → keycloak:8080 (TLS terminator)
 #   billing.geowealth.int:5184 — nginx → SPA + /api/billing → bff-billing
 #   trading.geowealth.int:5185 — nginx → SPA + /api/trading → bff-trading
-#   users.geowealth.int:5186   — nginx → SPA + /api/users   → bff-users
 #
 # Internal only (no host port):
-#   keycloak:8080, bff-billing:8080, bff-trading:8080, bff-users:8080, postgres:5432
+#   keycloak:8080, bff-billing:8080, bff-trading:8080, postgres:5432
 #
 # Login flow: SPA's keycloak-js redirects the browser to
 # https://auth.geowealth.int:5180/realms/demo-realm/...&kc_idp_hint=p1 →
@@ -132,6 +131,12 @@ services:
     environment:
       MICRONAUT_APPLICATION_NAME: billing-bff
       APP_SOURCE: billing-bff
+      # Subdomain requirement: billing is a SHARED RESOURCE → access is decided by
+      # the CURRENT logged-in user's fine permission (Tier 2/3 via P1), not firm
+      # membership. Default gate = BILLING_CENTER (59) + EXECUTE (5).
+      APP_REQUIREMENT_TYPE: "${BILLING_REQUIREMENT_TYPE:-resource}"
+      APP_REQUIREMENT_OBJECT_TYPE: "${BILLING_REQUIREMENT_OBJECT_TYPE:-59}"
+      APP_REQUIREMENT_PERMISSION: "${BILLING_REQUIREMENT_PERMISSION:-5}"
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
       # BFF / Token Handler: the BFF is a confidential OIDC client doing the
       # code flow server-side. It reaches Keycloak at the PUBLIC issuer (so the
@@ -141,13 +146,13 @@ services:
       OAUTH_CLIENT_ID: demo-billing-client
       OAUTH_CLIENT_SECRET: "${BILLING_OAUTH_CLIENT_SECRET}"
       KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
-      # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9). OFF by default so the
-      # standalone demo works without a reachable P1; `export AUTHZ_FINE_ENABLED=true`
-      # before `compose up` to activate against a running geowealth. P1_AUTHZ_URL points
-      # at the host geowealth Tomcat; host.docker.internal resolves to the host on Docker
-      # Desktop (on Linux add `extra_hosts: ["host.docker.internal:host-gateway"]`).
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-false}"
-      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8080}"
+      # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9). ON for billing because it
+      # is now a shared-resource subdomain — the SubdomainRequirementFilter must
+      # call P1 to check the logged-in user's (object-type, permission). P1_AUTHZ_URL
+      # points at the host geowealth Tomcat (P1 on :8888); host.docker.internal
+      # resolves to the host via the extra_hosts host-gateway mapping below.
+      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
+      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
       - "host.docker.internal:host-gateway"
@@ -191,70 +196,23 @@ services:
     environment:
       MICRONAUT_APPLICATION_NAME: trading-bff
       APP_SOURCE: trading-bff
+      # Subdomain requirement: trading is a SHARED RESOURCE → access is decided by
+      # the CURRENT logged-in user's fine permission (Tier 2/3 via P1), not firm
+      # membership. Default gate = TRADE (5) + EXECUTE (5).
+      APP_REQUIREMENT_TYPE: "${TRADING_REQUIREMENT_TYPE:-resource}"
+      APP_REQUIREMENT_OBJECT_TYPE: "${TRADING_REQUIREMENT_OBJECT_TYPE:-5}"
+      APP_REQUIREMENT_PERMISSION: "${TRADING_REQUIREMENT_PERMISSION:-5}"
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
       # BFF / Token Handler — confidential OIDC client; reaches KC at the public
       # issuer via the auth.geowealth.int:host-gateway extra_host (see billing).
       OAUTH_CLIENT_ID: demo-trading-client
       OAUTH_CLIENT_SECRET: "${TRADING_OAUTH_CLIENT_SECRET}"
       KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
-      # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9) — see billing note above.
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-false}"
-      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8080}"
-    extra_hosts:
-      - "auth.geowealth.int:host-gateway"
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
-
-  # ---- domain: users (Firm Admin · Users & Access replica) -------------------
-  # Standalone replica of P1's FirmAdmin → Users & Access page. FE at
-  # users.geowealth.int:5186 (mkcert TLS, /etc/hosts entry required). BFF is
-  # internal-only, reached by nginx as bff-users:8080. Reads/writes hit the
-  # P1 monolith via the bearer-auth endpoint at /saml/idp/bff-users.do
-  # (com.geowealth.bff.BffUsersAction) — a user created here shows up in P1's
-  # Operations → Firm Admin → Users grid and vice versa. P1_BASE_URL points
-  # at the host geowealth Tomcat (same pattern as P1_AUTHZ_URL on the other BFFs).
-
-  demo-users:
-    build:
-      context: ./domains/users/web
-    image: keycloak-demo-users-web:latest
-    networks:
-      - keycloak-network
-    depends_on:
-      keycloak:
-        condition: service_healthy
-    ports:
-      - "5186:5186"
-    volumes:
-      - ./proxy/certs/users.geowealth.int.crt:/certs/users.crt:ro
-      - ./proxy/certs/users.geowealth.int.key:/certs/users.key:ro
-
-  bff-users:
-    build:
-      # Context is the repo root so the Dockerfile can COPY the shared bff-core
-      # source alongside this domain (composite build). See the Dockerfile.
-      context: .
-      dockerfile: domains/users/bff/Dockerfile
-    image: keycloak-demo-users-bff:latest
-    networks:
-      - keycloak-network
-    depends_on:
-      keycloak:
-        condition: service_healthy
-    environment:
-      MICRONAUT_APPLICATION_NAME: users-bff
-      APP_SOURCE: users-bff
-      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-      # BFF / Token Handler — confidential OIDC client; reaches KC at the public
-      # issuer via the auth.geowealth.int:host-gateway extra_host (see billing).
-      OAUTH_CLIENT_ID: demo-users-client
-      OAUTH_CLIENT_SECRET: "${USERS_OAUTH_CLIENT_SECRET}"
-      KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
-      # Tier 2/3 fine authz (p1-auth-flow.md §2.2/§2.9) — see billing note above.
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-false}"
-      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8080}"
-      P1_BASE_URL: "${P1_BASE_URL:-http://host.docker.internal:8080}"
+      # Tier 2/3 fine authz — ON because trading is now a shared-resource subdomain
+      # (the SubdomainRequirementFilter calls P1 to check the logged-in user's
+      # (object-type, permission)). P1 on :8888 via the host-gateway extra_host.
+      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
+      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
       - "host.docker.internal:host-gateway"

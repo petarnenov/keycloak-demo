@@ -24,7 +24,7 @@ test.describe('external (non-BFF) logout cascades to every BFF', () => {
     await deleteDemoKcUser();
   });
 
-  test('KC admin revoke invalidates trading + users + billing within seconds', async ({ browser }) => {
+  test('KC admin revoke invalidates trading + billing within seconds', async ({ browser }) => {
     test.setTimeout(120_000);
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
 

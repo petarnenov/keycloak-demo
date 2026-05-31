@@ -93,6 +93,16 @@ endpoints:
 
 app:
   source: ${APP_SOURCE:trading-bff}
+  # trading = a SHARED RESOURCE (like billing): access is decided by the CURRENT
+  # logged-in user's fine permission, not firm membership. The gate checks
+  # (object-type, permission) via Tier 2/3 (P1AuthzClient -> p1-authz-me.do).
+  # Default = TRADE (5) + EXECUTE (5) ("can execute trades"). For a firm-bound
+  # subdomain set type=firm + firm-cd instead. See person-identity-via-existing-linkdelink.md.
+  requirement:
+    type: ${APP_REQUIREMENT_TYPE:resource}
+    firm-cd: ${APP_REQUIREMENT_FIRM_CD:}
+    object-type: ${APP_REQUIREMENT_OBJECT_TYPE:5}
+    permission: ${APP_REQUIREMENT_PERMISSION:5}
   authz:
     fine-enabled: ${AUTHZ_FINE_ENABLED:false}
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}

@@ -12,7 +12,6 @@ export const URLS = {
   domains: {
     billing: 'https://billing.geowealth.int:5184',
     trading: 'https://trading.geowealth.int:5185',
-    users:   'https://users.geowealth.int:5186',
   },
 } as const;
 
@@ -42,13 +41,9 @@ export const PERSON = {
       identity: 'tim5',
       roles: ['client', 'advisor', 'trading-trader'],
     },
-    users: {
-      identity: 'tim10',
-      roles: ['client', 'advisor', 'users-viewer'],
-    },
   },
 } as const;
 
 export type TenantSlug = keyof typeof URLS.domains;
 
-export const TENANT_SLUGS: readonly TenantSlug[] = ['billing', 'trading', 'users'] as const;
+export const TENANT_SLUGS: readonly TenantSlug[] = ['billing', 'trading'] as const;
