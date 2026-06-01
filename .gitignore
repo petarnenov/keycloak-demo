@@ -42,3 +42,6 @@ bin/
 
 # Playwright runner state (root-level, distinct from e2e/test-results)
 /test-results/
+
+# Local-only flyway location: dev secrets (password hashes) — never commit
+db/local/

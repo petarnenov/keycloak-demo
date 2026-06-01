@@ -10,7 +10,35 @@ the [schema baseline](../migration/V1__baseline_schema.sql) into a throwaway Ora
 | `gw-memcached` | `memcached:1.6-alpine` | `127.0.0.1:11211` | hibernate L2 cache |
 | `gw-flyway` | `flyway/flyway:10-alpine` | one-shot | applies the baseline |
 
-## Bring it up
+## One command (recommended)
+
+A `Makefile` here wraps the whole fresh-DB provision — start services, load the V1
+baseline via sqlplus, record the Flyway baseline, run seeds V2..V15, apply the
+gitignored login hash, and verify:
+
+```bash
+cd db/stack
+make provision   # on an empty/new Oracle volume
+make fresh       # wipe the volume first, then provision (guaranteed clean slate)
+make info        # check status: which migrations are applied vs still pending
+make update      # apply any NEW/pending migrations to an already-running DB (idempotent)
+make verify      # smoke-check an existing DB
+make help        # list all targets
+```
+
+Day-to-day, after adding a `Vxx__*.sql` to `../migration`, run **`make update`** — it
+shows the Flyway status, applies only the not-yet-applied migrations (and re-asserts
+the repeatable `db/local` login hash), then verifies. It is idempotent: with nothing
+pending it prints "Schema is up to date. No migration necessary." `make info` is the
+read-only check on its own.
+
+`make provision` is the codified form of the manual steps below (it exists because
+`flyway migrate` alone cannot build the schema — V1 is a BASELINE migration). The
+login password hash lives in the **gitignored** `../local/R__local_login_hash.sql`;
+`make local-hash` applies it and warns (without failing) if that file is absent.
+Override the engine with `make CE=podman DC="podman compose" provision`.
+
+## Manual steps (what `make provision` automates)
 
 ```bash
 cd db/stack
