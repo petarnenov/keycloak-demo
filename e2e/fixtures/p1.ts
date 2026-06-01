@@ -16,14 +16,14 @@ export const P1_HOSTS = {
   loopback: 'http://127.0.0.1:8888',
   /** Arbitrary unmapped subdomain — must also fall to the default firm. */
   neutral: 'http://foo.localhost:8888',
-  /** CreativeOne whitelabel host — resolves to firm 1123. */
+  /** CreativeOne whitelabel host — resolves to firm 5 (c1wealth). */
   whitelabel: 'http://c1wealth.localhost:8888',
 } as const;
 
 /** Firm codes the demo data assigns to the hosts above. */
 export const FIRM = {
   geowealth: 1,
-  creativeOne: 1123,
+  creativeOne: 5,
 } as const;
 
 /**
