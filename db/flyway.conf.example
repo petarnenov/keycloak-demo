@@ -1,0 +1,23 @@
+# Flyway configuration example for the GP application schema baseline.
+# Copy to flyway.conf (gitignored) and fill in real credentials, or pass these
+# as -url/-user/-password on the Flyway command line / env vars.
+#
+#   flyway -configFiles=db/flyway.conf migrate
+#
+# Connect AS the GP schema owner (see the TARGET SCHEMA note in V1).
+
+flyway.url=jdbc:oracle:thin:@//localhost:1521/FREEPDB1
+flyway.user=GP
+flyway.password=CHANGE_ME
+
+# Only the versioned baseline lives here. db/optional/ is intentionally NOT a
+# Flyway location - those env-specific objects are applied by hand.
+flyway.locations=filesystem:db/migration
+
+# Oracle DDL auto-commits; keep each migration in its own (implicit) transaction.
+flyway.group=false
+
+# The schema already exists in real environments; for a brand-new empty schema
+# Flyway will simply run V1. If you are adopting Flyway on a schema that already
+# matches V1, baseline instead of migrate:
+#   flyway baseline -baselineVersion=1

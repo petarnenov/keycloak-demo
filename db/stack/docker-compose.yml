@@ -1,0 +1,81 @@
+# Local backing services for validating the GP schema baseline and for serving
+# the GeoWealth backend's infrastructure dependencies.
+#
+#   oracle        - Oracle Database Free 23ai; GP/gp123 app schema in FREEPDB1.
+#                   The Flyway baseline (../migration) is applied into it.
+#   elasticsearch - 7.17.x, matching geowealth's elasticsearch client jars.
+#   memcached     - hibernate L2 cache target (host literal "memcached":11211).
+#   flyway        - one-shot migrator; `docker compose run --rm flyway migrate`.
+#
+# Ports are published on 127.0.0.1 only. See README.md for how the geowealth
+# backend is pointed at these (etc/hosts aliases + petar dev config).
+
+name: gw-stack
+
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: gw-oracle
+    ports:
+      - "127.0.0.1:1521:1521"
+    environment:
+      ORACLE_PASSWORD: oracle_sys_pw      # SYS / SYSTEM
+      APP_USER: GP
+      APP_USER_PASSWORD: gp123
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  flyway:
+    image: flyway/flyway:10-alpine
+    container_name: gw-flyway
+    depends_on:
+      oracle:
+        condition: service_healthy
+    command: >
+      -url=jdbc:oracle:thin:@//oracle:1521/FREEPDB1
+      -user=GP -password=gp123
+      -locations=filesystem:/flyway/sql
+      -connectRetries=20
+      migrate
+    volumes:
+      - ../migration:/flyway/sql:ro
+    profiles: ["tools"]
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.28
+    container_name: gw-elasticsearch
+    ports:
+      - "127.0.0.1:9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+      ingest.geoip.downloader.enabled: "false"
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: gw-memcached
+    ports:
+      - "127.0.0.1:11211:11211"
+    command: ["-m", "256"]
+
+volumes:
+  oracle-data:
+  es-data:
