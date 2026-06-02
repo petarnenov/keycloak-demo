@@ -82,7 +82,7 @@ The list mirrors the section structure of `cross-subdomain-sso-keycloak (1).md`.
 | Session cookie is httpOnly + Secure + SameSite=Lax | ✅ | same |
 | `/api/<domain>/*` is gated by per-tenant role | ✅ | `api-authorization.spec` |
 | `/api/<domain>/*` returns the expected shape under the right role | ✅ | same |
-| 401 vs 403 differentiation prevents login loop | 🟡 | The P1 sidebar → Users SPA loop bug (downstream P1 401 mistreated as session-expiry) is covered by `no-relogin-loop.spec` — the fix translates upstream 401 to 502 in the BFF. Pure-BFF 401 vs 403 isn't asserted because the demo dataset gives `tim1` enough roles to never trigger 403 |
+| 401 vs 403 differentiation prevents login loop | ✅ | `no-relogin-loop.spec` — (A) unauthenticated `/auth/me` + `/api/*` return 401 (not a 3xx/5xx) on both subdomains; (B) when login can't establish a session the SPA redirects exactly once then shows "Couldn't sign you in." (the 10s loop guard); (C) a mocked 403 on a data call renders access-denied and never navigates to the login route. The 403 branch is driven via route mocking because the demo dataset gives `tim1` every role, so a real end-to-end 403 is unreachable. The old downstream-401→502 translation (the removed `users` domain's P1 proxy) is intentionally not asserted — that code path no longer exists; billing/trading make no such upstream call |
 | `kc_idp_hint=p1` forced on every authorize redirect | ✅ | `silent-first-flow.*` asserts it appears |
 
 ## Whitelabel cross-host SSO (P1 hosts)
