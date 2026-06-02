@@ -403,7 +403,8 @@
       ],
       "redirectUris": [
         "http://localhost:8888/saml/idp/oidc-callback.do",
-        "http://c1wealth.localhost:8888/saml/idp/oidc-callback.do"
+        "http://c1wealth.localhost:8888/saml/idp/oidc-callback.do",
+        "http://john.localhost:8888/saml/idp/oidc-callback.do"
       ],
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
