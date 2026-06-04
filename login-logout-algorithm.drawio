@@ -1,0 +1,482 @@
+<mxfile host="65bd71144e">
+    <diagram id="actors" name="0 · Actors &amp; State">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="Login / Logout — actors and where state lives" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="200" y="20" width="1200" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="sub" value="Six independent state stores — KC SSO session, BFF server sessions, P1 HttpSession, browser cookies — never expire in lock-step. That gap is why Gap 6 and silent SSO recovery exist." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="200" y="58" width="1200" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="browser" value="Browser&#xa;(User-Agent)&#xa;&#xa;Cookies (per-host):&#xa;• BSESSION (HttpOnly, Secure, SameSite=Lax) — billing &amp; trading hosts&#xa;• KEYCLOAK_IDENTITY / KEYCLOAK_SESSION — auth.geowealth.int:5180&#xa;• JSESSIONID — localhost:8888 / *.localhost:8888&#xa;&#xa;sessionStorage: SPA-side loop guards" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="60" y="120" width="380" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="spa" value="Demo SPA (billing / trading)&#xa;React + Vite + keycloak-js, host: &lt;d&gt;.geowealth.int:518X&#xa;&#xa;• AuthProvider — fetches /auth/me, drives startLogin / logout&#xa;• api.ts — startLogin() → /oauth/login/silent (loop-guarded 10 s)&#xa;• Never sees access/refresh/id tokens — Token Handler pattern" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="60" y="320" width="500" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="bff" value="bff-billing / bff-trading  (Micronaut, bff-core composite-build)&#xa;container :8080, fronted by Vite preview on the SPA host&#xa;&#xa;In-memory SessionStore keyed by BSESSION holds:&#xa;  access_token · refresh_token · id_token · sid · last-refresh ts&#xa;SidSessionRegistry — sid → set&lt;session-id&gt;&#xa;&#xa;Routes (bff-core):&#xa;  GET  /auth/me                 GET  /oauth/login/silent&#xa;  GET  /auth/logout (anon)      GET  /oauth/login/keycloak&#xa;  POST /backchannel-logout      GET  /oauth/callback/keycloak" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="60" y="470" width="500" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="kc" value="Keycloak 26.0.7  (stock image, realm demo-realm)&#xa;https://auth.geowealth.int:5180 (nginx → keycloak:8080)&#xa;&#xa;Per user: SSO session (KEYCLOAK_IDENTITY cookie, Max-Age=ssoSessionMaxLifespan)&#xa;Per OIDC client: client-session for demo-billing, demo-trading, p1-self&#xa;Federated identity link → P1 NameID (persistent, written first-broker-login)&#xa;&#xa;Realm timing:&#xa;  accessTokenLifespan         = 300 s    (TokenRefreshFilter rolls)&#xa;  ssoSessionIdleTimeout        = 1800 s   (idle kill)&#xa;  ssoSessionMaxLifespan        = 36000 s  (hard ceiling)&#xa;&#xa;Persists to Postgres — survives restart / down+up / image rebuild" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="600" y="120" width="500" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="p1" value="P1 — Tomcat (Struts + Akka agents)&#xa;localhost:8888 — webpack-dev-server → Tomcat :8080&#xa;Whitelabel hosts: c1wealth.localhost, john.localhost, …&#xa;&#xa;HttpSession (JSESSIONID, Tomcat session-timeout = 25200 s):&#xa;  LOGGED_USER · LOGGED_ADVISER · LoggedUserJTO&#xa;  firmInfo · ConversationManager · UrlWhitelabelInformation&#xa;  SilentSsoAction.SESSION_KEY_ESTABLISH_DONE  ← Gap 6 server flag&#xa;&#xa;Actions involved:&#xa;  LoginAction · LogOutAction · ReactBasicResponceAction&#xa;  SilentSsoAction · OidcCallbackAction · IdpSsoAction&#xa;  IdpInitiateSloAction · IdpSloAction · BackChannelLogoutAction&#xa;  PersonRegistry  (person-id ↔ per-firm entity)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="600" y="420" width="500" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="pg" value="Postgres&#xa;Keycloak's only persistence" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="180" width="180" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="kc_pg" style="endArrow=classic;html=1;rounded=0;strokeColor=#d6b656;strokeWidth=2" parent="1" source="kc" target="pg" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend" value="Color legend&#xa;&#xa;Blue  = Browser / SPA&#xa;Green = BFF (Micronaut, bff-core)&#xa;Yellow = Keycloak&#xa;Pink  = P1 (Struts + React)&#xa;Grey  = Persistent store" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="320" width="320" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="pages" value="Diagram pages (browse via Drawio's page tabs):&#xa;&#xa; 0 · Actors &amp; State&#xa; 1 · Login ① — BFF silent (any demo SPA)&#xa; 2 · Login ② — Cold P1 + Gap 6 establish round-trip&#xa; 3 · Login ③④ — Silent restore &amp; cross-host SSO&#xa; 4 · Login ⑤ — P1 sidebar deep-link&#xa; 5 · Logout ⑥ — SPA Sign out (RP-initiated)&#xa; 6 · Logout ⑦ — P1 Logout (SAML SLO)&#xa; 7 · Logout ⑧⑨⑩ — Back-channel · Admin · P1 timeout" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="1140" y="500" width="380" height="200" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="login1" name="1 · Login ① BFF silent">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1700" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t" value="Login ① — BFF Token-Handler silent flow  (entry: GET https://&lt;domain&gt;.geowealth.int:518X/)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="80" y="20" width="1440" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s" value="Probe with prompt=none. If KC has a session → silent code. If not → fall through to SAML federation against P1." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="58" width="1440" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="n1" value="Browser GET / on &lt;domain&gt;.geowealth.int:518X" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="600" y="100" width="400" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="n2" value="SPA AuthProvider mounts&#xa;fetchMe() → GET /auth/me  (credentials: 'include')" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="170" width="400" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="n3" value="bff-core AuthController.me()&#xa;@Get(&quot;/me&quot;) @Secured(IS_AUTHENTICATED)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="250" width="400" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="d1" value="BFF session?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="720" y="340" width="160" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_ok" value="200 OK with { username, email, firmCd, personId,&#xa;memberships, roles } — AuthProvider ready=true,&#xa;SPA renders.  ★ END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="350" width="440" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="n4" value="401 → SPA api.ts startLogin()&#xa;loop-guard: sessionStorage.bff:lastLoginRedirect (10 s window)&#xa;window.location.assign('/oauth/login/silent')" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="450" width="400" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n5" value="bff-core SilentLoginController.start()&#xa;• sets short cookie bff_silent_attempt = &lt;traceId&gt;&#xa;  (a cookie — survives Micronaut's anon→auth session rotation)&#xa;• 302 → /oauth/login/keycloak?silent=1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="600" y="560" width="400" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="n6" value="IdpHintFilter sees outbound Location: https://auth.../auth?...&#xa;• appends &amp;kc_idp_hint=p1&#xa;• Micronaut OAuth2RedirectUrlBuilder already added prompt=none (silent=1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="600" y="690" width="400" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n7" value="Browser → KC authorize:&#xa;client_id=demo-&lt;d&gt;-client &amp; kc_idp_hint=p1 &amp; prompt=none &amp; state=…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="800" width="400" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="d2" value="KC has SSO session?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="700" y="900" width="200" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_silent" value="Silent OIDC code → 302 to BFF /oauth/callback/keycloak&#xa;code exchange → KeycloakAuthenticationMapper builds&#xa;Authentication (sub/firmCd/personId/memberships)&#xa;→ BSESSION cookie set → 302 / → SPA fetches /auth/me → ★ END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="900" width="440" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="n8" value="prompt=none → error=login_required&#xa;KC redirects to redirect.login-failure = /auth/login-failed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="1010" width="400" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="n9" value="AuthController.loginFailed():&#xa;reads bff_silent_attempt cookie → it was a silent attempt&#xa;302 → /oauth/login/keycloak  (NO prompt=none this time)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="1100" width="400" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n10" value="IdpHintFilter adds kc_idp_hint=p1 → KC drives SAML AuthnRequest&#xa;to P1's /saml/idp/sso.do" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="1200" width="400" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="d3" value="P1 has LoggedUser?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="700" y="1290" width="200" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n11" value="IdpSsoAction builds signed SAML Response with InResponseTo&#xa;→ auto-submit form POSTs to KC broker endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="1290" width="440" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_fail" value="302 → /#login?silent_failed=1&#xa;user must credential-login (Page 2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="80" y="1290" width="440" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n12" value="KC validates SAML → first-broker-login (auto-link by email, silent)&#xa;creates user session + demo-&lt;d&gt;-client client-session&#xa;→ OIDC code → 302 BFF callback → token exchange → BSESSION&#xa;→ 302 / → SPA renders.  ★ END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="1080" y="1410" width="440" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_n1n2" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n1" target="n2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n2n3" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n2" target="n3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n3d1" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n3" target="d1" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_d1ok" value="yes" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;fontSize=11;fontStyle=1" parent="1" source="d1" target="n_ok" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_d1no" value="no (401)" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;fontSize=11;fontStyle=1" parent="1" source="d1" target="n4" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n4n5" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n4" target="n5" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n5n6" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n5" target="n6" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n6n7" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n6" target="n7" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n7d2" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n7" target="d2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_d2yes" value="yes" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;fontSize=11;fontStyle=1" parent="1" source="d2" target="n_silent" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_d2no" value="no" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;fontSize=11;fontStyle=1" parent="1" source="d2" target="n8" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n8n9" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n8" target="n9" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n9n10" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n9" target="n10" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n10d3" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n10" target="d3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_d3yes" value="yes" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;fontSize=11;fontStyle=1" parent="1" source="d3" target="n11" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_d3no" value="no" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;fontSize=11;fontStyle=1" parent="1" source="d3" target="n_fail" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="e_n11n12" style="endArrow=classic;html=1;rounded=0;strokeWidth=2" parent="1" source="n11" target="n12" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="note1" value="Why two clients for one identity?&#xa;demo-billing-client and demo-trading-client each get their own KC client-session;&#xa;the user-level KC session is shared. Opening trading after billing completes silently — no IdP UI." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;align=left;spacingLeft=10;spacingTop=6;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="100" width="500" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="note2" value="Invariant&#xa;BFF holds tokens. SPA never sees access/refresh/id_token — the OIDC code goes to&#xa;the BFF callback, not a SPA route. /auth/me projects only identity fields." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;align=left;spacingLeft=10;spacingTop=6;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="220" width="500" height="80" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="login2" name="2 · Login ② Cold P1 + Gap 6">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1900" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t" value="Login ② — Cold P1 visit  +  Gap 6 establish round-trip  (entry: http://localhost:8888/)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="80" y="20" width="1440" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s" value="P1 credential login alone does NOT mint a KC session. Gap 6 = post-login establish=true bounce so KC has a session for downstream demo hosts." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="58" width="1440" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="a1" value="Browser GET http://localhost:8888/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="600" y="100" width="400" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="a2" value="React shell mounts → checkUserLoggedIn → GET /react/isUserLoggedIn.do" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="170" width="400" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="a3" value="ReactBasicResponceAction: no LOGGED_USER&#xa;→ { objectType: 'redirect', success: true }" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="240" width="400" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="a4" value="appService.checkUserLoggedIn  (Phase 15 path):&#xa;hash = window.location.hash || '';&#xa;navEntry = performance.getEntriesByType('navigation')[0];&#xa;isUserReload = navEntry?.type === 'reload';&#xa;silentFailed = hash.includes('silent_failed=1') &amp;&amp; !isUserReload;&#xa;if (!silentFailed) location.replace('/saml/idp/silent-sso.do?return_to=…');" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="540" y="320" width="520" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="a5" value="SilentSsoAction.execute()  (probe branch — NOT establish):&#xa;• rate-limit 2 s by remote IP (over → 200 'rate_limited')&#xa;• stash state in HttpSession&#xa;• 302 → KC authorize?client_id=p1-self-client&amp;prompt=none&amp;state=…&#xa;        &amp;redirect_uri=http://&lt;host&gt;:8888/saml/idp/oidc-callback.do" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="540" y="480" width="520" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="a6" value="KC has no session (cold) → error=login_required&#xa;302 redirect_uri ?error=login_required&amp;state=…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="620" width="520" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="a7" value="OidcCallbackAction.execute():&#xa;• reads state, matches stash&#xa;• sees error param → 302 → /#login?silent_failed=1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="540" y="700" width="520" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="a8" value="React loads on /#login?silent_failed=1&#xa;silentFailed=true (no isUserReload) → SKIP silent retry → render credential form" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="790" width="520" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="a9" value="User submits credentials&#xa;POST /react/login.do?reactRequest=true (form-urlencoded)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="880" width="520" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="a10" value="LoginAction.execute() → loginUser() → new LoggedUser():&#xa;• PolicyRuleManager.canLoggedUserExecuteBalanceSheet(…)  (Akka ask)&#xa;• UserManager.loadUserDetails(…)&#xa;• HttpSession: LOGGED_USER · LOGGED_ADVISER · LoggedUserJTO&#xa;→ ReactIndexAction.login() → JSON { objectType: 'loggedUser', … }" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="540" y="960" width="520" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="a11" value="appService.loginPassword success — Gap 6 establish round-trip:&#xa;window.location.replace('/saml/idp/silent-sso.do?establish=true&amp;return_to=%2F');&#xa;return;       // do NOT dispatch login-success yet&#xa;// no client-side loop guard — server-side flag is the only one" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1100" width="520" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="a12" value="SilentSsoAction.execute()  (establish=true branch):&#xa;if SESSION_KEY_ESTABLISH_DONE on HttpSession → log + 302 return_to&#xa;else: 302 → KC authorize?...&amp;kc_idp_hint=p1   (NO prompt=none —&#xa;       we want a fresh KC session, not a silent probe)&#xa;mark SESSION_KEY_ESTABLISH_DONE = true&#xa;(cleared automatically on HttpSession invalidate / SLO)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1230" width="520" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="a13" value="KC: no session, kc_idp_hint=p1 → SAML AuthnRequest to IdpSsoAction" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1390" width="520" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="a14" value="IdpSsoAction sees LoggedUser (just minted) → signed SAML Response&#xa;with InResponseTo → auto-submit POST to KC broker endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1460" width="520" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="a15" value="KC validates → first-broker-login (silent auto-link by email)&#xa;→ creates user session + p1-self-client client-session&#xa;→ OIDC code → 302 oidc-callback.do" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1550" width="520" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="a16" value="OidcCallbackAction: code → token exchange → id_token&#xa;preferred_username=tim1 → UserManager.lookupByUsername()&#xa;(LoggedUser already present — idempotent) → 302 return_to=/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1650" width="520" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="a17" value="React mounts at / → isUserLoggedIn → loggedUser → home page renders&#xa;★ P1 ✓ · KC ✓ · every demo-* client now silently brokerable" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="540" y="1750" width="520" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="ea1" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a1" target="a2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea2" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a2" target="a3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea3" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a3" target="a4" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea4" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a4" target="a5" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea5" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a5" target="a6" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea6" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a6" target="a7" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea7" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a7" target="a8" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea8" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a8" target="a9" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea9" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a9" target="a10" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea10" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#b85450" parent="1" source="a10" target="a11" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea11" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#b85450" parent="1" source="a11" target="a12" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea12" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a12" target="a13" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea13" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a13" target="a14" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea14" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a14" target="a15" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea15" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a15" target="a16" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ea16" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="a16" target="a17" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="gap6" value="Gap 6 — why this round-trip exists&#xa;&#xa;Without the establish bounce, P1 has a LoggedUser but KC stays&#xa;sessionless. Next visit to billing/trading would silently probe with&#xa;prompt=none, get login_required, and dead-end on credential form&#xa;even though the user just logged in.&#xa;&#xa;Loop prevention lives on the P1 server (SESSION_KEY_ESTABLISH_DONE).&#xa;A prior client-side sessionStorage.kc_sso_established flag was&#xa;removed because a stale value silently suppressed the round-trip&#xa;forever on long-lived tabs after re-login." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="1100" width="430" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="reloadnote" value="Recovery on user reload (2026-06-04)&#xa;&#xa;On /#login?silent_failed=1, F5 / Cmd-R produces&#xa;performance.navigation.type === 'reload'. The Phase 15 guard&#xa;treats isUserReload as a retry signal — silentFailed is forced false,&#xa;so the silent probe re-fires and recovers SSO if KC is healthy again.&#xa;&#xa;App-initiated window.location.replace(...) reports 'navigate' — the&#xa;loop guard still blocks bounce storms there." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="700" width="430" height="220" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="login34" name="3 · Login ③④ Silent restore + cross-host">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t" value="Login ③ — Silent P1 restore (KC session alive)        ·        Login ④ — Cross-host silent SSO on whitelabel" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="20" width="1480" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s" value="If KC has a session, prompt=none returns a code — no credential UI. Cross-host uses the same probe but a whitelabel callback URL that triggers host-firm switch." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="60" y="58" width="1480" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="hdr3" value="③ Cold P1 visit, KC session already alive" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=15;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="100" width="720" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="hdr4" value="④ Cross-host silent SSO from whitelabel host" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=15;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="820" y="100" width="720" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="b1" value="Browser GET http://localhost:8888/&#xa;(Tomcat got recycled, or JSESSIONID dropped)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="150" width="680" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="b2" value="checkUserLoggedIn → redirect → SilentSsoAction probe" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="230" width="680" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="b3" value="302 KC authorize?client_id=p1-self-client&amp;prompt=none&amp;…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="300" width="680" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="b4" value="KC has SSO session (KEYCLOAK_IDENTITY sent on top-level navigation&#xa;to auth.geowealth.int) → issues OIDC code → 302 oidc-callback.do" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="370" width="680" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="b5" value="OidcCallbackAction:&#xa;• token exchange → id_token claims (preferred_username, firmCd, personId, memberships)&#xa;• UserManager.lookupByUsername(preferred_username) → build LoggedUser&#xa;• HttpSession ← LOGGED_USER + LOGGED_ADVISER + firm-info bundle&#xa;• 302 return_to=/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="80" y="460" width="680" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="b6" value="React mounts at / → loggedUser → home page renders.&#xa;★ END   P1 silently restored, no credential UI, no clicks." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="80" y="610" width="680" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="c1" value="Tab 1 = localhost:8888 (tim1 logged in).&#xa;Browser opens Tab 2 = http://c1wealth.localhost:8888/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="820" y="150" width="700" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="c2" value="React on whitelabel host: isUserLoggedIn → redirect&#xa;location.replace('/saml/idp/silent-sso.do?return_to=/')" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="820" y="230" width="700" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="c3" value="SilentSsoAction probe branch:&#xa;redirect_uri = http://c1wealth.localhost:8888/saml/idp/oidc-callback.do&#xa;→ KC authorize?prompt=none&amp;…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="820" y="300" width="700" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="c4" value="KC has tim1 session (KEYCLOAK_IDENTITY at auth.geowealth.int — SameSite=Lax,&#xa;sent on top-level navigation) → code → 302 whitelabel oidc-callback.do" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="820" y="400" width="700" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="c5" value="OidcCallbackAction: token exchange → tim1 id_token claims&#xa;AuthorizationManager.identifyFirmByUrl(requestUrl):&#xa;  walks FIRM_TBL.SYSTEM_BASE_URL → CLIENT_PORTAL_BASE_URL&#xa;  → advisor whitelabel → topSubDomain==firm.code&#xa;  → returns UrlWhitelabelInformation { firmCd=5 (CreativeOne) }" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="820" y="490" width="700" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="c6" value="Three sub-cases based on tim1 ↔ firm 5:&#xa;&#xa;  (a) tim1.firmCd == 5         → no switch; log in as tim1 in firm 5&#xa;  (b) tim1 has person-linked   → switchToFirmAccount via PersonRegistry,&#xa;       account in firm 5            swap LoggedUser to firm-5 account&#xa;       (e.g. johnastim5)&#xa;  (c) tim1 is gwAdmin, no link → keep tim1 identity, mark host firm 5&#xa;&#xa;HttpSession ← LoggedUser + firm context → 302 return_to=/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="820" y="640" width="700" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="c7" value="React mounts at / → c1wealth-branded home page renders for firm-5 user.&#xa;★ END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="820" y="830" width="700" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="recovery" value="Recovery on F5 (2026-06-04)&#xa;If KC's session vanished (idle timeout / logout / restart) the probe gets login_required and falls to /#login?silent_failed=1.&#xa;A user F5 sets performance.navigation.type='reload' → isUserReload=true → silentFailed=false → probe re-fires and SSO recovers the&#xa;moment KC has a session again. App bounces (window.location.replace) report 'navigate' so the loop guard still holds." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="920" width="1440" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="eb1" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="b1" target="b2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="eb2" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="b2" target="b3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="eb3" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="b3" target="b4" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="eb4" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="b4" target="b5" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="eb5" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="b5" target="b6" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ec1" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="c1" target="c2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ec2" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="c2" target="c3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ec3" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="c3" target="c4" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ec4" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="c4" target="c5" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ec5" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="c5" target="c6" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ec6" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="c6" target="c7" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="login5" name="4 · Login ⑤ Sidebar deep-link">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t" value="Login ⑤ — P1 sidebar deep-link into a demo SPA  (SP-init, kc_idp_hint=p1, browser top-level navigation)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="20" width="1480" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s" value="P1 sidebar tile is a kcAuthorize(...) URL — KC skips its login UI, brokers via P1's SAML IdP, then drops a code on the SPA host's BFF callback." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="60" y="58" width="1480" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="d1" value="User clicks tile in P1's NavigationLeftComponent&#xa;useIntegrationLinks.js → kcAuthorize('demo-billing-client',&#xa;  'https://billing.geowealth.int:5184/', 'demo-billing')" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="500" y="110" width="600" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="d2" value="Browser navigates to KC authorize:&#xa;  client_id=demo-billing-client&#xa;  response_type=code&#xa;  scope=openid&#xa;  redirect_uri=https://billing.geowealth.int:5184/&#xa;  kc_idp_hint=p1&#xa;  state=…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="500" y="210" width="600" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="d3" value="KC: kc_idp_hint=p1 → skip login UI&#xa;→ SAML AuthnRequest to http://localhost:8888/saml/idp/sso.do" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="500" y="370" width="600" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="d4" value="Browser → P1 IdpSsoAction (P1 has LoggedUser):&#xa;builds signed SAML Response with InResponseTo&#xa;auto-submit POST back to KC broker endpoint&#xa;https://auth.geowealth.int:5180/realms/demo-realm/broker/p1/endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="500" y="460" width="600" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="d5" value="KC validates SAML Response (cert match, InResponseTo)&#xa;first-broker-login auto-link by email (silent)&#xa;creates user session + demo-billing-client client-session&#xa;→ 302 redirect_uri ?code=…&amp;state=…" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="500" y="580" width="600" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="d6" value="Browser lands at https://billing.geowealth.int:5184/?code=…&amp;state=…&#xa;Micronaut OAuth2 picks up the code on the BFF's auto-wired callback&#xa;→ token exchange → KeycloakAuthenticationMapper → BSESSION cookie&#xa;→ 302 to /" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="500" y="700" width="600" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="d7" value="Billing SPA AuthProvider mounts → /auth/me → 200 →&#xa;dashboard renders for tim1.  ★ END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="500" y="820" width="600" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="ed1" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="d1" target="d2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ed2" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="d2" target="d3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ed3" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="d3" target="d4" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ed4" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="d4" target="d5" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ed5" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="d5" target="d6" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ed6" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="d6" target="d7" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="note" value="Why not pure IdP-init?&#xa;Pure IdP-init (P1 → KC with unsolicited Response) does NOT work cleanly against an OIDC client in KC.&#xa;The /endpoint path needs SP-init correlation; /endpoint/clients/{id} requires SAML protocol clients.&#xa;SP-init via kc_idp_hint is the supported flow." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=6;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="60" y="110" width="420" height="180" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="logout6" name="5 · Logout ⑥ SPA Sign out">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t" value="Logout ⑥ — Sign out from a demo SPA  (RP-initiated; fans back-channel logout_token to siblings)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="20" width="1480" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s" value="Step A — KC end-session.  Step B — local cleanup (null-safe).  Step C — 303 to P1 SLO.  All steps run unconditionally — idempotent under double-click / expired session / back-channel race." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="60" y="58" width="1480" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="x1" value="User clicks Sign out → AuthProvider.logout()&#xa;window.location.assign('/auth/logout')" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="100" width="400" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="x2" value="GET /auth/logout  (browser top-level navigation, BSESSION attached)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="600" y="180" width="400" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="x3" value="bff-core AuthController.logout()&#xa;@Secured(IS_ANONYMOUS)  @Nullable Authentication&#xa;(idempotency hardening — 2026-06-04)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="600" y="250" width="400" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="stepA" value="Step A — endSessionAtKeycloak(refreshToken)&#xa;&#xa;if refresh_token present:&#xa;  POST {issuer}/protocol/openid-connect/logout&#xa;    client_id=&lt;this-bff-client&gt; · client_secret=… · refresh_token=…&#xa;&#xa;KC RP-initiated logout:&#xa;  • kills the SSO user session&#xa;  • POSTs logout_token JWT to every other OIDC client's&#xa;    backchannel.logout.url (→ siblings learn — Page 7 ⑧)&#xa;  • returns 204 (no UI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="80" y="370" width="450" height="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="stepB" value="Step B — local cleanup  (null-safe)&#xa;&#xa;sessionStore.deleteSession(session.id)&#xa;registry.invalidateBySid(sid)&#xa;  (no-op fan-out if step A's logout_token already&#xa;   killed sibling sessions in this process)&#xa;&#xa;If caller is anonymous (back-channel race, double-click,&#xa;already-expired session) — both calls short-circuit safely." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="560" y="370" width="450" height="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="stepC" value="Step C — 303 SEE_OTHER&#xa;&#xa;Location: app.p1.initiate-slo-url&#xa;       = http://localhost:8888/saml/idp/initiate-slo.do&#xa;&#xa;Browser top-level navigates to P1 (cross-origin).&#xa;Flow continues at Page 6 ⑦ — possibly short-circuited if&#xa;P1 has no HttpSession on this host yet." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="1040" y="370" width="450" height="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="kc_node" value="Keycloak&#xa;RP-initiated logout endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="660" width="450" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="sib" value="Sibling BFFs receive logout_token JWT&#xa;POST /backchannel-logout (Page 7 ⑧)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="740" width="450" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="p1bc" value="P1 BackChannelLogoutAction receives logout_token JWT&#xa;POST /saml/idp/back-channel-logout.do (Page 7 ⑧)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="820" width="450" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="end" value="Browser arrives at P1 /saml/idp/initiate-slo.do — Page 6 ⑦" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="1040" y="660" width="450" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="ex1" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="x1" target="x2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ex2" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="x2" target="x3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ex3a" style="endArrow=classic;html=1;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.5;entryY=0" parent="1" source="x3" target="stepA" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ex3b" style="endArrow=classic;html=1;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0" parent="1" source="x3" target="stepB" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ex3c" style="endArrow=classic;html=1;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.5;entryY=0" parent="1" source="x3" target="stepC" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="exA_kc" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="stepA" target="kc_node" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="exkc_sib" style="endArrow=classic;html=1;strokeWidth=2;dashed=1" parent="1" source="kc_node" target="sib" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="exkc_p1" style="endArrow=classic;html=1;strokeWidth=2;dashed=1" parent="1" source="sib" target="p1bc" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="exC_end" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="stepC" target="end" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="note" value="What used to break (now fixed, 2026-06-04)&#xa;@Secured(IS_AUTHENTICATED) on /auth/logout turned a double-click, a back-channel race, or an already-expired session into a 401 HATEOAS error page.&#xa;The endpoint now accepts anonymous callers — worst case is best-effort cleanup with nothing left to clean, and the user still gets 303'd to P1 SLO." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="920" width="1410" height="100" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="logout7" name="6 · Logout ⑦ P1 SLO">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t" value="Logout ⑦ — Logout link in P1 (SAML SLO)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="20" width="1480" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s" value="P1-initiated SAML LogoutRequest kills the KC brokered session — but KC does NOT fan back-channel logout to OIDC clients from this path (issues #17318 / #21770). Sibling BFFs hear about it via BackChannelLogoutAction on P1." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="60" y="58" width="1480" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="y1" value="User clicks Logout in NavigationLeftComponent → appServices.logout()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="110" width="520" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="y2" value="appService.js logout():&#xa;  this.service.auth.deleteCookie();           // local — drop cached cookie copy&#xa;  this.service.abortAllStartedRequests();&#xa;  // no sessionStorage cleanup — Gap 6 flag is server-side (SLO chain&#xa;  // invalidates HttpSession, which drops it automatically)&#xa;  window.location.href = '/saml/idp/initiate-slo.do';" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="540" y="180" width="520" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="y3" value="IdpInitiateSloAction.execute():&#xa;• reads getLoggedUser() (still alive — navigation, not AJAX to /react/logout.do)&#xa;• invalidates HttpSession (clears LOGGED_USER, ESTABLISH_DONE flag, …)&#xa;• builds signed SAML LogoutRequest:&#xa;    Issuer = http://localhost:8888/saml/idp&#xa;    NameID = tim1's persistent NameID (= P-tim, PersonRegistry stable ID)&#xa;    SessionIndex = tim1's KC SAML session-index&#xa;• returns auto-submit POST form → KC broker SLO endpoint:&#xa;    https://auth.geowealth.int:5180/realms/demo-realm/broker/p1/endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="540" y="340" width="520" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="y4" value="KC validates LogoutRequest signature, finds the brokered session, terminates it.&#xa;⚠  KC's SAML LogoutRequest path does NOT fan back-channel logout to OIDC clients.&#xa;    Sibling BFFs are NOT notified by this path alone (see fan-out note below)." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="540" y="560" width="520" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="y5" value="KC emits SAML LogoutResponse via Redirect binding → browser navigates" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="540" y="690" width="520" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="y6" value="IdpSloAction.execute() — inbound SAMLResponse → short-circuit&#xa;302 → localhost:8888/#login → React shows login form.  ★ END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="540" y="760" width="520" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="fan" value="Sibling BFF fan-out for P1-initiated logout&#xa;&#xa;Step ⑦ alone leaves billing/trading sessions with stale refresh tokens.&#xa;Hand-off is in KC's back-channel config:&#xa;  P1 has backchannel.logout.url =&#xa;     http://host.docker.internal:8888/saml/idp/back-channel-logout.do&#xa;Each demo BFF likewise has /backchannel-logout configured.&#xa;&#xa;When KC ends the SSO session (whether triggered by ⑥, ⑦, ⑨ idle, or admin),&#xa;it POSTs logout_token to every OIDC client with a back-channel URL.&#xa;&#xa;P1 receives this on BackChannelLogoutAction and runs the same&#xa;sid → session invalidate dance the BFFs do (Page 7 ⑧)." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="110" width="430" height="380" as="geometry"/>
+                </mxCell>
+                <mxCell id="ey1" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="y1" target="y2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ey2" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="y2" target="y3" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ey3" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="y3" target="y4" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ey4" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="y4" target="y5" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ey5" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="y5" target="y6" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="logout8910" name="7 · Logout ⑧⑨⑩ Back-channel / Admin / Timeouts">
+        <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="t" value="Logout ⑧ Back-channel into BFF        ·        ⑨ Admin force-logout        ·        ⑩ P1 HttpSession timeout" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="20" width="1480" height="36" as="geometry"/>
+                </mxCell>
+                <mxCell id="s" value="⑧ How sibling BFFs hear about logouts.  ⑨ How admin / idle / max-lifespan fan out.  ⑩ Why P1 idle heals itself the next time the user touches the app." style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="60" y="58" width="1480" height="24" as="geometry"/>
+                </mxCell>
+                <mxCell id="h8" value="⑧ Back-channel logout into a BFF" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=15;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="60" y="100" width="800" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="h910" value="⑨ Admin force-logout / KC idle / max-lifespan      ⑩ P1 HttpSession timeout" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=15;fontStyle=1" parent="1" vertex="1">
+                    <mxGeometry x="880" y="100" width="660" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="p1n" value="KC ends a user session (path: ⑥ ⑦ ⑨ idle, max-lifespan, admin)&#xa;Server-to-server, no browser involved." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="140" width="780" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="p2n" value="POST &lt;bff-host&gt;/backchannel-logout&#xa;Content-Type: application/x-www-form-urlencoded&#xa;logout_token=&lt;JWT&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10" parent="1" vertex="1">
+                    <mxGeometry x="80" y="220" width="780" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="p3n" value="BackchannelLogoutController.logout(@Nullable @Body(&quot;logout_token&quot;) t)&#xa;@Secured(IS_ANONYMOUS)&#xa;&#xa;• t blank → 400&#xa;• LogoutTokenValidator.validateAndGetSid(t):&#xa;    parse JWT header → kid → fetch JWKS from configured jwks.url&#xa;        (points at in-cluster keycloak:8080 — separate route from the&#xa;         SPA-facing public auth.geowealth.int)&#xa;    verify: signature · exp · aud=this-client · iss=issuer&#xa;            sid present · events contains&#xa;                http://schemas.openid.net/event/backchannel-logout&#xa;    → return sid&#xa;• registry.invalidateBySid(sid):&#xa;    walks SidSessionRegistry's in-memory sid → session-id-set map,&#xa;    deletes each session from SessionStore, logs the killed count&#xa;• 200 OK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="80" y="320" width="780" height="320" as="geometry"/>
+                </mxCell>
+                <mxCell id="p4n" value="Next SPA call → AuthController.me → no session → 401&#xa;→ api.ts startLogin() (loop-guarded) → /oauth/login/silent → KC says&#xa;login_required → /#login?silent_failed=1 (Page 2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11" parent="1" vertex="1">
+                    <mxGeometry x="80" y="660" width="780" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="q1" value="⑨ Admin or idle / max-lifespan&#xa;&#xa;POST /admin/realms/demo-realm/users/&lt;id&gt;/logout&#xa;POST /admin/realms/demo-realm/clients/&lt;uuid&gt;/logout-all&#xa;&#xa;OR&#xa;&#xa;ssoSessionIdleTimeout = 1800 s   (idle)&#xa;ssoSessionMaxLifespan  = 36000 s  (hard ceiling)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="880" y="140" width="660" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="q2" value="KC ends user SSO session, then fans logout_token POSTs to&#xa;every OIDC client with backchannel.logout.url:&#xa;  • bff-billing /backchannel-logout&#xa;  • bff-trading /backchannel-logout&#xa;  • P1 /saml/idp/back-channel-logout.do&#xa;&#xa;Each receiver = ⑧ above. Same sid → session invalidate dance." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="880" y="340" width="660" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="q3" value="⑩ P1 HttpSession timeout (server-only)&#xa;&#xa;Tomcat reaper invalidates P1 HttpSession after 7h idle&#xa;(session-timeout = 25200 s).&#xa;P1 has no notification path back to KC for this.&#xa;&#xa;Next time the user touches P1:&#xa;  • checkUserLoggedIn → redirect → SilentSsoAction&#xa;  • KC still has a session (35-min idle limit, 10h max)&#xa;  • probe succeeds → cold-with-KC-session path (Page 3 ③)&#xa;    silently restores LOGGED_USER from id_token claims.&#xa;&#xa;★ Timeouts heal themselves as long as KC is younger than P1 idle." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8" parent="1" vertex="1">
+                    <mxGeometry x="880" y="540" width="660" height="280" as="geometry"/>
+                </mxCell>
+                <mxCell id="ep1" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="p1n" target="p2n" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ep2" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="p2n" target="p3n" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="ep3" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="p3n" target="p4n" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="eq" style="endArrow=classic;html=1;strokeWidth=2" parent="1" source="q1" target="q2" edge="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+                <mxCell id="cross" value="Cross-cutting invariants (from §4 of the algorithm doc)&#xa;&#xa;• Token Handler — SPA never sees access/refresh/id_token. BSESSION HttpOnly+Secure. Code goes to BFF callback only. /auth/me projects identity fields.&#xa;• Every login brokered through P1 SAML — realm has no native users; IdpHintFilter pins kc_idp_hint=p1 on every BFF authorize; SPA only uses /oauth/login/silent.&#xa;• Rolling refresh on the BFF — TokenRefreshFilter refreshes when &lt; 60 s of access-token left; failure invalidates session and SPA bounces through startLogin().&#xa;• Loop guards everywhere — 10 s SPA window, P1 server-side SESSION_KEY_ESTABLISH_DONE, SilentSsoAction 2 s IP rate-limit.&#xa;• sid = back-channel correlator — written into BFF session by KeycloakAuthenticationMapper; lookup in BackchannelLogoutController.&#xa;• personId stable across subdomains — PersonRegistry.resolvePersonId(homeUser) → KC OIDC user-attribute mapper.&#xa;• Cross-host silent SSO needs a KC session — Gap 6 round-trip after credential login; silent_failed loop guard honours user F5 (isUserReload)." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#999999;fontSize=11;align=left;verticalAlign=top;spacingLeft=10;spacingTop=8;fontStyle=2" parent="1" vertex="1">
+                    <mxGeometry x="80" y="850" width="1460" height="250" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
