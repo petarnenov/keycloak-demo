@@ -73,7 +73,19 @@ import java.util.Map;
  *       (KC rejecting {@code id_token_hint} as {@code session_expired} and
  *       rendering a confirm page) doesn't apply to the POST variant: it
  *       authenticates by {@code refresh_token}, not by {@code id_token_hint},
- *       and renders nothing — KC returns 204 No Content and we move on.</li>
+ *       and renders nothing — KC returns 204 No Content and we move on.
+ *
+ *       Idempotency: {@code /auth/logout} is {@link SecurityRule#IS_ANONYMOUS}
+ *       and accepts a {@code @Nullable Authentication}. A double-click, a
+ *       session that already expired on the BFF, or a back-channel race where
+ *       another tab killed the session first no longer surface as
+ *       {@code 401 Unauthorized}; the controller does best-effort cleanup
+ *       (KC end-session if we still hold a refresh token, session delete,
+ *       SID invalidate — all null-safe) and unconditionally returns
+ *       {@code 303 See Other} to the P1 SLO redirect. Without this, the SPA's
+ *       sign-out button intermittently 401'd in normal use because a KC
+ *       back-channel logout token from a sibling tab could land between
+ *       {@code /auth/me} and the user's click.</li>
  * </ul>
  */
 @Controller("/auth")
@@ -225,11 +237,15 @@ public class AuthController {
                 .header(HttpHeaders.LOCATION, "/?login_error=true");
     }
 
+    // Idempotent — accepts both authenticated and anonymous callers so a double
+    // click, an already-expired session, or a back-channel race never surfaces
+    // as a 401 to the SPA. If nothing is left to sign out, we still send the
+    // browser through the P1 SLO redirect so the user lands somewhere sensible.
     @Get("/logout")
-    @Secured(SecurityRule.IS_AUTHENTICATED)
-    public HttpResponse<?> logout(Authentication authentication, @Nullable Session session) {
-        Object sid = authentication.getAttributes().get("sid");
-        Object refreshToken = authentication.getAttributes().get("refreshToken");
+    @Secured(SecurityRule.IS_ANONYMOUS)
+    public HttpResponse<?> logout(@Nullable Authentication authentication, @Nullable Session session) {
+        Object sid = authentication != null ? authentication.getAttributes().get("sid") : null;
+        Object refreshToken = authentication != null ? authentication.getAttributes().get("refreshToken") : null;
 
         endSessionAtKeycloak(refreshToken);
 

@@ -6,6 +6,37 @@ against branch `petarnenov/domains-refactor` (keycloak-demo) and
 `team/petarnenov/keycloak-whitelabel-poc` (geowealth), state at
 2026-05-24 after SSO Phase 15 (silent OIDC re-auth on cold P1 load).
 
+> **Update — 2026-06-04 (Gap 6 + recovery hardening).** A few items
+> below were partially superseded after a session of cross-host silent
+> SSO debugging:
+> - **L3 (cold credential login):** the React app now fires a
+>   post-login "establish round-trip" (`/saml/idp/silent-sso.do?establish=true`),
+>   so the credential path **does** mint a KC session — flipping the
+>   end state to KC ✓.
+> - **Loop prevention is server-side only.** The earlier
+>   `sessionStorage.kc_sso_established` client-side guard was removed
+>   later the same day: a stale value on a long-lived tab could
+>   permanently suppress the round-trip (the exact bug that surfaced
+>   when re-logging in as `johnastim5` while a previous login had set
+>   the flag). The real guard is `SilentSsoAction.SESSION_KEY_ESTABLISH_DONE`
+>   on the P1 `HttpSession`, which is cleared automatically when the
+>   session is invalidated (logout / idle).
+> - **New L10 (cross-host silent SSO recovery after relogin):** the
+>   `silent_failed=1` loop guard in `appService.checkUserLoggedIn`
+>   now honours a user-initiated reload (Performance Navigation Timing
+>   `type === 'reload'`) as a retry signal. A tab sitting at
+>   `c1wealth.localhost:8888/#login?silent_failed=1` recovers on F5
+>   once tim1 re-logs in elsewhere.
+> - **O1 (BFF `/auth/logout`):** the endpoint is now
+>   `@Secured(IS_ANONYMOUS)` with a `@Nullable Authentication`. A
+>   double-click, an already-expired session, or a back-channel race
+>   no longer surfaces as a `401 Unauthorized`; the controller still
+>   does best-effort KC end-session + session delete + SID invalidate
+>   and lands the browser on the P1 SLO redirect.
+>
+> The relogin recovery is guarded by
+> `e2e/tests/p1-relogin-silent-recovery.spec.ts`.
+
 ## 0. Actors and where state lives
 
 | Actor | Origin | State held | Cookie / storage |
@@ -128,13 +159,29 @@ Browser ──► localhost:8888/
             React reads silent_failed=1 → skips silent SSO retry → shows login form
             user types creds → standard LoginAction path → platformOne (NO SAML resume,
               no REDIRECT_MAPPING because nothing stashed it)
+            ↓
+            React `loginPassword` success branch (Gap 6, 2026-06-04):
+              window.location.replace('/saml/idp/silent-sso.do?establish=true&return_to=%2F');
+              return;   // (no client-side guard — server-side
+                         //  SESSION_KEY_ESTABLISH_DONE prevents loops)
+            ↓
+            SilentSsoAction: ?establish=true branch
+              if SESSION_KEY_ESTABLISH_DONE on HttpSession → 302 to return_to
+              else → KC authorize (kc_idp_hint=p1, response_type=code, NO prompt=none)
+                     and set SESSION_KEY_ESTABLISH_DONE
+            ↓
+            KC has no session → kc_idp_hint=p1 → SAML AuthnRequest to P1 IdP
+            ↓
+            P1 IdP has session (just created) → SAML Response → KC creates session
+              + p1-self-client client-session → code → oidc-callback → home
 ```
 
-**End state**: P1 ✓, KC ✗ (since LoginAction is purely P1-local, KC
-stays sessionless until the user visits a domain SPA).
+**End state**: P1 ✓, KC ✓ (Gap 6 minted it).
 
 **Covered**: ✓ The empty-state credential path works; silent SSO
-correctly bows out via the loop-guard.
+correctly bows out via the loop-guard; the post-login establish
+round-trip then warms KC so any subsequent cross-host silent SSO
+has a session to ride.
 
 ### L4. P1 sidebar link to a domain (`/saml/idp/sso.do?RelayState=…`)
 
@@ -241,7 +288,72 @@ SAML AuthnRequest → P1 sees `LoggedUser` (alive) → emits SAML Response
 → KC creates session → SPA gets token. Identical to L4 but initiated
 SP-side instead of from P1's sidebar.
 
-**Covered**: ✓ SP-init recovery path.
+**Covered**: ✓ SP-init recovery path. **Note** (2026-06-04): after
+Gap 6 (see L3), the credential login itself already minted a KC
+session, so this round-trip is now a no-op for KC and the visit
+falls under L2 (KC alive at the SP) rather than L9.
+
+### L10. Cross-host silent SSO recovery after P1 relogin (2026-06-04)
+
+Entry: tab 1 is at `localhost:8888` (tim1 logged in via L3). Tab 2 is
+on a P1 whitelabel host (`http://c1wealth.localhost:8888/`) and was
+established silently as the firm-5 user (gwAdmin cross-firm entry).
+User then logs out everywhere, re-logs in tim1 on tab 1, and switches
+back to tab 2 — which is sitting at `c1wealth.localhost:8888/#login?silent_failed=1`
+from the logout fan-out. User hits F5.
+
+Before today's fix, tab 2 stayed on the credential form: the
+`silent_failed=1` hash flag was treated as terminal for the page
+load, so even a user reload would not re-attempt silent SSO. Combined
+with the Gap 6 guard being sticky across the logout (O2), KC also
+had no session to ride, so even if React had retried it would have
+failed.
+
+After 2026-06-04:
+
+```
+Tab 2 has #login?silent_failed=1 in the URL.
+User presses F5.
+   ↓
+React mounts on c1wealth.localhost:8888, calls /react/isUserLoggedIn.do
+   → "redirect" (no P1 session on this host).
+   ↓
+appService.checkUserLoggedIn loop guard:
+   const navEntry = performance.getEntriesByType('navigation')[0];
+   const isUserReload = navEntry?.type === 'reload';
+   const silentFailed = hash.includes('silent_failed=1') && !isUserReload;
+   ↓
+   isUserReload === true → silentFailed = false → fire silent SSO again:
+   window.location.replace('/saml/idp/silent-sso.do?return_to=/')
+   ↓
+SilentSsoAction → KC prompt=none.
+KC has tim1's session (re-minted by the establish round-trip after
+tab 1's re-login — Gap 6's server-side `SESSION_KEY_ESTABLISH_DONE`
+flag is on a per-HttpSession basis and the SLO invalidated the
+previous one, so the new login's establish bounce ran cleanly).
+   ↓
+KC → code → oidc-callback → firm-switch detection sees
+   the c1wealth.localhost host resolves to firm 5
+   → switches the LoggedUser to the firm-5 user → silent SSO success →
+   home as the firm-5 user.
+```
+
+`window.location.replace(...)` keeps the Performance Navigation Timing
+type as `navigate`, so an app-initiated bounce after the very first
+failure still sets `silent_failed=1` and the loop guard fires — only a
+genuine user reload (F5 / Cmd-R) is treated as a retry. No infinite
+loop window.
+
+**End state**: P1 ✓ (firm-5 user on c1wealth.localhost), KC ✓ (tim1
+session), tab 1 still tim1 in firm 1.
+
+**Code path**: `appService.js` (`checkUserLoggedIn` loop guard +
+`logout` flag clear), `SilentSsoAction`, `OidcCallbackAction`
+(cross-host firm-switch branch).
+
+**Covered**: ✓ — `e2e/tests/p1-relogin-silent-recovery.spec.ts`
+exercises the whole tim1 → c1wealth-firm-5 → logout → re-login →
+F5-recovery chain end-to-end.
 
 ## 2. Logout scenarios
 
@@ -286,7 +398,12 @@ API call exposes the 401.
 Entry: user clicks Logout while at `localhost:8888`.
 
 ```
-appService.js:
+appService.js logout():
+  this.service.auth.deleteCookie();
+  this.service.abortAllStartedRequests();
+  // No client-side state to clear — Gap 6's establish-done flag lives on
+  // the P1 HttpSession (SilentSsoAction.SESSION_KEY_ESTABLISH_DONE) and
+  // is dropped automatically when the HttpSession is invalidated by SLO.
   window.location.href = '/saml/idp/initiate-slo.do'
    ↓
 IdpInitiateSloAction:
@@ -313,6 +430,44 @@ the user reloads them.
 **Covered**: ✓ Zero-click — no Keycloak "are you sure?" confirmation
 page because Phase 14 replaced the OIDC `/logout` redirect with an
 explicit SAML LogoutRequest carrying our own NameID.
+
+### O2a. BFF `/auth/logout` idempotency (2026-06-04)
+
+Entry: any HTTP `GET /auth/logout` arriving at a BFF (billing, trading)
+— from the SPA's sign-out button, from a stale-tab double-click, or
+from a back-channel race where another tab killed the session first.
+
+Before today the endpoint was `@Secured(IS_AUTHENTICATED)` and
+returned `401 Unauthorized` (Micronaut HATEOAS error JSON) the moment
+the SPA called it without a live Authentication. That fired
+intermittently in normal use — a back-channel logout token from KC
+could land between the SPA's `/auth/me` and the user's logout click,
+invalidating the BFF session and turning the click into a 401.
+
+The endpoint is now idempotent:
+
+```java
+@Get("/logout")
+@Secured(SecurityRule.IS_ANONYMOUS)
+public HttpResponse<?> logout(@Nullable Authentication authentication,
+                              @Nullable Session session) {
+    Object sid = authentication != null ? authentication.getAttributes().get("sid") : null;
+    Object refreshToken = authentication != null ? authentication.getAttributes().get("refreshToken") : null;
+    endSessionAtKeycloak(refreshToken);           // null-safe inside
+    if (session != null)  sessionStore.deleteSession(session.getId());
+    if (sid != null)      registry.invalidateBySid(sid.toString());
+    return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)
+            .header(HttpHeaders.LOCATION, p1InitiateSloUrl);
+}
+```
+
+End state regardless of caller's auth state: best-effort cleanup +
+`303 See Other` to P1 SLO. **No more 401s on logout.**
+
+**Code touched**: `bff-core/AuthController.java`. Both BFFs need a
+rebuild (`podman compose up -d --build --force-recreate bff-billing
+bff-trading`) for the fix to land — composite build bundles
+`bff-core` per image.
 
 ### O3. KC idle timeout (server-only)
 
