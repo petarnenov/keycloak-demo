@@ -11,6 +11,9 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- RAG AI assistant widget: standalone bundle self-registers <ai-assistant>
+         (own React + styles inside Shadow DOM). Served from public/. -->
+    <script src="/ai-assistant/ai-assistant.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

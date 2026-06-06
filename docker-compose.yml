@@ -109,6 +109,11 @@ services:
         condition: service_healthy
     ports:
       - "5184:5184"
+    extra_hosts:
+      # nginx proxies /assistant/* to the RAG AI-assistant backend, which runs
+      # in a SEPARATE compose project published on the host at :8080. This maps
+      # host.docker.internal → the host gateway so nginx can reach it.
+      - "host.docker.internal:host-gateway"
     volumes:
       # nginx reads the certs at the same paths its config hardcodes.
       - ./proxy/certs/billing.geowealth.int.crt:/certs/billing.crt:ro
