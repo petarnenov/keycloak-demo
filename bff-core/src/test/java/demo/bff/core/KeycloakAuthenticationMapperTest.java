@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,8 +48,10 @@ class KeycloakAuthenticationMapperTest {
 
     @Test
     void mapsClaimsAndTokensIntoAuthentication() {
-        String idToken = JwtTestSupport.compactJwtWithPayload(
-                "{\"memberships\":[\"5:john\",\"9:jane\"]}");
+        // m3: the mapper parses memberships with Nimbus (typed string-list claim),
+        // so the token must be a real RS256-signed JWT (KC never emits alg=none).
+        String idToken = JwtTestSupport.signedJwt(
+                Map.of("memberships", List.of("5:john", "9:jane")), -1);
         Authentication a = run(claims(List.of("advisor", "billing-viewer"), "john", "p-1"),
                 tokens(idToken, "access-1"));
 
@@ -64,9 +67,8 @@ class KeycloakAuthenticationMapperTest {
 
     @Test
     void membershipsFallBackToAccessTokenWhenIdTokenLacksThem() {
-        String idToken = JwtTestSupport.compactJwtWithPayload("{\"sub\":\"p-1\"}"); // no memberships
-        String accessToken = JwtTestSupport.compactJwtWithPayload(
-                "{\"memberships\":[\"7:johnny\"]}");
+        String idToken = JwtTestSupport.signedJwt(Map.of("sub", "p-1"), -1); // no memberships
+        String accessToken = JwtTestSupport.signedJwt(Map.of("memberships", List.of("7:johnny")), -1);
         Authentication a = run(claims(List.of("advisor"), "john", "p-1"),
                 tokens(idToken, accessToken));
 

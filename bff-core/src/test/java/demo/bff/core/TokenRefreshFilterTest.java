@@ -53,6 +53,7 @@ class TokenRefreshFilterTest {
 
     private static HttpRequest<?> request(Authentication auth, Session session) {
         HttpRequest<?> req = mock(HttpRequest.class);
+        when(req.getPath()).thenReturn("/api/data"); // non-logout path (logout skips refresh)
         when(req.getAttribute(SecurityFilter.AUTHENTICATION, Authentication.class))
                 .thenReturn(Optional.ofNullable(auth));
         Map<CharSequence, Object> attrs = new HashMap<>();
@@ -132,11 +133,14 @@ class TokenRefreshFilterTest {
     }
 
     @Test
-    void refreshFailure_clearsSessionAndReturns401() {
+    void refresh4xx_clearsSessionAndReturns401() {
+        // M2: a 4xx from the token endpoint (invalid_grant / revoked) means the
+        // session is genuinely dead → clear it and 401.
         String access = JwtTestSupport.signedJwtExpiringIn(Map.of(), -100);
         HttpClient kc = mock(HttpClient.class);
         when(kc.retrieve(any(HttpRequest.class), any(Argument.class)))
-                .thenReturn(Flux.error(new RuntimeException("refresh rejected")));
+                .thenReturn(Flux.error(new io.micronaut.http.client.exceptions.HttpClientResponseException(
+                        "invalid_grant", HttpResponse.badRequest())));
 
         Authentication a = authWith(Map.of("accessToken", access, "refreshToken", "r"));
         Session session = mock(Session.class);
@@ -144,6 +148,23 @@ class TokenRefreshFilterTest {
         HttpStatus status = statusOf(filter(kc).doFilter(request(a, session), okChain()));
         assertEquals(HttpStatus.UNAUTHORIZED, status);
         verify(session).clear();
+    }
+
+    @Test
+    void refreshTransientError_keepsSessionAndProceeds() {
+        // M2: a transport error / 5xx is NOT proof the session is dead (KC may be
+        // momentarily down) → keep the session and serve the request.
+        String access = JwtTestSupport.signedJwtExpiringIn(Map.of(), -100);
+        HttpClient kc = mock(HttpClient.class);
+        when(kc.retrieve(any(HttpRequest.class), any(Argument.class)))
+                .thenReturn(Flux.error(new RuntimeException("connection refused")));
+
+        Authentication a = authWith(Map.of("accessToken", access, "refreshToken", "r"));
+        Session session = mock(Session.class);
+
+        HttpStatus status = statusOf(filter(kc).doFilter(request(a, session), okChain()));
+        assertEquals(HttpStatus.OK, status);
+        verify(session, never()).clear();
     }
 
     @Test
