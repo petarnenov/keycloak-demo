@@ -30,6 +30,10 @@ dependencies {
     api("io.micronaut.security:micronaut-security-oauth2")
     api("io.micronaut.security:micronaut-security-session")
     api("io.micronaut.session:micronaut-session")
+    // B2: shared session + sid store. micronaut-redis-lettuce provides the
+    // RedisSessionStore (replaces InMemorySessionStore) and a StatefulRedisConnection
+    // bean used by SidSessionRegistry. Version managed by the Micronaut platform BOM.
+    api("io.micronaut.redis:micronaut-redis-lettuce")
     api("io.micronaut:micronaut-runtime")
     api("io.micronaut.validation:micronaut-validation")
     api("io.micronaut.serde:micronaut-serde-jackson")

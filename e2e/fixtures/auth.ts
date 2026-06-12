@@ -71,15 +71,22 @@ export async function fetchMeStatus(context: BrowserContext, tenant: TenantSlug)
 }
 
 /**
- * Drive the BFF logout (`GET /auth/logout`) and wait until KC's SSO cookie
- * is gone. Best-effort: when the redirect chain takes the browser to P1's
- * login screen the SLO completed; otherwise we still poll up to a few seconds.
+ * Drive the BFF logout and wait until KC's SSO cookie is gone. Logout is
+ * POST-only (CSRF defence, M1), so this mirrors the SPA's "Sign out": a same-site
+ * form POST from the tenant origin, which carries the SameSite=Lax session cookie.
+ * Best-effort: when the redirect chain takes the browser to P1's login screen the
+ * SLO completed; otherwise we still poll up to a few seconds.
  */
 export async function logoutEverywhere(page: Page, tenant: TenantSlug): Promise<void> {
-  await page.goto(`${URLS.domains[tenant]}/auth/logout`, { waitUntil: 'commit' });
-  // After logout the user lands on P1 SLO → P1 login screen, or KC's
-  // post-logout redirect target. Either way we're done. Allow either.
-  await page.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {});
+  const target = URLS.domains[tenant];
+  // POST directly to the BFF's POST-only logout (M1) with the context's session
+  // cookie. We deliberately do NOT load the SPA first: a fresh SPA load fires its
+  // own /auth/me, which — with the session in a shared store and >1 replica (B2) —
+  // can be in flight on another replica when logout deletes the session and then
+  // re-persist it (test-only race; the real SPA never calls /auth/me during a
+  // logout click). The POST runs the BFF's KC end-session, which back-channel-POSTs
+  // the sibling BFFs, so the fan-out the spec asserts still happens.
+  await page.request.post(`${target}/auth/logout`, { maxRedirects: 0 }).catch(() => {});
 }
 
 /**

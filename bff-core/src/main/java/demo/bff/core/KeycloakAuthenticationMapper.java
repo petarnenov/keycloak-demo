@@ -9,19 +9,16 @@ import io.micronaut.security.oauth2.endpoint.token.response.DefaultOpenIdAuthent
 import io.micronaut.security.oauth2.endpoint.token.response.OpenIdAuthenticationMapper;
 import io.micronaut.security.oauth2.endpoint.token.response.OpenIdClaims;
 import io.micronaut.security.oauth2.endpoint.token.response.OpenIdTokenResponse;
+import com.nimbusds.jwt.SignedJWT;
 import jakarta.inject.Singleton;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Token Handler / BFF pattern (IETF "OAuth 2.0 for Browser-Based Apps").
@@ -98,16 +95,13 @@ public class KeycloakAuthenticationMapper implements OpenIdAuthenticationMapper 
         return o == null ? null : o.toString();
     }
 
-    private static final Pattern MEMBERSHIPS_ARRAY =
-            Pattern.compile("\"memberships\"\\s*:\\s*\\[([^\\]]*)\\]");
-    private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
-
     /**
      * Extract the multi-valued {@code memberships} claim ("&lt;firmCd&gt;:&lt;ldapUid&gt;")
      * from a raw JWT payload (id_token or access_token). {@code OpenIdClaims.get("memberships")}
-     * returns null for array claims in this Micronaut version, so we decode the
-     * JWT body and pull the array out directly (values are firmCd:ldapUid — no
-     * embedded quotes — so a simple scan is safe). Best-effort: empty on failure.
+     * returns null for array claims in this Micronaut version, so we parse the JWT
+     * with Nimbus and read the typed string-list claim — robust against value
+     * content / claim ordering (the previous regex broke on any {@code ]} or quote
+     * inside a value). Best-effort: empty on failure.
      */
     private static List<String> membershipsFromJwt(String jwt) {
         List<String> out = new ArrayList<>();
@@ -115,16 +109,12 @@ public class KeycloakAuthenticationMapper implements OpenIdAuthenticationMapper 
             return out;
         }
         try {
-            String[] parts = jwt.split("\\.");
-            if (parts.length < 2) {
-                return out;
-            }
-            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-            Matcher arr = MEMBERSHIPS_ARRAY.matcher(payload);
-            if (arr.find()) {
-                Matcher v = QUOTED.matcher(arr.group(1));
-                while (v.find()) {
-                    out.add(v.group(1));
+            List<String> claim = SignedJWT.parse(jwt).getJWTClaimsSet().getStringListClaim("memberships");
+            if (claim != null) {
+                for (String m : claim) {
+                    if (m != null && !m.isBlank()) {
+                        out.add(m);
+                    }
                 }
             }
         } catch (Exception ignored) {

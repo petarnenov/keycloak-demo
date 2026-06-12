@@ -1,3 +1,7 @@
+# B2: shared session + sid store. Defaults to localhost for a bare `java -jar`
+# run; compose injects REDIS_URI=redis://redis:6379.
+redis:
+  uri: ${REDIS_URI:redis://localhost:6379}
 micronaut:
   application:
     name: ${MICRONAUT_APPLICATION_NAME:billing-bff}
@@ -27,6 +31,10 @@ micronaut:
       cookie-path: /
       cookie-secure: true
       cookie-same-site: Lax
+      # B2: store sessions in Redis (not in-JVM) so any replica serves any
+      # session and back-channel logout from one replica tears it down globally.
+      redis:
+        enabled: true
   security:
     enabled: true
     # Backend-for-Frontend / Token Handler: the BFF holds the OAuth tokens in a
@@ -34,10 +42,11 @@ micronaut:
     authentication: session
     endpoints:
       logout:
-        # The SPA "Sign out" is a top-level GET navigation to /logout; allow it
-        # (Micronaut clears the session and redirects to KC's end-session, which
-        # SAML-SLOs P1 too).
-        get-allowed: true
+        # POST-only (M1, logout-CSRF defence). The SPA signs out via a same-site
+        # form POST to the custom /auth/logout (see AuthController + AuthProvider);
+        # the built-in /logout is unused, so deny GET to close the CSRF vector a
+        # cross-site top-level GET navigation would otherwise open.
+        get-allowed: false
     oauth2:
       clients:
         keycloak:
@@ -45,12 +54,16 @@ micronaut:
           client-secret: ${OAUTH_CLIENT_SECRET}
           openid:
             issuer: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
-      # Nonce is kept in the server session (not a client cookie) so the
-      # callback validates cleanly regardless of SameSite/third-party rules.
+      # Nonce is a plain string and rides the (Redis-backed) server session.
       nonce:
         persistence: session
+      # State persistence MUST be cookie, not session (B2). The `State` object is
+      # neither @Introspected nor Serializable, so the Redis session store cannot
+      # serialize it and login fails. A cookie keeps the value off the session;
+      # the callback is same-site (auth + billing share the geowealth.int eTLD+1),
+      # so the state cookie is sent on the KC→callback navigation.
       state:
-        persistence: session
+        persistence: cookie
     token:
       roles-name: roles
       jwt:
@@ -125,7 +138,9 @@ app:
     # P1's IdP-initiated SLO endpoint. /auth/logout redirects the browser here;
     # P1 invalidates its HttpSession + emits a signed SAML LogoutRequest to KC,
     # which ends the KC SSO session and lands the user on P1's login form.
-    # (Override via the P1_INITIATE_SLO_URL env var if P1 isn't on localhost:8888.)
+    # Override at deploy time via the APP_P1_INITIATE_SLO_URL env var — Micronaut
+    # binds it to this property automatically (a ${...:default} placeholder can't
+    # be used here: Micronaut mis-parses the colons in an http://host:port default).
     initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
   authz:
     # Tier 2/3 fine checks (p1-auth-flow.md §2.2/§2.9). Opt-in: off keeps the

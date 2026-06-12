@@ -10,6 +10,7 @@ import io.micronaut.http.MutableHttpResponse;
 import io.micronaut.http.annotation.Filter;
 import io.micronaut.http.client.HttpClient;
 import io.micronaut.http.client.annotation.Client;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import io.micronaut.http.filter.HttpServerFilter;
 import io.micronaut.http.filter.ServerFilterChain;
 import io.micronaut.http.filter.ServerFilterPhase;
@@ -69,6 +70,17 @@ public class TokenRefreshFilter implements HttpServerFilter {
     /** Session attribute name carrying the last successful refresh's epoch millis. */
     private static final String LAST_VALIDATED_AT = "kc.lastValidatedAt";
 
+    /**
+     * How long a single in-flight refresh suppresses concurrent refreshes for the
+     * same session. Bounds the window in which a second parallel {@code /api/*}
+     * call would fire its own refresh-token grant (a reuse event under KC refresh
+     * rotation). Comfortably above the {@code kc} client read-timeout.
+     */
+    private static final long INFLIGHT_GUARD_MILLIS = 15_000;
+
+    /** sessionId → epoch millis a refresh started; dedups concurrent refreshes (M3). */
+    private final Map<String, Long> refreshInFlight = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final HttpClient kc;
     private final String tokenEndpoint;
     private final String clientId;
@@ -92,6 +104,16 @@ public class TokenRefreshFilter implements HttpServerFilter {
 
     @Override
     public Publisher<MutableHttpResponse<?>> doFilter(HttpRequest<?> request, ServerFilterChain chain) {
+        // Never refresh on the logout path. Refreshing here would write the new
+        // token set back into the session (marking it modified) — and the
+        // logout handler then deletes that session, but the session filter
+        // re-persists the modified session at response time, resurrecting it (a
+        // race that the Redis-backed store, B2, makes routine). The logout handler
+        // gets the refresh token straight from the stored Authentication, so it
+        // does not need a fresh one.
+        if (request.getPath().endsWith("/auth/logout")) {
+            return chain.proceed(request);
+        }
         Authentication auth = request.getAttribute(SecurityFilter.AUTHENTICATION, Authentication.class).orElse(null);
         if (auth == null) {
             return chain.proceed(request);
@@ -101,8 +123,24 @@ public class TokenRefreshFilter implements HttpServerFilter {
         if (!(accessToken instanceof String) || !(refreshToken instanceof String)) {
             return chain.proceed(request);
         }
-        if (!shouldValidate((String) accessToken, session(request).orElse(null))) {
+        Session session = session(request).orElse(null);
+        if (!shouldValidate((String) accessToken, session)) {
             return chain.proceed(request);
+        }
+
+        // M3: if another request for THIS session already has a refresh in flight,
+        // don't fire a second refresh-token grant (a reuse event under KC refresh
+        // rotation). Proceed with the still-valid current token; the in-flight
+        // refresh will update the session shortly. The guard self-expires so a
+        // crashed refresh can't wedge a session forever.
+        String sessionId = session != null ? session.getId() : null;
+        if (sessionId != null) {
+            long now = System.currentTimeMillis();
+            Long startedAt = refreshInFlight.get(sessionId);
+            if (startedAt != null && now - startedAt < INFLIGHT_GUARD_MILLIS) {
+                return chain.proceed(request);
+            }
+            refreshInFlight.put(sessionId, now);
         }
 
         return Mono.from(refresh((String) refreshToken))
@@ -119,12 +157,39 @@ public class TokenRefreshFilter implements HttpServerFilter {
                     return Mono.from(chain.proceed(request));
                 })
                 .onErrorResume(err -> {
-                    // Refresh token rejected (session ended / token revoked). Clear
-                    // the dead session and 401 so the SPA reacts into a fresh login.
-                    LOG.debug("token refresh failed, clearing session: {}", err.toString());
-                    session(request).ifPresent(Session::clear);
-                    return Mono.just(HttpResponse.unauthorized());
+                    // M2: distinguish a genuinely-dead session from a transient KC
+                    // outage. A 4xx (invalid_grant / token revoked) means the
+                    // refresh token is dead → clear the session and 401 so the SPA
+                    // re-logs-in. A transport error or 5xx means KC is momentarily
+                    // unreachable → keep the session and serve this request with the
+                    // still-current token; the next request retries. Otherwise a KC
+                    // blip would mass-log-out every active session.
+                    if (isDeadSession(err)) {
+                        LOG.debug("token refresh rejected, clearing session: {}", err.toString());
+                        session(request).ifPresent(Session::clear);
+                        return Mono.just(HttpResponse.unauthorized());
+                    }
+                    LOG.warn("token refresh failed transiently, keeping session: {}", err.toString());
+                    return Mono.from(chain.proceed(request));
+                })
+                .doFinally(sig -> {
+                    if (sessionId != null) {
+                        refreshInFlight.remove(sessionId);
+                    }
                 });
+    }
+
+    /**
+     * True only when the refresh failure means the KC session is actually gone
+     * (HTTP 4xx from the token endpoint — invalid_grant / revoked). Transport
+     * failures, timeouts and 5xx are transient and must NOT destroy the session.
+     */
+    private static boolean isDeadSession(Throwable err) {
+        if (err instanceof HttpClientResponseException resp) {
+            int code = resp.getStatus().getCode();
+            return code >= 400 && code < 500;
+        }
+        return false;
     }
 
     /**

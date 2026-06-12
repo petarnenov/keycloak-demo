@@ -28,6 +28,20 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // the BFF, and "log in" / "log out" are top-level navigations to BFF routes.
 const LOGOUT_URL = '/auth/logout';              // BFF RP-initiated logout → KC → P1 SLO
 
+// Logout is state-changing (it ends the KC SSO session + every sibling BFF
+// session), so the BFF requires POST as a CSRF defence: with the session cookie
+// SameSite=Lax, the browser won't attach it to a cross-site POST, so a forged
+// cross-site logout tears nothing down. Submit a real top-level form POST (not
+// fetch) so the browser follows the BFF's 303 to P1's SLO as a same-origin
+// navigation, carrying P1's JSESSIONID.
+function postLogout(): void {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = LOGOUT_URL;
+  document.body.appendChild(form);
+  form.submit();
+}
+
 interface Me {
   username: string;
   email: string | null;
@@ -110,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tenantIdentity: me?.tenantIdentity ?? null,
     activeTenant: me?.activeTenant ?? null,
     roles: me?.roles ?? [],
-    logout: () => window.location.assign(LOGOUT_URL)
+    logout: () => postLogout()
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

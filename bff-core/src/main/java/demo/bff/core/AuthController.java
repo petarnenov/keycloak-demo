@@ -8,10 +8,12 @@ import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.MutableHttpResponse;
+import io.micronaut.http.annotation.Consumes;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.cookie.Cookie;
 import io.micronaut.http.cookie.SameSite;
 import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.Post;
 import io.micronaut.http.client.HttpClient;
 import io.micronaut.http.client.annotation.Client;
 import io.micronaut.scheduling.TaskExecutors;
@@ -237,11 +239,25 @@ public class AuthController {
                 .header(HttpHeaders.LOCATION, "/?login_error=true");
     }
 
+    // POST-only (M1, logout-CSRF defence). Logout is state-changing — it ends the
+    // KC SSO session and every sibling BFF session — so it must not be reachable by
+    // a top-level GET navigation a third-party page can trigger. With the session
+    // cookie SameSite=Lax, the browser sends it on a same-site top-level navigation
+    // (a GET) but NOT on a cross-site POST, so requiring POST means a cross-site
+    // forced-logout form-submit arrives without the cookie and tears nothing down.
+    // The SPA's "Sign out" submits a same-site form POST here (see AuthProvider).
+    //
     // Idempotent — accepts both authenticated and anonymous callers so a double
     // click, an already-expired session, or a back-channel race never surfaces
     // as a 401 to the SPA. If nothing is left to sign out, we still send the
     // browser through the P1 SLO redirect so the user lands somewhere sensible.
-    @Get("/logout")
+    @Post("/logout")
+    // The SPA signs out via an HTML form POST, which sends
+    // Content-Type: application/x-www-form-urlencoded. Without this the method
+    // defaults to consuming application/json and the form POST 404s ("no matching
+    // route"). The body itself is empty and unused. MediaType.ALL also keeps a
+    // bodyless POST (e.g. a smoke-test curl with no content-type) matching.
+    @Consumes({MediaType.APPLICATION_FORM_URLENCODED, MediaType.ALL})
     @Secured(SecurityRule.IS_ANONYMOUS)
     public HttpResponse<?> logout(@Nullable Authentication authentication, @Nullable Session session) {
         Object sid = authentication != null ? authentication.getAttributes().get("sid") : null;
@@ -250,6 +266,14 @@ public class AuthController {
         endSessionAtKeycloak(refreshToken);
 
         if (session != null) {
+            // Clear the session FIRST: this drops the stored Authentication, so the
+            // session is unauthenticated even if the session filter re-persists it
+            // at response time. With the Redis store (B2) — unlike the in-memory one
+            // — a mid-request deleteSession of the CURRENT request's own session does
+            // not reliably stick (the filter re-saves it), so a plain delete left the
+            // user logged in. Clearing guarantees a subsequent /auth/me finds an empty
+            // session → 401. The delete is then best-effort cleanup of the empty key.
+            session.clear();
             try {
                 sessionStore.deleteSession(session.getId());
             } catch (Exception ignored) {

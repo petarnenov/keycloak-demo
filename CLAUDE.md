@@ -97,7 +97,7 @@ Pure IdP-init (P1 → Keycloak with unsolicited Response) does **not** work clea
 |---|---|
 | `domains/<name>/web/` source | `podman compose up -d --build --force-recreate demo-<name>` — its own image (`keycloak-demo-<name>-web`) built by `domains/<name>/web/Dockerfile`. No bind-mount, so a source edit needs the full build. |
 | `domains/<name>/bff/` source | `podman compose up -d --build --force-recreate bff-<name>` — its own image (`keycloak-demo-<name>-bff`). |
-| `bff-core/` source (shared infra) | rebuild **both** BFFs — `podman compose up -d --build --force-recreate bff-billing bff-trading` (each fat-jar bundles `bff-core`; the composite build recompiles it per image). |
+| `bff-core/` source (shared infra) | rebuild **both** BFFs — `podman compose up -d --build --force-recreate bff-billing bff-trading` (each fat-jar bundles `bff-core`; the composite build recompiles it per image). **Gotcha: the Docker `COPY bff-core/` layer can cache-hit even after you edit a `bff-core` file, so `--build` silently ships a stale jar** (config/`application.yml` changes deploy, but the bff-core Java change doesn't). Symptom: the running container behaves like your edit isn't there. Confirm by extracting the class from the running image (`docker cp <bff>:/app/<svc>.jar … && javap -c …`) or just force a clean compile: `docker compose build --no-cache bff-billing bff-trading` then `up -d --force-recreate`. |
 | Add a new domain | follow the recipe in "Adding a new domain" above. |
 | Env var on a service | `podman compose up -d --force-recreate <service>` |
 | `docker-compose.yml` structural change | `podman compose up -d` (compose picks up the diff) |

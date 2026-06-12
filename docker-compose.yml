@@ -35,6 +35,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Shared session + sid store for the BFFs (B2). The BFFs keep OAuth tokens in a
+  # server-side session and a sid→session map for back-channel logout; holding
+  # those in each JVM's memory breaks horizontal scaling (a cookie only resolves
+  # on the replica that created it) and back-channel logout fan-out (the POST
+  # lands on one replica). Redis externalises both so any replica serves any
+  # session and a single back-channel POST tears the session down globally.
+  redis:
+    image: redis:7-alpine
+    # appendonly = sessions survive a redis restart (no mass logout).
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - keycloak-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.7
     command: ["start-dev", "--import-realm", "--verbose"]
@@ -133,9 +153,13 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       MICRONAUT_APPLICATION_NAME: billing-bff
       APP_SOURCE: billing-bff
+      # Shared session + sid store (B2) — any replica serves any session.
+      REDIS_URI: "${REDIS_URI:-redis://redis:6379}"
       # Subdomain requirement: billing is a SHARED RESOURCE → access is decided by
       # the CURRENT logged-in user's fine permission (Tier 2/3 via P1), not firm
       # membership. Default gate = BILLING_CENTER (59) + EXECUTE (5).
@@ -198,9 +222,13 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       MICRONAUT_APPLICATION_NAME: trading-bff
       APP_SOURCE: trading-bff
+      # Shared session + sid store (B2) — any replica serves any session.
+      REDIS_URI: "${REDIS_URI:-redis://redis:6379}"
       # Subdomain requirement: trading is a SHARED RESOURCE → access is decided by
       # the CURRENT logged-in user's fine permission (Tier 2/3 via P1), not firm
       # membership. Default gate = TRADE (5) + EXECUTE (5).
@@ -227,6 +255,7 @@ services:
 volumes:
   postgres_data:
   keycloak_data:
+  redis_data:
 
 networks:
   keycloak-network:

@@ -3,11 +3,17 @@
   "realm": "demo-realm",
   "enabled": true,
   "displayName": "Demo SSO Realm",
-  "accessTokenLifespan": 1800,
+  "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 25200,
   "ssoSessionMaxLifespan": 36000,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "eventsEnabled": true,
+  "eventsListeners": ["jboss-logging"],
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": true,
+  "resetPasswordAllowed": false,
   "authenticationFlows": [
     {
       "alias": "p1-first-broker-login",
@@ -201,8 +207,10 @@
       "clientId": "demo-billing-client",
       "enabled": true,
       "name": "Demo Billing Client",
-      "description": "Public OIDC client for the demo-billing standalone app at https://billing.geowealth.int:5184. P1-only auth via kc_idp_hint=p1.",
-      "publicClient": true,
+      "description": "Confidential OIDC client for the demo-billing BFF at https://billing.geowealth.int:5184. P1-only auth via kc_idp_hint=p1. Secret must match BILLING_OAUTH_CLIENT_SECRET in .envrc; in prod inject via a secret manager.",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "KqiEJqBxKZ6PWOwHoPrDiABv8DjQ77nw",
       "bearerOnly": false,
       "webOrigins": [
         "https://billing.geowealth.int:5184",
@@ -225,10 +233,11 @@
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
+        "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##http://localhost:5184/*##http://localhost:8888/*",
         "frontchannel.logout.url": "https://billing.geowealth.int:5184/frontchannel-logout.html",
         "backchannel.logout.url": "http://bff-billing:8080/backchannel-logout",
@@ -298,8 +307,10 @@
       "clientId": "demo-trading-client",
       "enabled": true,
       "name": "Demo Trading Client",
-      "description": "Public OIDC client for the demo-trading standalone app at https://trading.geowealth.int:5185. P1-only auth via kc_idp_hint=p1.",
-      "publicClient": true,
+      "description": "Confidential OIDC client for the demo-trading BFF at https://trading.geowealth.int:5185. P1-only auth via kc_idp_hint=p1. Secret must match TRADING_OAUTH_CLIENT_SECRET in .envrc; in prod inject via a secret manager.",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "omB2xzDuJcKuFeIKfyREXgPMCJHLsIGb",
       "bearerOnly": false,
       "webOrigins": [
         "https://trading.geowealth.int:5185",
@@ -322,10 +333,11 @@
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
+        "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "https://trading.geowealth.int:5185/*##http://localhost:5185/*",
         "frontchannel.logout.url": "https://trading.geowealth.int:5185/frontchannel-logout.html",
         "backchannel.logout.url": "http://bff-trading:8080/backchannel-logout",
@@ -694,6 +706,5 @@
         "update.profile.on.first.login": "missing"
       }
     }
-  ],
-  "resetPasswordAllowed": true
+  ]
 }

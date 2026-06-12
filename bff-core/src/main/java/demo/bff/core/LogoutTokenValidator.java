@@ -15,6 +15,8 @@ import io.micronaut.context.annotation.Value;
 import jakarta.inject.Singleton;
 
 import java.net.URL;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -31,9 +33,19 @@ public class LogoutTokenValidator {
     private static final String BACKCHANNEL_LOGOUT_EVENT =
             "http://schemas.openid.net/event/backchannel-logout";
 
+    /** Bounded LRU of recently-seen {@code jti}s — defends against logout-token replay. */
+    private static final int JTI_CACHE_MAX = 4096;
+
     private final String issuer;
     private final String clientId;
     private final ConfigurableJWTProcessor<SecurityContext> processor;
+    private final Map<String, Boolean> seenJtis =
+            Collections.synchronizedMap(new LinkedHashMap<>(256, 0.75f, false) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                    return size() > JTI_CACHE_MAX;
+                }
+            });
 
     public LogoutTokenValidator(
             @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
@@ -71,6 +83,18 @@ public class LogoutTokenValidator {
             }
             Object events = c.getClaim("events");
             if (!(events instanceof Map) || !((Map<?, ?>) events).containsKey(BACKCHANNEL_LOGOUT_EVENT)) {
+                return null;
+            }
+            // Spec §2.4/§2.6: a Logout Token MUST NOT contain a `nonce` — its
+            // presence signals an ID Token being replayed as a logout token.
+            if (c.getClaim("nonce") != null) {
+                return null;
+            }
+            // Replay defence: reject a logout token whose `jti` we've already
+            // acted on. KC always sets jti; if absent, fall through (the sid
+            // teardown is idempotent anyway).
+            String jti = c.getJWTID();
+            if (jti != null && seenJtis.putIfAbsent(jti, Boolean.TRUE) != null) {
                 return null;
             }
             return c.getStringClaim("sid");
