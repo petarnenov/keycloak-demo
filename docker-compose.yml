@@ -218,8 +218,12 @@ services:
       OAUTH_CLIENT_SECRET: "${BILLING_OAUTH_CLIENT_SECRET}"
       KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-      # token-handler does not serve /api, so Tier 2/3 fine authz is irrelevant here.
-      AUTHZ_FINE_ENABLED: "false"
+      # forward-auth: /auth/verify runs billing's subdomain gate (resource:59:5),
+      # so it needs fine authz on + the requirement + a path to P1.
+      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
+      APP_REQUIREMENT_TYPE: "${BILLING_REQUIREMENT_TYPE:-resource}"
+      APP_REQUIREMENT_OBJECT_TYPE: "${BILLING_REQUIREMENT_OBJECT_TYPE:-59}"
+      APP_REQUIREMENT_PERMISSION: "${BILLING_REQUIREMENT_PERMISSION:-5}"
       P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
@@ -311,7 +315,11 @@ services:
       OAUTH_CLIENT_SECRET: "${TRADING_OAUTH_CLIENT_SECRET}"
       KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-      AUTHZ_FINE_ENABLED: "false"
+      # forward-auth: /auth/verify runs trading's subdomain gate (resource:5:5).
+      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
+      APP_REQUIREMENT_TYPE: "${TRADING_REQUIREMENT_TYPE:-resource}"
+      APP_REQUIREMENT_OBJECT_TYPE: "${TRADING_REQUIREMENT_OBJECT_TYPE:-5}"
+      APP_REQUIREMENT_PERMISSION: "${TRADING_REQUIREMENT_PERMISSION:-5}"
       P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"

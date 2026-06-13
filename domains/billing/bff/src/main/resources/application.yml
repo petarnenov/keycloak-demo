@@ -112,9 +112,14 @@ micronaut:
       - pattern: /auth/me
         access:
           - isAuthenticated()
+      # Forward-auth: /api/** is gated by nginx (auth_request -> token-handler
+      # /auth/verify). nginx forwards the request with X-Auth-* identity headers
+      # and WITHOUT the session cookie, so it reaches this BFF anonymous — the
+      # controller reads identity from the headers (HeaderIdentity). isAnonymous
+      # here just means "don't 401 the already-gated request".
       - pattern: /api/**
         access:
-          - isAuthenticated()
+          - isAnonymous()
 
 endpoints:
   health:

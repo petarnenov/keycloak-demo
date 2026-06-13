@@ -82,11 +82,33 @@ Redis (no re-login).
 - **V3 — no re-login:** a `BSESSION` captured **before** the redeploy still returned
   **`/auth/me` → 200** afterwards (session survived in Redis).
 
-## Out of scope for v1 (documented, not done)
-- **Forward-auth / header-injected identity** (data app fully auth-unaware, so
-  EVERY auth fix — including filters — is token-handler-only). v1 still leaves the
-  refresh filter + session-read code in the data app; only endpoint fixes are
-  fully decoupled. Forward-auth (nginx `auth_request` → `/auth/verify` → inject
-  `X-Auth-*`) is the next step.
-- Distributed in-flight refresh lock (v1 relies on `revokeRefreshToken=false`).
+## v2 — Forward-auth (DONE, 2026-06-13): EVERY auth fix is token-handler-only
+The data BFFs are now **fully auth-unaware**. nginx `auth_request`s each
+`/api/<name>` against the Token Handler's `GET /auth/verify` (which validates +
+refreshes the session and runs coarse + the subdomain Tier-2 gate), then copies
+the returned `X-Auth-*` identity onto the upstream request and **drops the session
+cookie**. The data BFF reads identity from those headers (`HeaderIdentity`) — it
+holds no session, runs no token refresh, runs no security filters.
+
+- `bff-core`: `SubdomainAuthorizer` (decision extracted from the filter),
+  `ForwardAuthController` (`/auth/verify` → 401/403 or 200 + `X-Auth-*`),
+  `HeaderIdentity` (rebuild `Authentication` from headers).
+- domain BFFs: `BillingController`/`TradingController` read `HeaderIdentity`,
+  no `@Secured`, no `Authentication` injection; `application.yml` `/api/** ->
+  isAnonymous` (nginx gates); the Tier-3 list `refine` stays here (it filters the
+  domain's own rows — intrinsically next to the data).
+- nginx (both webs): `/api/<name>` → `auth_request /th-verify` (→ token-handler
+  `/auth/verify`) → inject `X-Auth-*`, no cookie. token-handlers run fine authz.
+
+**Verified (2026-06-13):** full e2e on BOTH forward-auth domains → 25 passed, 1
+failed (the pre-existing firm-5 flake), 2 skipped; all auth/api specs green. Proof
+the BFF runs no auth: across a full e2e run, **bff-billing did 0 token refreshes**
+while **token-handler-billing handled 492 `/auth` operations**. Anon `/api/<name>`
+→ 401 (nginx gate); logged-in → data via `X-Auth-*` headers.
+
+## Still out of scope (documented, not done)
+- Distributed in-flight refresh lock (relies on `revokeRefreshToken=false`).
+- The Tier-3 `refine` mechanism (`Tier23Gate`/`P1AuthzClient`) still runs in the
+  data BFF — by necessity, it filters the domain's data rows, so it cannot live in
+  the Token Handler. It is data-authz, not shared session/login auth.
 - P1 (Tomcat) session clustering — separate (B2-P1 remnant).

@@ -40,63 +40,28 @@ public class SubdomainRequirementFilter implements HttpServerFilter {
 
     private static final Logger LOG = LoggerFactory.getLogger(SubdomainRequirementFilter.class);
 
-    private final SubdomainRequirement requirement;
-    private final Tier23Gate gate;
+    private final SubdomainAuthorizer authorizer;
 
-    public SubdomainRequirementFilter(SubdomainRequirement requirement, Tier23Gate gate) {
-        this.requirement = requirement;
-        this.gate = gate;
+    public SubdomainRequirementFilter(SubdomainAuthorizer authorizer) {
+        this.authorizer = authorizer;
     }
 
     @Override
     public Publisher<MutableHttpResponse<?>> doFilter(HttpRequest<?> request, ServerFilterChain chain) {
-        String type = requirement.getType();
-        if (type == null || type.isBlank()) {
-            return chain.proceed(request); // no per-subdomain gate configured
-        }
         Authentication auth = request.getUserPrincipal(Authentication.class).orElse(null);
         if (auth == null) {
             // Not authenticated — let the security / token-refresh layer answer (401).
             return chain.proceed(request);
         }
         try {
-            if (requirement.isFirmType()) {
-                if (!hasFirmMembership(auth, requirement.getFirmCd())) {
-                    LOG.debug("subdomain access denied: no account in firm {}", requirement.getFirmCd());
-                    return Publishers.just(forbidden(
-                            "This subdomain is for firm " + requirement.getFirmCd()
-                                    + "; your person has no account there."));
-                }
-            } else if (requirement.isResourceType()
-                    && requirement.getObjectType() != null && requirement.getPermission() != null) {
-                // Throws HttpStatusException(FORBIDDEN) when the current login lacks the permission.
-                gate.require(auth, requirement.getObjectType(), requirement.getPermission());
-            }
+            authorizer.authorize(auth); // shared decision (firm membership / Tier 2 gate)
         } catch (HttpStatusException e) {
+            LOG.debug("subdomain access denied: {}", e.getMessage());
             return Publishers.just(HttpResponse.status(e.getStatus())
                     .body(Map.of("error", "subdomain_access_denied",
                             "reason", String.valueOf(e.getMessage()))));
         }
         return chain.proceed(request);
-    }
-
-    /** True when the {@code memberships} claim contains an entry for {@code firmCd}. */
-    private static boolean hasFirmMembership(Authentication auth, Integer firmCd) {
-        if (firmCd == null) {
-            return false;
-        }
-        String prefix = firmCd + ":";
-        for (String e : AuthClaims.memberships(auth)) {
-            if (e != null && e.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static MutableHttpResponse<?> forbidden(String reason) {
-        return HttpResponse.status(HttpStatus.FORBIDDEN)
-                .body(Map.of("error", "subdomain_access_denied", "reason", reason));
     }
 
     @Override

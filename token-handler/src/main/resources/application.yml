@@ -90,6 +90,9 @@ micronaut:
       - pattern: /auth/me
         access:
           - isAuthenticated()
+      - pattern: /auth/verify
+        access:
+          - isAuthenticated()
 
 endpoints:
   health:

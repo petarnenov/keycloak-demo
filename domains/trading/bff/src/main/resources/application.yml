@@ -91,9 +91,11 @@ micronaut:
       - pattern: /auth/me
         access:
           - isAuthenticated()
+      # Forward-auth: /api/** is gated by nginx (auth_request -> token-handler
+      # /auth/verify); the request arrives with X-Auth-* headers and no cookie.
       - pattern: /api/**
         access:
-          - isAuthenticated()
+          - isAnonymous()
 
 endpoints:
   health:

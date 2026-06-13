@@ -1,15 +1,15 @@
 package demo.billing;
 
 import demo.bff.core.AuthClaims;
+import demo.bff.core.HeaderIdentity;
 import demo.bff.core.Tier23Gate;
 import io.micronaut.context.annotation.Value;
+import io.micronaut.http.HttpRequest;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
-import io.micronaut.security.annotation.Secured;
 import io.micronaut.security.authentication.Authentication;
-import io.micronaut.security.rules.SecurityRule;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -43,8 +43,11 @@ public class BillingController {
     }
 
     @Get("/summary")
-    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1: any federated person; real per-firm roles are shown, not gated on demo caps
-    public Map<String, Object> summary(Authentication authentication) {
+    public Map<String, Object> summary(HttpRequest<?> request) {
+        // Auth-unaware: identity comes from the X-Auth-* headers the Token Handler's
+        // /auth/verify emitted and nginx injected (forward-auth). Coarse + subdomain
+        // authz already happened in /auth/verify; this is the per-endpoint Tier 2.
+        Authentication authentication = HeaderIdentity.from(request);
         gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2: can this user VIEW invoices specifically
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
@@ -66,8 +69,8 @@ public class BillingController {
     }
 
     @Get("/invoices")
-    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1
-    public Map<String, Object> invoices(Authentication authentication) {
+    public Map<String, Object> invoices(HttpRequest<?> request) {
+        Authentication authentication = HeaderIdentity.from(request);
         gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> invoices = new ArrayList<>();
@@ -92,8 +95,8 @@ public class BillingController {
     }
 
     @Get("/usage")
-    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1
-    public Map<String, Object> usage(Authentication authentication) {
+    public Map<String, Object> usage(HttpRequest<?> request) {
+        Authentication authentication = HeaderIdentity.from(request);
         List<Map<String, Object>> lines = new ArrayList<>();
         lines.add(Map.of("metric", "API requests",    "included", 100_000, "used", 42_318, "unit", "calls"));
         lines.add(Map.of("metric", "Active seats",    "included", 25,      "used", 17,     "unit", "users"));

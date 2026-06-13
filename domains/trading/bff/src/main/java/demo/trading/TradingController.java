@@ -1,15 +1,15 @@
 package demo.trading;
 
 import demo.bff.core.AuthClaims;
+import demo.bff.core.HeaderIdentity;
 import demo.bff.core.Tier23Gate;
+import io.micronaut.http.HttpRequest;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
 import io.micronaut.context.annotation.Value;
-import io.micronaut.security.annotation.Secured;
 import io.micronaut.security.authentication.Authentication;
-import io.micronaut.security.rules.SecurityRule;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -44,8 +44,10 @@ public class TradingController {
     }
 
     @Get("/portfolio")
-    @Secured(SecurityRule.IS_AUTHENTICATED)
-    public Map<String, Object> portfolio(Authentication authentication) {
+    public Map<String, Object> portfolio(HttpRequest<?> request) {
+        // Auth-unaware: identity from the X-Auth-* headers (forward-auth). The
+        // Token Handler's /auth/verify already did session + coarse + subdomain authz.
+        Authentication authentication = HeaderIdentity.from(request);
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
@@ -63,8 +65,8 @@ public class TradingController {
     }
 
     @Get("/positions")
-    @Secured(SecurityRule.IS_AUTHENTICATED)
-    public Map<String, Object> positions(Authentication authentication) {
+    public Map<String, Object> positions(HttpRequest<?> request) {
+        Authentication authentication = HeaderIdentity.from(request);
         List<Map<String, Object>> positions = new ArrayList<>();
         positions.add(position("AAPL", "Apple Inc.",          240, 198.42, 212.85));
         positions.add(position("MSFT", "Microsoft Corp.",     180, 412.10, 438.20));
@@ -83,8 +85,8 @@ public class TradingController {
     }
 
     @Get("/orders")
-    @Secured(SecurityRule.IS_AUTHENTICATED)   // tier 1
-    public Map<String, Object> orders(Authentication authentication) {
+    public Map<String, Object> orders(HttpRequest<?> request) {
+        Authentication authentication = HeaderIdentity.from(request);
         gate.require(authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> orders = new ArrayList<>();

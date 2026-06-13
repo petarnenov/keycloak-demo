@@ -49,7 +49,7 @@ class SubdomainRequirementFilterTest {
     @Test
     void untypedRequirement_proceeds() {
         SubdomainRequirement r = new SubdomainRequirement(); // type null
-        SubdomainRequirementFilter f = new SubdomainRequirementFilter(r, mock(Tier23Gate.class));
+        SubdomainRequirementFilter f = new SubdomainRequirementFilter(new SubdomainAuthorizer(r, mock(Tier23Gate.class)));
         assertEquals(HttpStatus.OK, run(f, requestWith(null), okChain()));
     }
 
@@ -58,7 +58,7 @@ class SubdomainRequirementFilterTest {
         SubdomainRequirement r = new SubdomainRequirement();
         r.setType("firm");
         r.setFirmCd(5);
-        SubdomainRequirementFilter f = new SubdomainRequirementFilter(r, mock(Tier23Gate.class));
+        SubdomainRequirementFilter f = new SubdomainRequirementFilter(new SubdomainAuthorizer(r, mock(Tier23Gate.class)));
         assertEquals(HttpStatus.OK, run(f, requestWith(null), okChain()));
     }
 
@@ -67,7 +67,7 @@ class SubdomainRequirementFilterTest {
         SubdomainRequirement r = new SubdomainRequirement();
         r.setType("firm");
         r.setFirmCd(5);
-        SubdomainRequirementFilter f = new SubdomainRequirementFilter(r, mock(Tier23Gate.class));
+        SubdomainRequirementFilter f = new SubdomainRequirementFilter(new SubdomainAuthorizer(r, mock(Tier23Gate.class)));
         assertEquals(HttpStatus.OK, run(f, requestWith(authWithMemberships("5:john")), okChain()));
     }
 
@@ -76,7 +76,7 @@ class SubdomainRequirementFilterTest {
         SubdomainRequirement r = new SubdomainRequirement();
         r.setType("firm");
         r.setFirmCd(5);
-        SubdomainRequirementFilter f = new SubdomainRequirementFilter(r, mock(Tier23Gate.class));
+        SubdomainRequirementFilter f = new SubdomainRequirementFilter(new SubdomainAuthorizer(r, mock(Tier23Gate.class)));
         assertEquals(HttpStatus.FORBIDDEN, run(f, requestWith(authWithMemberships("7:jane")), okChain()));
     }
 
@@ -87,7 +87,7 @@ class SubdomainRequirementFilterTest {
         r.setObjectType(12);
         r.setPermission(1);
         Tier23Gate gate = mock(Tier23Gate.class); // require() returns normally
-        SubdomainRequirementFilter f = new SubdomainRequirementFilter(r, gate);
+        SubdomainRequirementFilter f = new SubdomainRequirementFilter(new SubdomainAuthorizer(r, gate));
         assertEquals(HttpStatus.OK, run(f, requestWith(authWithMemberships("")), okChain()));
     }
 
@@ -100,7 +100,7 @@ class SubdomainRequirementFilterTest {
         Tier23Gate gate = mock(Tier23Gate.class);
         doThrow(new HttpStatusException(HttpStatus.FORBIDDEN, "denied"))
                 .when(gate).require(any(), anyInt(), anyInt());
-        SubdomainRequirementFilter f = new SubdomainRequirementFilter(r, gate);
+        SubdomainRequirementFilter f = new SubdomainRequirementFilter(new SubdomainAuthorizer(r, gate));
         assertEquals(HttpStatus.FORBIDDEN, run(f, requestWith(authWithMemberships("")), okChain()));
     }
 }
