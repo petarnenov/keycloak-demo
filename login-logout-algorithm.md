@@ -15,6 +15,24 @@ Last update: **2026-06-04** — covers Gap 6 (post-login KC establish
 round-trip), cross-host silent SSO recovery on user reload, and the BFF
 `/auth/logout` idempotency fix.
 
+> **Architecture update (2026-06-13).** The OIDC / SAML protocol sequences below
+> are still accurate, but *where* the auth code runs and a few names have changed
+> — read these deltas alongside the diagrams:
+> - **Auth is no longer in the per-domain BFFs.** It runs in a separate **Token
+>   Handler** service; the data BFFs (`bff-billing`/`bff-trading`) are now
+>   **auth-unaware** (forward-auth: nginx `auth_request` → `/auth/verify` → inject
+>   `X-Auth-*` headers, cookie dropped). So "the BFF does login/refresh/logout" below
+>   means **the Token Handler**.
+> - **One multi-tenant Token Handler** fronts every domain (not one per BFF): one
+>   shared OIDC client **`demo-shared-client`**, one **`GWSESSION`** cookie
+>   (host-scoped — replaces `BSESSION`/`TSESSION`), per-domain authz resolved by
+>   `Host` from `app.tenants.*`.
+> - **Sessions live in Redis** (B2), not the in-memory `SessionStore` the actor
+>   table still names — so any replica serves any session and a redeploy doesn't
+>   log users out.
+> - Authoritative current refs: `CLAUDE.md` (Layout → `token-handler/`),
+>   `token-handler-plan.md`, and `k8s/README-multitenant-k8s-plan.md`.
+
 ---
 
 ## 0. Actors and where state lives

@@ -404,6 +404,107 @@
       ]
     },
     {
+      "clientId": "demo-shared-client",
+      "enabled": true,
+      "name": "Demo Shared Multi-tenant Client",
+      "description": "ONE confidential client for the multi-tenant Token Handler fronting every demo domain. redirectUris list all hosts; add a domain = add its host + an app.tenants.<slug> entry, not a new client. Secret = SHARED_OAUTH_CLIENT_SECRET.",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "Sh4r3dMultiTenantDemoSecret012345",
+      "bearerOnly": false,
+      "webOrigins": [
+        "https://billing.geowealth.int:5184",
+        "https://trading.geowealth.int:5185",
+        "http://localhost:5184",
+        "http://localhost:5185",
+        "http://127.0.0.1:5184",
+        "http://127.0.0.1:5185"
+      ],
+      "redirectUris": [
+        "https://billing.geowealth.int:5184",
+        "https://billing.geowealth.int:5184/",
+        "https://billing.geowealth.int:5184/*",
+        "https://trading.geowealth.int:5185",
+        "https://trading.geowealth.int:5185/",
+        "https://trading.geowealth.int:5185/*",
+        "http://localhost:5184/*",
+        "http://localhost:5185/*",
+        "http://127.0.0.1:5184/*",
+        "http://127.0.0.1:5185/*"
+      ],
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##https://trading.geowealth.int:5185/*##http://localhost:5184/*##http://localhost:5185/*##http://localhost:8888/*",
+        "backchannel.logout.url": "http://token-handler:8080/backchannel-logout",
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "firm-cd-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "firmCd",
+            "claim.name": "firmCd",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "person-id-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "personId",
+            "claim.name": "personId",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "memberships-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "memberships",
+            "claim.name": "memberships",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "roles-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "loginRoles",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "p1-self-client",
       "enabled": true,
       "name": "P1 Self OIDC Client",

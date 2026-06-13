@@ -12,7 +12,7 @@ this directory verifies it.
 |---|---|
 | `tests/sso-claims.spec.ts` | The `(person, tenant) → (alias, roles)` table from `PersonRegistry.java` is what the access token carries on each subdomain; `personId` is identical across subdomains; per-tenant roles do not leak. |
 | `tests/silent-first-flow.spec.ts` | Cold-start: `/oauth/login/silent` → `prompt=none` → `error=login_required` → `/auth/login-failed` → interactive. Warm-start (KC SSO cookie alive): silent completes without ever touching P1. |
-| `tests/token-handler.spec.ts` | The SPA holds no OP tokens. `document.cookie` is empty (BSESSION is httpOnly); no `access_token` / `id_token` / JWT-shaped strings ever land in `localStorage` or `sessionStorage`. |
+| `tests/token-handler.spec.ts` | The SPA holds no OP tokens. `document.cookie` is empty (the `GWSESSION` cookie is httpOnly); no `access_token` / `id_token` / JWT-shaped strings ever land in `localStorage` or `sessionStorage`. |
 | `tests/logout.spec.ts` | `GET /auth/logout` on one subdomain back-channels logout to all sibling BFFs — `/auth/me` on every subdomain answers 401 after. |
 
 ## ⚠️ One-time setup: disable MFA on tim1

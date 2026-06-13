@@ -34,8 +34,17 @@ class AuthControllerTest {
 
     private static AuthController controller(SidSessionRegistry reg, SessionStore store,
                                              HttpClient kc, SubdomainRequirement req) {
-        return new AuthController(reg, store, kc, req,
+        // Empty tenants list → single-tenant mode → effectiveFor() uses `req`.
+        return new AuthController(reg, store, kc, req, new SubdomainRequirements(List.of()),
                 "https://auth/realms/demo", "demo-client", "secret", SLO);
+    }
+
+    /** A request whose host headers are absent — single-tenant /auth/me ignores the host. */
+    private static HttpRequest<?> meRequest() {
+        HttpRequest<?> req = mock(HttpRequest.class);
+        io.micronaut.http.HttpHeaders h = mock(io.micronaut.http.HttpHeaders.class);
+        when(req.getHeaders()).thenReturn(h);
+        return req;
     }
 
     private static Authentication auth(Set<String> roles, Map<String, Object> attrs, String name) {
@@ -63,7 +72,7 @@ class AuthControllerTest {
         Session session = mock(Session.class);
         when(session.getId()).thenReturn("bff-sess");
 
-        Map<String, Object> out = c.me(a, session);
+        Map<String, Object> out = c.me(a, session, meRequest());
 
         assertEquals(true, out.get("authenticated"));
         assertEquals("5", out.get("firmCd"));
@@ -84,7 +93,7 @@ class AuthControllerTest {
                 Map.of("firmCd", "7", "memberships", "7:jane"),
                 "p-uuid");
 
-        Map<String, Object> out = c.me(a, null);
+        Map<String, Object> out = c.me(a, null, meRequest());
 
         assertEquals("7", out.get("firmCd"));
         assertEquals("jane", out.get("tenantIdentity"));
@@ -100,7 +109,7 @@ class AuthControllerTest {
 
         Authentication a = auth(Set.of(), Map.of("memberships", ""), "p-uuid");
 
-        Map<String, Object> out = c.me(a, null);
+        Map<String, Object> out = c.me(a, null, meRequest());
         assertEquals("p-uuid", out.get("tenantIdentity"));
     }
 

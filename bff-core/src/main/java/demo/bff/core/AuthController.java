@@ -105,11 +105,13 @@ public class AuthController {
     private final String logoutEndpoint;
     private final String p1InitiateSloUrl;
     private final SubdomainRequirement requirement;
+    private final SubdomainRequirements requirements;
 
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
                           @Client("kc") HttpClient kc,
                           SubdomainRequirement requirement,
+                          SubdomainRequirements requirements,
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-secret}") String clientSecret,
@@ -118,6 +120,7 @@ public class AuthController {
         this.sessionStore = sessionStore;
         this.kc = kc;
         this.requirement = requirement;
+        this.requirements = requirements;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         // Use full URLs (issuer + path) because @Client("kc")'s base path is
@@ -131,7 +134,8 @@ public class AuthController {
 
     @Get("/me")
     @Secured(SecurityRule.IS_AUTHENTICATED)
-    public Map<String, Object> me(Authentication authentication, @Nullable Session session) {
+    public Map<String, Object> me(Authentication authentication, @Nullable Session session,
+                                  HttpRequest<?> request) {
         // KC session liveness is now validated by TokenRefreshFilter on every
         // /auth/** + /api/** call (throttled to once per 30s). When KC's SSO
         // session has been ended out-of-band, the filter clears the BFF session
@@ -150,14 +154,19 @@ public class AuthController {
         // Subdomain-agnostic facts (person-identity-via-existing-linkdelink.md):
         // the firms the person has an account in, as "<firmCd>:<ldapUid>".
         out.put("memberships", memberships);
-        // Per-subdomain identity. For a firm-bound subdomain we surface the firm
-        // it is bound to and the person's username IN that firm (resolved from
+        // Per-subdomain identity, resolved by the request host so the single
+        // multi-tenant Token Handler surfaces each domain's own tenant facts
+        // (host map in app.tenants.*); falls back to the single requirement in
+        // per-domain mode. For a firm-bound subdomain we surface the firm it is
+        // bound to and the person's username IN that firm (resolved from
         // memberships) — not the login account — so billing always shows its own
         // firm's identity regardless of which account the person logged in with.
-        if (requirement.isFirmType() && requirement.getFirmCd() != null) {
-            out.put("firmCd", requirement.getFirmCd().toString());
-            out.put("tenantIdentity", usernameForFirm(memberships, requirement.getFirmCd()));
-            out.put("activeTenant", "firm-" + requirement.getFirmCd());
+        String host = forwardedHost(request);
+        SubdomainRequirements.ResolvedRequirement req = requirements.effectiveFor(host, requirement);
+        if (req.isFirmType() && req.firmCd() != null) {
+            out.put("firmCd", req.firmCd().toString());
+            out.put("tenantIdentity", usernameForFirm(memberships, req.firmCd()));
+            out.put("activeTenant", "firm-" + req.firmCd());
         } else {
             // Resource (or ungated) subdomain: surface the login account's identity.
             // authentication.getName() is the personId UUID (KC username = SAML
@@ -167,10 +176,16 @@ public class AuthController {
             out.put("firmCd", firmCdAttr);
             String uname = usernameForFirm(memberships, parseFirm(firmCdAttr));
             out.put("tenantIdentity", uname != null ? uname : authentication.getName());
-            out.put("activeTenant", requirement.getType());
+            out.put("activeTenant", req.type());
         }
         out.put("roles", authentication.getRoles());
         return out;
+    }
+
+    /** The original client host (nginx sets X-Forwarded-Host; Host as fallback). */
+    private static String forwardedHost(HttpRequest<?> request) {
+        String h = request.getHeaders().get("X-Forwarded-Host");
+        return (h != null && !h.isBlank()) ? h : request.getHeaders().get(HttpHeaders.HOST);
     }
 
     /** Parse the (login) {@code firmCd} attribute to an Integer; {@code null} when absent/non-numeric. */

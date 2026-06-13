@@ -54,7 +54,8 @@ public class SubdomainRequirementFilter implements HttpServerFilter {
             return chain.proceed(request);
         }
         try {
-            authorizer.authorize(auth); // shared decision (firm membership / Tier 2 gate)
+            // shared decision (firm membership / Tier 2 gate); host-aware in multi-tenant mode
+            authorizer.authorize(auth, request.getHeaders().get(io.micronaut.http.HttpHeaders.HOST));
         } catch (HttpStatusException e) {
             LOG.debug("subdomain access denied: {}", e.getMessage());
             return Publishers.just(HttpResponse.status(e.getStatus())

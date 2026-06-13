@@ -1,10 +1,15 @@
 # Token Handler — the shared OIDC/session/logout/token-refresh service, extracted
 # from the domain BFFs so an auth fix redeploys THIS alone (domain data apps
-# untouched). It is pure bff-core; everything domain-specific is env-driven, so one
-# image serves billing (BSESSION/demo-billing-client) and trading (TSESSION/
-# demo-trading-client). It shares Redis + the session cookie + the OIDC client with
-# the matching domain BFF, so the session it writes on login is read by that BFF
-# for /api/** authz.
+# untouched). It is pure bff-core.
+#
+# MULTI-TENANT: ONE instance fronts EVERY demo domain. It uses ONE shared OIDC
+# client (demo-shared-client; redirect_uri derived per-host from the proxied
+# request) and ONE session cookie name (GWSESSION) — cookies are host-scoped, so
+# billing.geowealth.int and trading.geowealth.int get distinct cookies even with
+# the same name. Per-domain authorization is resolved by the request Host from the
+# `app.tenants.*` map below (see SubdomainAuthorizer / SubdomainRequirements).
+# Adding a domain = one `app.tenants.<slug>` entry + its host on the shared client,
+# NOT a new Deployment. The data BFFs stay auth-unaware (forward-auth headers).
 redis:
   uri: ${REDIS_URI:redis://localhost:6379}
 micronaut:
@@ -26,9 +31,8 @@ micronaut:
     http:
       cookie: true
       header: false
-      # MUST match the domain BFF's cookie name so they share the session
-      # (BSESSION for billing, TSESSION for trading).
-      cookie-name: ${SESSION_COOKIE_NAME:BSESSION}
+      # ONE cookie name for every domain — host-scoped, so each host gets its own.
+      cookie-name: ${SESSION_COOKIE_NAME:GWSESSION}
       cookie-path: /
       cookie-secure: true
       cookie-same-site: Lax
@@ -43,7 +47,7 @@ micronaut:
     oauth2:
       clients:
         keycloak:
-          client-id: ${OAUTH_CLIENT_ID:demo-billing-client}
+          client-id: ${OAUTH_CLIENT_ID:demo-shared-client}
           client-secret: ${OAUTH_CLIENT_SECRET}
           openid:
             issuer: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
@@ -101,13 +105,25 @@ endpoints:
 
 app:
   source: ${APP_SOURCE:token-handler}
-  # Inert here — the SubdomainRequirementFilter only gates /api/**, which the
-  # token-handler does not serve (the domain BFF does). Kept so the bean resolves.
-  requirement:
-    type: ${APP_REQUIREMENT_TYPE:resource}
-    firm-cd: ${APP_REQUIREMENT_FIRM_CD:}
-    object-type: ${APP_REQUIREMENT_OBJECT_TYPE:59}
-    permission: ${APP_REQUIREMENT_PERMISSION:5}
+  # MULTI-TENANT requirement map: host -> per-domain gate, resolved by the request
+  # Host in /auth/verify (SubdomainAuthorizer + SubdomainRequirements). nginx
+  # forwards the original client host as X-Forwarded-Host on the auth_request
+  # subrequest. Adding a domain = one entry here (+ its host on demo-shared-client).
+  # In K8s this block is supplied by a mounted ConfigMap, so adding a domain is a
+  # config edit + rolling restart — no image rebuild, no data-BFF redeploy.
+  tenants:
+    billing:
+      host: billing.geowealth.int
+      type: resource          # shared resource → Tier-2 P1 permission gate
+      object-type: 59         # BILLING_CENTER
+      permission: 5           # EXECUTE
+    trading:
+      host: trading.geowealth.int
+      type: resource
+      object-type: 5          # TRADE
+      permission: 5           # EXECUTE
+  # Single-tenant fallback (per-domain build): inert while app.tenants is set, so
+  # the bean stays empty here (no type → SubdomainAuthorizer uses the host map).
   p1:
     initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
   authz:

@@ -1,0 +1,60 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Dev overlay: the full multi-tenant stack on a local cluster. Locally-built
+# images (docker/minikube image load) → IfNotPresent so :latest is not re-pulled;
+# replicas trimmed to 1 for a single-node dev box. Real KC/P1 URLs come from here.
+resources:
+  - ../../base
+
+images:
+  - name: keycloak-demo-token-handler
+    newTag: latest
+  - name: keycloak-demo-billing-bff
+    newTag: latest
+  - name: keycloak-demo-trading-bff
+    newTag: latest
+
+patches:
+  # Single replica per workload on a dev box, and never re-pull local :latest.
+  - target:
+      kind: Deployment
+      name: token-handler
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: Deployment
+      name: bff-billing
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target:
+      kind: Deployment
+      name: bff-trading
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  # HPA floor must not exceed the dev replica count.
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: token-handler
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 3

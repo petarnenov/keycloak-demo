@@ -110,10 +110,19 @@ class ForwardAuthTest {
         return a;
     }
 
+    private static HttpRequest<?> reqWithHost(String forwardedHost) {
+        HttpRequest<?> req = mock(HttpRequest.class);
+        io.micronaut.http.HttpHeaders h = mock(io.micronaut.http.HttpHeaders.class);
+        when(req.getHeaders()).thenReturn(h);
+        when(h.get("X-Forwarded-Host")).thenReturn(forwardedHost);
+        return req;
+    }
+
     @Test
     void verify_allowed_returns200WithIdentityHeaders() {
         SubdomainAuthorizer authorizer = mock(SubdomainAuthorizer.class); // authorize() returns normally
-        HttpResponse<?> r = new ForwardAuthController(authorizer).verify(fullAuth());
+        HttpResponse<?> r = new ForwardAuthController(authorizer)
+                .verify(fullAuth(), reqWithHost("billing.geowealth.int"));
         assertEquals(HttpStatus.OK, r.getStatus());
         assertEquals("p-1", r.getHeaders().get("X-Auth-Username"));
         assertEquals("5", r.getHeaders().get("X-Auth-Firm-Cd"));
@@ -125,9 +134,56 @@ class ForwardAuthTest {
     void verify_denied_returns403_noIdentityHeaders() {
         SubdomainAuthorizer authorizer = mock(SubdomainAuthorizer.class);
         doThrow(new HttpStatusException(HttpStatus.FORBIDDEN, "denied"))
-                .when(authorizer).authorize(any());
-        HttpResponse<?> r = new ForwardAuthController(authorizer).verify(fullAuth());
+                .when(authorizer).authorize(any(), any());
+        HttpResponse<?> r = new ForwardAuthController(authorizer)
+                .verify(fullAuth(), reqWithHost("billing.geowealth.int"));
         assertEquals(HttpStatus.FORBIDDEN, r.getStatus());
         assertNull(r.getHeaders().get("X-Auth-Username"));
+    }
+
+    // ---- Multi-tenant host-aware resolution -------------------------------------
+
+    private static TenantRequirement tenant(String slug, String host, String type,
+                                            Integer firmCd, Integer objType, Integer perm) {
+        TenantRequirement t = new TenantRequirement(slug);
+        t.setHost(host);
+        t.setType(type);
+        t.setFirmCd(firmCd);
+        t.setObjectType(objType);
+        t.setPermission(perm);
+        return t;
+    }
+
+    @Test
+    void multiTenant_resolvesRequirementByHost() {
+        // billing → resource gate on (59,5); trading → firm 5 membership
+        SubdomainRequirements reqs = new SubdomainRequirements(List.of(
+                tenant("billing", "billing.geowealth.int", "resource", null, 59, 5),
+                tenant("trading", "trading.geowealth.int", "firm", 5, null, null)));
+        Tier23Gate gate = mock(Tier23Gate.class);
+        SubdomainAuthorizer a = new SubdomainAuthorizer(new SubdomainRequirement(), reqs, gate);
+
+        // trading host: needs a firm-5 membership
+        HttpStatusException denied = org.junit.jupiter.api.Assertions.assertThrows(
+                HttpStatusException.class,
+                () -> a.authorize(authWith("7:jane"), "trading.geowealth.int:5185"));
+        assertEquals(HttpStatus.FORBIDDEN, denied.getStatus());
+        a.authorize(authWith("5:john"), "trading.geowealth.int"); // member → allowed
+
+        // billing host: delegates to the Tier-2 gate with that host's (objType,perm)
+        a.authorize(authWith(""), "billing.geowealth.int");
+        org.mockito.Mockito.verify(gate).require(any(), org.mockito.ArgumentMatchers.eq(59),
+                org.mockito.ArgumentMatchers.eq(5));
+    }
+
+    @Test
+    void multiTenant_unknownHost_failsClosed() {
+        SubdomainRequirements reqs = new SubdomainRequirements(List.of(
+                tenant("billing", "billing.geowealth.int", "resource", null, 59, 5)));
+        SubdomainAuthorizer a = new SubdomainAuthorizer(
+                new SubdomainRequirement(), reqs, mock(Tier23Gate.class));
+        HttpStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                HttpStatusException.class, () -> a.authorize(authWith("5:john"), "unknown.host"));
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
     }
 }

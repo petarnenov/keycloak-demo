@@ -35,6 +35,10 @@ dependencies {
     // bean used by SidSessionRegistry. Version managed by the Micronaut platform BOM.
     api("io.micronaut.redis:micronaut-redis-lettuce")
     api("io.micronaut:micronaut-runtime")
+    // /health for Kubernetes readiness/liveness probes (and /info). Anonymous +
+    // non-sensitive via each service's `endpoints.health` config. Without this the
+    // management endpoints aren't registered and /health 404s.
+    api("io.micronaut:micronaut-management")
     api("io.micronaut.validation:micronaut-validation")
     api("io.micronaut.serde:micronaut-serde-jackson")
     api("jakarta.validation:jakarta.validation-api")

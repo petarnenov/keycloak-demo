@@ -67,7 +67,7 @@ test.describe('silent-first SSO redirect chain', () => {
 
     expect(url.searchParams.get('prompt'), 'silent attempts must include prompt=none').toBe('none');
     expect(url.searchParams.get('kc_idp_hint'), 'IdpHintFilter must force kc_idp_hint=p1').toBe('p1');
-    expect(url.searchParams.get('client_id')).toBe('demo-billing-client');
+    expect(url.searchParams.get('client_id'), 'multi-tenant Token Handler uses the shared client').toBe('demo-shared-client');
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('scope'), 'OIDC scope must include openid').toMatch(/\bopenid\b/);
     // PKCE — the BFF always supplies a code_challenge with S256.

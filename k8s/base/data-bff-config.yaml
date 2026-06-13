@@ -1,0 +1,14 @@
+# Per-domain OIDC client secrets for the data BFFs' (inert in forward-auth, but
+# still bound) bundled bff-core OIDC config. PLACEHOLDER — prod injects via a
+# secret manager. The data BFFs run NO login flow (the Token Handler does); these
+# only satisfy config binding. Values match the live realm / .envrc dev secrets.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: data-bff-oidc
+  labels:
+    app.kubernetes.io/component: data
+type: Opaque
+stringData:
+  billing-client-secret: "KqiEJqBxKZ6PWOwHoPrDiABv8DjQ77nw"
+  trading-client-secret: "omB2xzDuJcKuFeIKfyREXgPMCJHLsIGb"

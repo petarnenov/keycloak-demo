@@ -26,6 +26,8 @@ class SubdomainRequirementFilterTest {
     private static HttpRequest<?> requestWith(Authentication auth) {
         HttpRequest<?> req = mock(HttpRequest.class);
         when(req.getUserPrincipal(Authentication.class)).thenReturn(Optional.ofNullable(auth));
+        io.micronaut.http.HttpHeaders h = mock(io.micronaut.http.HttpHeaders.class);
+        when(req.getHeaders()).thenReturn(h); // single-tenant fallback ignores Host
         return req;
     }
 

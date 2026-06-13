@@ -1,0 +1,150 @@
+# The MULTI-TENANT Token Handler — ONE Deployment fronting EVERY domain. Scales on
+# total auth traffic (HPA below), not one JVM per domain. The Ingress external-auth
+# annotations point /api/<name> here (/auth/verify forward-auth); /(oauth|auth)/ +
+# /logout route here directly. It owns all session/login/logout/token-refresh; the
+# data BFFs are auth-unaware.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: token-handler
+  labels:
+    app.kubernetes.io/name: token-handler
+    app.kubernetes.io/component: auth
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: token-handler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: token-handler
+        app.kubernetes.io/component: auth
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      # Spread replicas across nodes so a node loss never takes out all of auth.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: token-handler
+      containers:
+        - name: token-handler
+          image: keycloak-demo-token-handler:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: REDIS_URI
+              value: "redis://redis:6379"
+            - name: SESSION_COOKIE_NAME
+              value: "GWSESSION"
+            - name: OAUTH_CLIENT_ID
+              value: "demo-shared-client"
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: token-handler-oidc
+                  key: client-secret
+            # Keycloak + P1 are EXTERNAL to the cluster (managed / their own
+            # release / the P1 host). Overlays set the real URLs.
+            - name: KEYCLOAK_ISSUER
+              value: "https://auth.geowealth.int/realms/demo-realm"
+            - name: KEYCLOAK_AUTH_SERVER_URL
+              value: "https://auth.geowealth.int/realms/demo-realm"
+            - name: P1_AUTHZ_URL
+              value: "https://p1.geowealth.int"
+            - name: AUTHZ_FINE_ENABLED
+              value: "true"
+            # Merge the mounted tenant map over the baked application.yml.
+            - name: MICRONAUT_CONFIG_FILES
+              value: "/config/tenants.yml"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: tenants
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: tenants
+          configMap:
+            name: token-handler-tenants
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: token-handler
+  labels:
+    app.kubernetes.io/name: token-handler
+spec:
+  selector:
+    app.kubernetes.io/name: token-handler
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: token-handler
+  labels:
+    app.kubernetes.io/name: token-handler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: token-handler
+  minReplicas: 2
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: token-handler
+  labels:
+    app.kubernetes.io/name: token-handler
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: token-handler

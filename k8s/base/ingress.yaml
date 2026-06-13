@@ -1,0 +1,137 @@
+# Ingress (ingress-nginx) — the K8s-native equivalent of the compose web nginx.
+# Per domain host there are TWO Ingress objects because external-auth is a
+# per-Ingress annotation:
+#
+#   <domain>-api   — /api/<name>, GATED by external-auth: ingress-nginx fires a
+#                    subrequest to the Token Handler's /auth/verify; on 200 it
+#                    copies the X-Auth-* response headers onto the upstream and
+#                    proxies to the (auth-unaware) data BFF; on 401/403 it short-
+#                    circuits. This is the compose `auth_request` pattern, native.
+#   <domain>-auth  — /oauth, /auth, /logout, UNGATED → the Token Handler directly
+#                    (these endpoints ARE the auth; gating them would deadlock).
+#
+# The SPA static origin (index.html + JS) is served separately in prod — a CDN /
+# object store / static-only image — and is out of scope here (the plan's Part B
+# is the API + auth tier). Keycloak and P1 are external to the cluster.
+#
+# auth-snippet forwards the ORIGINAL client host to /auth/verify as
+# X-Forwarded-Host, so the multi-tenant Token Handler resolves the right per-domain
+# requirement (app.tenants.* by host) — the K8s analogue of the compose nginx
+# `proxy_set_header X-Forwarded-Host` on the /th-verify subrequest.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: billing-api
+  labels:
+    app.kubernetes.io/name: bff-billing
+  annotations:
+    nginx.ingress.kubernetes.io/auth-url: "http://token-handler.geowealth-demo.svc.cluster.local:8080/auth/verify"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Username,X-Auth-Sub,X-Auth-Person-Id,X-Auth-Firm-Cd,X-Auth-Memberships,X-Auth-Roles,X-Auth-Access-Token"
+    nginx.ingress.kubernetes.io/auth-snippet: |
+      proxy_set_header X-Forwarded-Host $host;
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: billing.geowealth.int
+      http:
+        paths:
+          - path: /api/billing
+            pathType: Prefix
+            backend:
+              service:
+                name: bff-billing
+                port:
+                  number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: billing-auth
+  labels:
+    app.kubernetes.io/name: token-handler
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: billing.geowealth.int
+      http:
+        paths:
+          - path: /oauth
+            pathType: Prefix
+            backend:
+              service:
+                name: token-handler
+                port:
+                  number: 8080
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: token-handler
+                port:
+                  number: 8080
+          - path: /logout
+            pathType: Exact
+            backend:
+              service:
+                name: token-handler
+                port:
+                  number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trading-api
+  labels:
+    app.kubernetes.io/name: bff-trading
+  annotations:
+    nginx.ingress.kubernetes.io/auth-url: "http://token-handler.geowealth-demo.svc.cluster.local:8080/auth/verify"
+    nginx.ingress.kubernetes.io/auth-response-headers: "X-Auth-Username,X-Auth-Sub,X-Auth-Person-Id,X-Auth-Firm-Cd,X-Auth-Memberships,X-Auth-Roles,X-Auth-Access-Token"
+    nginx.ingress.kubernetes.io/auth-snippet: |
+      proxy_set_header X-Forwarded-Host $host;
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: trading.geowealth.int
+      http:
+        paths:
+          - path: /api/trading
+            pathType: Prefix
+            backend:
+              service:
+                name: bff-trading
+                port:
+                  number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trading-auth
+  labels:
+    app.kubernetes.io/name: token-handler
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: trading.geowealth.int
+      http:
+        paths:
+          - path: /oauth
+            pathType: Prefix
+            backend:
+              service:
+                name: token-handler
+                port:
+                  number: 8080
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: token-handler
+                port:
+                  number: 8080
+          - path: /logout
+            pathType: Exact
+            backend:
+              service:
+                name: token-handler
+                port:
+                  number: 8080

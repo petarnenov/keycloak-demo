@@ -128,7 +128,7 @@ sign-in:
 14. KC: validates code_verifier matches the original code_challenge
 15. KC → BFF: { access_token, id_token, refresh_token, expires_in }
 16. BFF: stores all three tokens in the server-side session,
-         sets the BSESSION cookie on the browser
+         sets the GWSESSION cookie on the browser
 17. BFF → Browser: 302 to /
 18. SPA: fetch /auth/me → 200 → render dashboard
 ```

@@ -1,5 +1,7 @@
 package demo.bff.core;
 
+import io.micronaut.http.HttpHeaders;
+import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.MutableHttpResponse;
 import io.micronaut.http.annotation.Controller;
@@ -47,9 +49,17 @@ public class ForwardAuthController {
 
     @Get("/verify")
     @Secured(SecurityRule.IS_AUTHENTICATED)
-    public HttpResponse<?> verify(Authentication auth) {
+    public HttpResponse<?> verify(Authentication auth, HttpRequest<?> request) {
+        // In multi-tenant mode the authorizer resolves the per-domain requirement by
+        // host. nginx forwards the ORIGINAL client host as X-Forwarded-Host on the
+        // auth_request subrequest (the Host header here is the Token Handler's own).
+        // In single-tenant mode the host is ignored.
+        String host = request.getHeaders().get("X-Forwarded-Host");
+        if (host == null || host.isBlank()) {
+            host = request.getHeaders().get(HttpHeaders.HOST);
+        }
         try {
-            authorizer.authorize(auth);
+            authorizer.authorize(auth, host);
         } catch (HttpStatusException e) {
             return HttpResponse.status(e.getStatus());
         }

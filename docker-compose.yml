@@ -190,13 +190,16 @@ services:
       # trusts Keycloak's mkcert cert for the server-side OIDC code exchange.
       - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
 
-  # ---- Token Handler for billing --------------------------------------------
-  # The extracted shared auth service (bff-core only, no domain controller). nginx
-  # routes billing's /(oauth|auth)/ + /logout here; it owns login/callback/
-  # /auth/me/ /auth/logout/ /backchannel-logout + token refresh, and writes the
-  # BSESSION session into the SHARED Redis that bff-billing reads for /api authz.
-  # A shared-auth fix redeploys THIS image only — bff-billing stays untouched.
-  token-handler-billing:
+  # ---- Token Handler (MULTI-TENANT) -----------------------------------------
+  # ONE instance fronts EVERY domain (billing, trading, ...). Pure bff-core, no
+  # domain controller. nginx in BOTH web containers routes /(oauth|auth)/ +
+  # /logout + the /api auth_request here. It uses ONE shared OIDC client
+  # (demo-shared-client) and ONE session cookie (GWSESSION, host-scoped so each
+  # domain gets its own); per-domain authorization is resolved by the request Host
+  # from the app.tenants.* map in token-handler/application.yml. Scaling = replicas
+  # of THIS service on total traffic (vs one JVM per domain). The hostname
+  # `token-handler` matches demo-shared-client's backchannel.logout.url.
+  token-handler:
     build:
       context: .
       dockerfile: token-handler/Dockerfile
@@ -209,21 +212,19 @@ services:
       redis:
         condition: service_healthy
     environment:
-      MICRONAUT_APPLICATION_NAME: token-handler-billing
-      APP_SOURCE: token-handler-billing
+      MICRONAUT_APPLICATION_NAME: token-handler
+      APP_SOURCE: token-handler
       REDIS_URI: "${REDIS_URI:-redis://redis:6379}"
-      # Same cookie + OIDC client + Redis as bff-billing → the session is shared.
-      SESSION_COOKIE_NAME: BSESSION
-      OAUTH_CLIENT_ID: demo-billing-client
-      OAUTH_CLIENT_SECRET: "${BILLING_OAUTH_CLIENT_SECRET}"
+      # One shared client + one cookie name for all domains (cookie is host-scoped).
+      SESSION_COOKIE_NAME: GWSESSION
+      OAUTH_CLIENT_ID: demo-shared-client
+      OAUTH_CLIENT_SECRET: "${SHARED_OAUTH_CLIENT_SECRET}"
       KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
       KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-      # forward-auth: /auth/verify runs billing's subdomain gate (resource:59:5),
-      # so it needs fine authz on + the requirement + a path to P1.
+      # forward-auth: /auth/verify runs each domain's Tier-2 gate, resolved by Host
+      # from app.tenants.* (billing resource:59:5, trading resource:5:5). Fine authz
+      # on + a path to P1 for the permission check.
       AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
-      APP_REQUIREMENT_TYPE: "${BILLING_REQUIREMENT_TYPE:-resource}"
-      APP_REQUIREMENT_OBJECT_TYPE: "${BILLING_REQUIREMENT_OBJECT_TYPE:-59}"
-      APP_REQUIREMENT_PERMISSION: "${BILLING_REQUIREMENT_PERMISSION:-5}"
       P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
@@ -286,40 +287,6 @@ services:
       # (the SubdomainRequirementFilter calls P1 to check the logged-in user's
       # (object-type, permission)). P1 on :8888 via the host-gateway extra_host.
       AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
-      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
-    extra_hosts:
-      - "auth.geowealth.int:host-gateway"
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
-
-  # ---- Token Handler for trading --------------------------------------------
-  # Same image as token-handler-billing, different env (TSESSION + demo-trading-
-  # client). nginx routes trading's /(oauth|auth)/ + /logout here; it shares Redis
-  # + TSESSION + demo-trading-client with bff-trading.
-  token-handler-trading:
-    image: keycloak-demo-token-handler:latest
-    networks:
-      - keycloak-network
-    depends_on:
-      keycloak:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      MICRONAUT_APPLICATION_NAME: token-handler-trading
-      APP_SOURCE: token-handler-trading
-      REDIS_URI: "${REDIS_URI:-redis://redis:6379}"
-      SESSION_COOKIE_NAME: TSESSION
-      OAUTH_CLIENT_ID: demo-trading-client
-      OAUTH_CLIENT_SECRET: "${TRADING_OAUTH_CLIENT_SECRET}"
-      KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
-      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
-      # forward-auth: /auth/verify runs trading's subdomain gate (resource:5:5).
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
-      APP_REQUIREMENT_TYPE: "${TRADING_REQUIREMENT_TYPE:-resource}"
-      APP_REQUIREMENT_OBJECT_TYPE: "${TRADING_REQUIREMENT_OBJECT_TYPE:-5}"
-      APP_REQUIREMENT_PERMISSION: "${TRADING_REQUIREMENT_PERMISSION:-5}"
       P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"

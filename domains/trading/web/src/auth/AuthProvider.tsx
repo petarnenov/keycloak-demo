@@ -24,7 +24,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // BFF / Token Handler model (IETF "OAuth 2.0 for Browser-Based Apps"): this SPA
 // holds NO tokens. The BFF runs the OIDC code flow server-side, keeps the
 // access/refresh tokens in a server session, and hands the browser only an
-// httpOnly `TSESSION` cookie. So "who am I?" is a cookie-authenticated call to
+// httpOnly `GWSESSION` cookie. So "who am I?" is a cookie-authenticated call to
 // the BFF, and "log in" / "log out" are top-level navigations to BFF routes.
 const LOGOUT_URL = '/auth/logout';              // BFF RP-initiated logout → KC → P1 SLO
 

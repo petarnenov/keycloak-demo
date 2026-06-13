@@ -1,0 +1,45 @@
+# The per-host tenant requirement map — the ONE place a domain is declared. This
+# is the K8s form of token-handler/application.yml's app.tenants.*: mounted into
+# the Token Handler as an extra Micronaut config file (MICRONAUT_CONFIG_FILES).
+# Adding a domain = add an entry here + its host on demo-shared-client, then a
+# rolling restart (kubectl rollout restart deploy/token-handler). No image
+# rebuild, no data-BFF redeploy, and live sessions survive in Redis.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: token-handler-tenants
+  labels:
+    app.kubernetes.io/name: token-handler
+data:
+  tenants.yml: |
+    app:
+      tenants:
+        billing:
+          host: billing.geowealth.int
+          type: resource          # shared resource → Tier-2 P1 permission gate
+          object-type: 59         # BILLING_CENTER
+          permission: 5           # EXECUTE
+        trading:
+          host: trading.geowealth.int
+          type: resource
+          object-type: 5          # TRADE
+          permission: 5           # EXECUTE
+        # Add a domain by appending here (host + gate) — no new Deployment:
+        # reporting:
+        #   host: reporting.geowealth.int
+        #   type: firm             # firm-bound → membership check instead of Tier-2
+        #   firm-cd: 1
+---
+# OIDC client secret for demo-shared-client. PLACEHOLDER ONLY — in prod this is
+# delivered by External Secrets Operator / Vault Agent / a cloud secret store,
+# never committed. The value here is the demo dev secret (also in .envrc and the
+# live realm) so the manifest is self-contained for the local minikube smoke.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: token-handler-oidc
+  labels:
+    app.kubernetes.io/name: token-handler
+type: Opaque
+stringData:
+  client-secret: "Sh4r3dMultiTenantDemoSecret012345"

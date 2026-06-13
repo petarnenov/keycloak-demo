@@ -42,7 +42,7 @@ test.describe('external (non-BFF) logout cascades to every BFF', () => {
     // Admin revoke — POST /admin/realms/.../users/{id}/logout. Discover the
     // user from its live billing session rather than a hard-coded email, so
     // the revoke targets whatever seed person the backing DB carries.
-    const userId = await userIdFromClientSession('demo-billing-client');
+    const userId = await userIdFromClientSession('demo-shared-client');
     expect(userId, 'a logged-in user must exist before revoke').toBeTruthy();
     expect(await revokeUserSessions(userId!), 'KC admin logout').toBe(204);
 

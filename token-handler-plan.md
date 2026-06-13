@@ -1,5 +1,14 @@
 # Token Handler extraction — implementation + verification plan
 
+> **Historical record.** This documents the original **per-domain** Token Handler
+> extraction (`token-handler-billing` / `token-handler-trading`, `BSESSION`/`TSESSION`,
+> per-domain OIDC clients) and the forward-auth phase. It has since been **superseded
+> by a single multi-tenant, host-aware Token Handler** (one `token-handler`,
+> `demo-shared-client`, one `GWSESSION` cookie, `app.tenants.*` host map) plus
+> production Kubernetes manifests — see **`k8s/README-multitenant-k8s-plan.md`**.
+> The per-domain service names below no longer exist in `docker-compose.yml`; the
+> design rationale and verification approach still apply.
+
 ## Goal
 Run the shared OIDC/session/logout logic as a **separate, independently-deployable
 Token Handler** service, so a shared-auth fix deploys by redeploying only the

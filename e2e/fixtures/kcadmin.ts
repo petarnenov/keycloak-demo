@@ -8,7 +8,9 @@ import { URLS } from './config.js';
  * are actually gone, not just visually logged out.
  */
 
-const CLIENTS = ['p1-self-client', 'demo-billing-client', 'demo-trading-client'] as const;
+// The multi-tenant Token Handler fronts every domain via ONE shared OIDC client,
+// so billing + trading SSO sessions both live under demo-shared-client now.
+const CLIENTS = ['p1-self-client', 'demo-shared-client'] as const;
 export type DemoClient = (typeof CLIENTS)[number];
 
 export async function adminToken(): Promise<string> {

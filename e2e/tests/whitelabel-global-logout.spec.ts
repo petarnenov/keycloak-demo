@@ -39,7 +39,7 @@ test.describe('Global single-logout from a whitelabel host', () => {
 
     // The KC SSO session and its client sessions are gone (RP-initiated logout).
     await expect.poll(() => clientSessionCount('p1-self-client'), { timeout: 20_000 }).toBe(0);
-    await expect.poll(() => clientSessionCount('demo-billing-client'), { timeout: 20_000 }).toBe(0);
+    await expect.poll(() => clientSessionCount('demo-shared-client'), { timeout: 20_000 }).toBe(0);
 
     // The resource BFF rejects the now-orphaned session (back-channel fan-out).
     await expect.poll(() => fetchMeStatus(context, 'billing'), { timeout: 20_000 }).toBe(401);
