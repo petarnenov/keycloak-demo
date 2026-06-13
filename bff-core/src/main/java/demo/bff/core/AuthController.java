@@ -212,6 +212,21 @@ public class AuthController {
      * cookie isn't set, this is a genuine failure and we fall back to the SPA
      * error page.</p>
      */
+    /**
+     * Ops/version marker for the deployed shared-auth code. Also the live proof
+     * that a bff-core change ships by redeploying the Token Handler alone: bump
+     * {@code marker}, rebuild + redeploy token-handler-*, and this reflects the
+     * new value via the SPA's /auth/* route — with the domain data apps untouched.
+     */
+    @Get("/th-version")
+    @Secured(SecurityRule.IS_ANONYMOUS)
+    public Map<String, Object> thVersion() {
+        Map<String, Object> m = new HashMap<>();
+        m.put("service", "token-handler");
+        m.put("marker", "v2-demo");
+        return m;
+    }
+
     @Get("/login-failed")
     @Secured(SecurityRule.IS_ANONYMOUS)
     public HttpResponse<?> loginFailed(HttpRequest<?> request) {

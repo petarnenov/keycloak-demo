@@ -1,0 +1,112 @@
+# Token Handler — the shared OIDC/session/logout/token-refresh service, extracted
+# from the domain BFFs so an auth fix redeploys THIS alone (domain data apps
+# untouched). It is pure bff-core; everything domain-specific is env-driven, so one
+# image serves billing (BSESSION/demo-billing-client) and trading (TSESSION/
+# demo-trading-client). It shares Redis + the session cookie + the OIDC client with
+# the matching domain BFF, so the session it writes on login is read by that BFF
+# for /api/** authz.
+redis:
+  uri: ${REDIS_URI:redis://localhost:6379}
+micronaut:
+  application:
+    name: ${MICRONAUT_APPLICATION_NAME:token-handler}
+  http:
+    client:
+      ssl:
+        # mkcert-signed KC cert in dev (B3 — prod removes this and trusts a real CA).
+        insecure-trust-all-certs: true
+    services:
+      p1authz:
+        url: ${P1_AUTHZ_URL:http://localhost:8888}
+        read-timeout: 2s
+      kc:
+        url: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
+        read-timeout: 5s
+  session:
+    http:
+      cookie: true
+      header: false
+      # MUST match the domain BFF's cookie name so they share the session
+      # (BSESSION for billing, TSESSION for trading).
+      cookie-name: ${SESSION_COOKIE_NAME:BSESSION}
+      cookie-path: /
+      cookie-secure: true
+      cookie-same-site: Lax
+      redis:
+        enabled: true
+  security:
+    enabled: true
+    authentication: session
+    endpoints:
+      logout:
+        get-allowed: false
+    oauth2:
+      clients:
+        keycloak:
+          client-id: ${OAUTH_CLIENT_ID:demo-billing-client}
+          client-secret: ${OAUTH_CLIENT_SECRET}
+          openid:
+            issuer: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
+      nonce:
+        persistence: session
+      state:
+        persistence: cookie
+    token:
+      roles-name: roles
+      jwt:
+        signatures:
+          jwks:
+            keycloak:
+              url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080/realms/demo-realm}/protocol/openid-connect/certs
+    redirect:
+      login-success: /
+      login-failure: /auth/login-failed
+      logout: /
+      unauthorized:
+        enabled: false
+      forbidden:
+        enabled: false
+    intercept-url-map:
+      - pattern: /**
+        http-method: OPTIONS
+        access:
+          - isAnonymous()
+      - pattern: /health
+        access:
+          - isAnonymous()
+      - pattern: /oauth/**
+        access:
+          - isAnonymous()
+      - pattern: /backchannel-logout
+        http-method: POST
+        access:
+          - isAnonymous()
+      - pattern: /auth/login-failed
+        access:
+          - isAnonymous()
+      - pattern: /auth/th-version
+        access:
+          - isAnonymous()
+      - pattern: /auth/me
+        access:
+          - isAuthenticated()
+
+endpoints:
+  health:
+    enabled: true
+    sensitive: false
+
+app:
+  source: ${APP_SOURCE:token-handler}
+  # Inert here — the SubdomainRequirementFilter only gates /api/**, which the
+  # token-handler does not serve (the domain BFF does). Kept so the bean resolves.
+  requirement:
+    type: ${APP_REQUIREMENT_TYPE:resource}
+    firm-cd: ${APP_REQUIREMENT_FIRM_CD:}
+    object-type: ${APP_REQUIREMENT_OBJECT_TYPE:59}
+    permission: ${APP_REQUIREMENT_PERMISSION:5}
+  p1:
+    initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
+  authz:
+    fine-enabled: ${AUTHZ_FINE_ENABLED:false}
+    cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}
