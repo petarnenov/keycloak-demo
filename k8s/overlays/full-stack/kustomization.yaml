@@ -1,0 +1,109 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# THE WHOLE SYSTEM in-cluster: data (Oracle+seed, ES, memcached, kc-postgres,
+# redis) + identity (Keycloak, token-handler, BFFs, web) + legacy P1 (Tomcat +
+# Akka agents). Build with --load-restrictor LoadRestrictionsNone (cherry-picks
+# base files + reads keycloak/realm-export.json). k8s/up.sh drives the ordered
+# bring-up; this is the declarative whole.
+namespace: geowealth-demo
+
+resources:
+  - ../../base/namespace.yaml
+  # data tier
+  - ../../base/oracle.yaml
+  - ../../base/oracle-seed.yaml
+  - ../../base/elasticsearch.yaml
+  - ../../base/memcached.yaml
+  - ../../base/kc-postgres.yaml
+  - ../../base/redis.yaml
+  # identity tier
+  - ../../base/keycloak.yaml
+  - ../../base/token-handler-config.yaml
+  - ../../base/token-handler.yaml
+  - ../../base/data-bff-config.yaml
+  - ../../base/bff-billing.yaml
+  - ../../base/bff-trading.yaml
+  - ../../base/web.yaml
+  # legacy P1 tier
+  - ../../base/p1.yaml
+  # routing (app model: web pods self-proxy; KC + P1 hosts)
+  - ../../base/ingress-app.yaml
+
+# Keycloak realm seed from the canonical export (32 KB).
+configMapGenerator:
+  - name: keycloak-realm
+    files:
+      - ../../../keycloak/realm-export.json
+  # P1 URLs from the per-environment config file (swap to urls.prod.env for prod).
+  # p1-tomcat consumes this ConfigMap via envFrom (see base/p1.yaml).
+  - name: p1-urls
+    envs:
+      - ../../../../geowealth/k8s/env/urls.dev.env
+generatorOptions:
+  disableNameSuffixHash: true
+
+images:
+  - { name: keycloak-demo-token-handler, newTag: latest }
+  - { name: keycloak-demo-billing-bff, newTag: latest }
+  - { name: keycloak-demo-trading-bff, newTag: latest }
+  - { name: keycloak-demo-billing-web, newTag: latest }
+  - { name: keycloak-demo-trading-web, newTag: latest }
+  - { name: keycloak-demo-geowealth, newTag: latest }
+  - { name: keycloak-demo-db-seed, newTag: latest }
+
+patches:
+  - target: { kind: Deployment, name: token-handler }
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+      - { op: replace, path: /spec/replicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: token-handler }
+    patch: |
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+      - { op: replace, path: /spec/maxReplicas, value: 3 }
+  # Token Handler + BFFs talk to the IN-CLUSTER Keycloak: browser-facing issuer for
+  # redirects/iss (KC_HOSTNAME), in-cluster Service for JWKS; P1 via p1-tomcat.
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: { name: token-handler }
+      spec:
+        template:
+          spec:
+            containers:
+              - name: token-handler
+                imagePullPolicy: IfNotPresent
+                env:
+                  - { name: KEYCLOAK_ISSUER, value: "https://auth.geowealth.int/realms/demo-realm" }
+                  - { name: KEYCLOAK_AUTH_SERVER_URL, value: "http://keycloak:8080/realms/demo-realm" }
+                  - { name: P1_AUTHZ_URL, value: "http://p1-tomcat:8080" }
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: { name: bff-billing }
+      spec:
+        template:
+          spec:
+            containers:
+              - name: bff-billing
+                imagePullPolicy: IfNotPresent
+                env:
+                  - { name: KEYCLOAK_ISSUER, value: "https://auth.geowealth.int/realms/demo-realm" }
+                  - { name: KEYCLOAK_AUTH_SERVER_URL, value: "http://keycloak:8080/realms/demo-realm" }
+                  - { name: P1_AUTHZ_URL, value: "http://p1-tomcat:8080" }
+  - patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata: { name: bff-trading }
+      spec:
+        template:
+          spec:
+            containers:
+              - name: bff-trading
+                imagePullPolicy: IfNotPresent
+                env:
+                  - { name: KEYCLOAK_ISSUER, value: "https://auth.geowealth.int/realms/demo-realm" }
+                  - { name: KEYCLOAK_AUTH_SERVER_URL, value: "http://keycloak:8080/realms/demo-realm" }
+                  - { name: P1_AUTHZ_URL, value: "http://p1-tomcat:8080" }

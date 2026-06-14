@@ -1,0 +1,75 @@
+# Full-stack app + infra Ingress (model "a": the web pods proxy /api + /auth
+# themselves, so no external-auth here — contrast k8s/base/ingress.yaml which is
+# the external-auth model used by the multi-tenant-only overlays).
+#
+#   billing/trading.geowealth.int  -> web-billing/web-trading (HTTPS backend; the
+#                                     SPA nginx serves static + proxies in-cluster)
+#   auth.geowealth.int             -> keycloak:8080 (HTTP backend)
+#   p1.geowealth.int               -> p1-tomcat:8080 (HTTP backend; SAML IdP + app)
+#
+# TLS uses the mkcert certs (proxy/certs/*) loaded into <host>-tls Secrets by
+# k8s/up.sh. The web hosts terminate TLS at the pod (backend HTTPS) AND at the
+# ingress; auth/p1 terminate at the ingress.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-billing
+  labels: { app.kubernetes.io/name: web-billing }
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  ingressClassName: nginx
+  tls: [{ hosts: ["billing.geowealth.int"], secretName: web-billing-tls }]
+  rules:
+    - host: billing.geowealth.int
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web-billing, port: { number: 5184 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-trading
+  labels: { app.kubernetes.io/name: web-trading }
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  ingressClassName: nginx
+  tls: [{ hosts: ["trading.geowealth.int"], secretName: web-trading-tls }]
+  rules:
+    - host: trading.geowealth.int
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web-trading, port: { number: 5185 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak
+  labels: { app.kubernetes.io/name: keycloak }
+spec:
+  ingressClassName: nginx
+  tls: [{ hosts: ["auth.geowealth.int"], secretName: auth-tls }]
+  rules:
+    - host: auth.geowealth.int
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: keycloak, port: { number: 8080 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: p1
+  labels: { app.kubernetes.io/name: p1-tomcat }
+  annotations:
+    # P1 holds in-memory HttpSession; pin a user to one pod (demo). Prod = MSM.
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "P1AFFINITY"
+spec:
+  ingressClassName: nginx
+  tls: [{ hosts: ["p1.geowealth.int"], secretName: p1-tls }]
+  rules:
+    - host: p1.geowealth.int
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: p1-tomcat, port: { number: 8080 } } } }

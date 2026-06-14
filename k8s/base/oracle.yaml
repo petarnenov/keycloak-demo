@@ -1,0 +1,134 @@
+# Oracle Database Free 23ai — the GP application schema, IN-CLUSTER (this goal
+# reverses the earlier "Oracle stays external" decision). The Flyway baseline +
+# seeds (db/migration) are applied by the oracle-seed Job; the SERVER-SIDE parts
+# that a remote client can't do (MAX_STRING_SIZE=EXTENDED via utl32k.sql, and
+# loading the 5.9 MB V1 DDL) run here as gvenzl init scripts on first init.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oracle-creds
+  labels: { app.kubernetes.io/name: oracle }
+type: Opaque
+stringData:
+  # SYS/SYSTEM password (gvenzl ORACLE_PASSWORD) + the GP app user. PLACEHOLDER —
+  # prod injects via External Secrets/Vault. Matches db/stack defaults.
+  sys-password: "oracle_sys_pw"
+  app-password: "gp123"
+---
+# gvenzl runs these once, on first DB init, INSIDE the pod (where $ORACLE_HOME and
+# utl32k.sql exist). 01 = EXTENDED string size (the baseline schema needs it) +
+# DBMS_CRYPTO grant; 02 = load the staged V1 DDL as GP, then drop the
+# flyway_schema_history table V1's DDL recreates (so `flyway baseline` can run).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oracle-init
+  labels: { app.kubernetes.io/name: oracle }
+data:
+  01-extended.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo ">>> [init] enabling MAX_STRING_SIZE=EXTENDED + granting DBMS_CRYPTO"
+    sqlplus -s "sys/${ORACLE_PASSWORD}@localhost:1521/FREE as sysdba" <<'SQL'
+    WHENEVER SQLERROR CONTINUE
+    ALTER PLUGGABLE DATABASE FREEPDB1 CLOSE IMMEDIATE;
+    ALTER PLUGGABLE DATABASE FREEPDB1 OPEN UPGRADE;
+    ALTER SESSION SET CONTAINER=FREEPDB1;
+    ALTER SYSTEM SET MAX_STRING_SIZE=EXTENDED;
+    @?/rdbms/admin/utl32k.sql
+    ALTER SESSION SET CONTAINER=CDB$ROOT;
+    ALTER PLUGGABLE DATABASE FREEPDB1 CLOSE IMMEDIATE;
+    ALTER PLUGGABLE DATABASE FREEPDB1 OPEN;
+    ALTER PLUGGABLE DATABASE FREEPDB1 SAVE STATE;
+    ALTER SESSION SET CONTAINER=FREEPDB1;
+    GRANT EXECUTE ON SYS.DBMS_CRYPTO TO GP;
+    EXIT
+    SQL
+  02-baseline.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo ">>> [init] loading V1 baseline schema (~1792 tables) as GP"
+    sqlplus -s "GP/${APP_USER_PASSWORD}@localhost:1521/FREEPDB1" <<'SQL'
+    SET DEFINE OFF
+    WHENEVER SQLERROR CONTINUE
+    @/seed/V1__baseline_schema.sql
+    DROP TABLE "flyway_schema_history" CASCADE CONSTRAINTS PURGE;
+    EXIT
+    SQL
+    echo ">>> [init] V1 loaded; flyway_schema_history dropped (ready for flyway baseline)"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oracle
+  labels: { app.kubernetes.io/name: oracle }
+spec:
+  clusterIP: None
+  selector: { app.kubernetes.io/name: oracle }
+  ports:
+    - { name: tns, port: 1521, targetPort: 1521 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: oracle
+  labels:
+    app.kubernetes.io/name: oracle
+    app.kubernetes.io/component: data
+spec:
+  serviceName: oracle
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: oracle }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oracle
+        app.kubernetes.io/component: data
+    spec:
+      # Stage the 5.9 MB V1 DDL from the db-seed image into a shared volume so the
+      # gvenzl init script (02-baseline.sh) can load it server-side.
+      initContainers:
+        - name: stage-v1
+          image: keycloak-demo-db-seed:latest
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "cp /flyway/sql/V1__baseline_schema.sql /seed/"]
+          volumeMounts:
+            - { name: seed, mountPath: /seed }
+      containers:
+        - name: oracle
+          image: gvenzl/oracle-free:23-slim
+          ports:
+            - { name: tns, containerPort: 1521 }
+          env:
+            - name: ORACLE_PASSWORD
+              valueFrom: { secretKeyRef: { name: oracle-creds, key: sys-password } }
+            - name: APP_USER
+              value: "GP"
+            - name: APP_USER_PASSWORD
+              valueFrom: { secretKeyRef: { name: oracle-creds, key: app-password } }
+          resources:
+            requests: { cpu: "1", memory: 2Gi }
+            limits:   { cpu: "2", memory: 4Gi }
+          startupProbe:
+            exec: { command: ["healthcheck.sh"] }
+            # Oracle first-init (create DB + EXTENDED dance + load 5.9 MB V1) is slow.
+            periodSeconds: 15
+            failureThreshold: 40   # ~10 min
+          readinessProbe:
+            exec: { command: ["healthcheck.sh"] }
+            periodSeconds: 15
+          volumeMounts:
+            - { name: data, mountPath: /opt/oracle/oradata }
+            - { name: seed, mountPath: /seed }
+            - { name: init, mountPath: /container-entrypoint-initdb.d }
+      volumes:
+        - name: seed
+          emptyDir: {}
+        - name: init
+          configMap: { name: oracle-init, defaultMode: 0755 }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 10Gi } }

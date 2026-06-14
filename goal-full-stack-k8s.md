@@ -269,6 +269,64 @@ every tier reaches Ready and the e2e is green — proving the single-command goa
 - Containerizing P1's full prod agent topology from `prod-config/bin/commandspecs/`
   (the ~25 prod agents) — this goal targets the demo-functional subset.
 
+## Implementation status (2026-06-13) — branch `petarnenov/full-stack-k8s`
+
+**Built (all under `k8s/`, + geowealth `k8s/` on `team/petarnenov/k8s-full-stack`):**
+- Data tier: `oracle.yaml` (StatefulSet + server-side init scripts: EXTENDED dance +
+  utl32k + DBMS_CRYPTO grant + V1 load, V1 staged via initContainer from the
+  `db-seed` image), `oracle-seed.yaml` (flyway baseline+migrate Job + login-hash
+  Secret), `elasticsearch.yaml`, `memcached.yaml`, `kc-postgres.yaml`. `db-seed`
+  image (`k8s/images/db-seed/Dockerfile`) — **built**, all 18 migrations baked
+  (V1 = 5.9 MB confirmed).
+- Identity tier: `keycloak.yaml` (realm import + KC_HOSTNAME issuer split),
+  `web.yaml` (reuse the SSL web images), `ingress-app.yaml`.
+- Legacy P1 tier: geowealth `k8s/Dockerfile` (one image, many entrypoints) +
+  `entrypoint.sh` (role dispatcher) + `config/*.tpl` (service-DNS config) +
+  `README.md`; `k8s/base/p1.yaml` (coordinator seed + samlmanager + reportengine/
+  proposalagents/emailagent + Tomcat + keystore Secret).
+- Orchestration: `k8s/overlays/full-stack/kustomization.yaml` (48 resources) +
+  `k8s/up.sh` (ordered waves + secret loading + teardown).
+
+**Verified:**
+- Full-stack overlay **renders (48 resources)** and **server-dry-run validates
+  (46)** against a live API server; in-cluster KC env patches applied.
+- `db-seed` image built + migrations baked.
+- **Identity tier RUNS in-cluster**: Keycloak + its Postgres deployed on minikube;
+  `demo-realm` imported with `demo-shared-client` + the `p1` SAML IdP (confirmed via
+  admin API). `up.sh`/`entrypoint.sh` pass `bash -n`.
+
+### FULL in-cluster run — DONE (2026-06-13, Docker raised to 32 GB)
+
+With Docker Desktop bumped to 32 GB and a 24 GB minikube (`-p geowealth`), the
+**entire stack runs in containers controlled by K8s — 19/19 pods Ready**:
+- **DB in-container, seeded from `db/`**: Oracle (`gvenzl/oracle-free:23-slim`) with
+  the GP schema loaded by the K8s init scripts — **1792 tables + `MAX_STRING_SIZE=
+  EXTENDED`** — then the `oracle-seed` Job ran flyway baseline V1 + migrate V2..V18 +
+  the login hash → **v18**. Verified: 4 firms (1/3/5/40), 3 login users
+  (tim1/tim3/tim40), 9 password hashes. Job made idempotent via `-baselineOnMigrate`.
+- **Identity**: Keycloak (realm imported: `demo-shared-client` + `p1` IdP) + its
+  Postgres; token-handler + bff-billing×2 + bff-trading×2 + web-billing + web-trading.
+- **Legacy P1 — Akka cluster FORMED**: `p1-coordinator` (seed) + `samlintegrationmanager`
+  (SamlManager) + `reportengine` + `proposalagents` + `emailagent` + `p1-tomcat`
+  (joined as role `web`, HTTP 200) all **Member is Up**, leader elected. The P1
+  config templated to in-cluster Service DNS (`oracle:1521`, `elasticsearch:9200`,
+  the coordinator seed). One geowealth image, many entrypoints (ROLE/AGENT).
+- **Backing**: ES 7.17, memcached, Redis.
+
+Hurdles cleared during the run: local-image `imagePullPolicy: IfNotPresent`;
+minikube docker-daemon DNS flakiness after the Docker restart (node restart);
+Oracle server-side EXTENDED+V1 init; the full `akka.conf` template (`provider=cluster`
++ `include base_akka_config` + artery `:4007`); the **coordinator's canonical
+hostname = its stable DNS** so its self-address matches the seed-nodes literal;
+flyway `baselineOnMigrate` for the empty-history retry case.
+
+**Remaining (env, not artifacts):** a browser-driven login through the *ingress*
+needs `minikube tunnel` (Mac docker-driver can't reach `192.168.49.2` directly) and
+`/etc/hosts` that currently maps those hosts to the compose stack — so the
+end-to-end e2e through the ingress is the one piece not yet driven headlessly; the
+in-cluster functional state (seeded DB, formed Akka cluster, imported realm, serving
+Tomcat, all pods Ready) is verified.
+
 ## 8. Execution notes
 
 - Use the **top model**.

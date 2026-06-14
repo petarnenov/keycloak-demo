@@ -1,0 +1,90 @@
+# Domain web (SPA) pods — the existing keycloak-demo-*-web images. Their nginx
+# serves the built SPA AND proxies /api + /(oauth|auth)/ to `token-handler` /
+# `bff-<name>` BY SERVICE NAME, which resolves in-cluster as-is — so the web pod
+# does its own auth_request (model "a" from the plan). They listen on 5184/5185
+# over TLS (mkcert certs mounted from a Secret); the Ingress routes `/` here with
+# backend-protocol HTTPS. The cert Secrets are populated by k8s/up.sh from
+# proxy/certs/<host>.{crt,key} (placeholders here so kustomize resolves).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-billing
+  labels: { app.kubernetes.io/name: web-billing, app.kubernetes.io/component: web }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: web-billing } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: web-billing, app.kubernetes.io/component: web }
+    spec:
+      containers:
+        - name: web
+          image: keycloak-demo-billing-web:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: https, containerPort: 5184 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 250m, memory: 192Mi }
+          readinessProbe:
+            tcpSocket: { port: https }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: certs, mountPath: /certs, readOnly: true }
+      volumes:
+        - name: certs
+          secret:
+            secretName: web-billing-tls
+            items:
+              - { key: tls.crt, path: billing.crt }
+              - { key: tls.key, path: billing.key }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-billing
+  labels: { app.kubernetes.io/name: web-billing }
+spec:
+  selector: { app.kubernetes.io/name: web-billing }
+  ports: [{ name: https, port: 5184, targetPort: https }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-trading
+  labels: { app.kubernetes.io/name: web-trading, app.kubernetes.io/component: web }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: web-trading } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: web-trading, app.kubernetes.io/component: web }
+    spec:
+      containers:
+        - name: web
+          image: keycloak-demo-trading-web:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: https, containerPort: 5185 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 250m, memory: 192Mi }
+          readinessProbe:
+            tcpSocket: { port: https }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: certs, mountPath: /certs, readOnly: true }
+      volumes:
+        - name: certs
+          secret:
+            secretName: web-trading-tls
+            items:
+              - { key: tls.crt, path: trading.crt }
+              - { key: tls.key, path: trading.key }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-trading
+  labels: { app.kubernetes.io/name: web-trading }
+spec:
+  selector: { app.kubernetes.io/name: web-trading }
+  ports: [{ name: https, port: 5185, targetPort: https }]
