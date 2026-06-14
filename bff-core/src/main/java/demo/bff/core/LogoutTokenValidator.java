@@ -2,17 +2,22 @@ package demo.bff.core;
 
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.jwk.JWKMatcher;
+import com.nimbusds.jose.jwk.JWKSelector;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.jwk.source.RemoteJWKSet;
 import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JWSKeySelector;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jose.util.DefaultResourceRetriever;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import com.nimbusds.jwt.proc.DefaultJWTProcessor;
 import io.micronaut.context.annotation.Value;
 import jakarta.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URL;
 import java.util.Collections;
@@ -29,6 +34,8 @@ import java.util.Map;
  */
 @Singleton
 public class LogoutTokenValidator {
+
+    private static final Logger LOG = LoggerFactory.getLogger(LogoutTokenValidator.class);
 
     private static final String BACKCHANNEL_LOGOUT_EVENT =
             "http://schemas.openid.net/event/backchannel-logout";
@@ -59,9 +66,15 @@ public class LogoutTokenValidator {
         } catch (java.net.MalformedURLException e) {
             throw new IllegalStateException("bad JWKS url", e);
         }
-        JWKSource<SecurityContext> keySource = new RemoteJWKSet<>(jwksUrl);
+        // Bound the JWKS fetch: the default RemoteJWKSet retriever has very long
+        // timeouts, so a cold fetch (first back-channel logout after startup) can
+        // stall for ~60s if KC is briefly slow — long enough that the BFF session
+        // outlives a logout's poll window and a revoked user still looks
+        // authenticated. Cap connect/read at 3s so a cold fetch is bounded.
+        DefaultResourceRetriever retriever = new DefaultResourceRetriever(3000, 3000);
+        RemoteJWKSet<SecurityContext> remote = new RemoteJWKSet<>(jwksUrl, retriever);
         JWSKeySelector<SecurityContext> keySelector =
-                new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keySource);
+                new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, remote);
         DefaultJWTProcessor<SecurityContext> p = new DefaultJWTProcessor<>();
         p.setJWSKeySelector(keySelector);
         // KC's back-channel logout token carries header typ "logout+jwt"; the
@@ -69,6 +82,14 @@ public class LogoutTokenValidator {
         p.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>(
                 new JOSEObjectType("logout+jwt"), JOSEObjectType.JWT, null));
         this.processor = p;
+
+        // Eagerly warm the JWKS cache so the FIRST real back-channel logout isn't
+        // the one that pays the cold fetch — best-effort, never fail startup.
+        try {
+            remote.get(new JWKSelector(new JWKMatcher.Builder().build()), null);
+        } catch (Exception warmEx) {
+            LOG.warn("LogoutTokenValidator: JWKS warm-up skipped: {}", warmEx.toString());
+        }
     }
 
     /** @return the {@code sid} if the logout token is valid, otherwise {@code null}. */

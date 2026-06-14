@@ -1,4 +1,5 @@
 import { request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { P1_PORT } from './config.js';
 
 /**
  * Helpers for the P1 whitelabel hosts. Unlike the BFF domains (billing/trading)
@@ -7,17 +8,18 @@ import { request as playwrightRequest, type APIRequestContext, type Page } from 
  * firm-resolution and global-logout specs.
  *
  * `*.localhost` resolves to 127.0.0.1 with no `/etc/hosts` entry, so any
- * subdomain works as a distinct host for cookie/whitelabel purposes.
+ * subdomain works as a distinct host for cookie/whitelabel purposes. The port
+ * (`P1_PORT`) depends on how the stack is exposed — see `config.ts`.
  */
 export const P1_HOSTS = {
   /** Canonical P1 host — resolves to firm 1 (GeoWealth). */
-  canonical: 'http://localhost:8888',
+  canonical: `http://localhost:${P1_PORT}`,
   /** Loopback IP — a host that matches no firm; must fall to the default. */
-  loopback: 'http://127.0.0.1:8888',
+  loopback: `http://127.0.0.1:${P1_PORT}`,
   /** Arbitrary unmapped subdomain — must also fall to the default firm. */
-  neutral: 'http://foo.localhost:8888',
+  neutral: `http://foo.localhost:${P1_PORT}`,
   /** CreativeOne whitelabel host — resolves to firm 5 (c1wealth). */
-  whitelabel: 'http://c1wealth.localhost:8888',
+  whitelabel: `http://c1wealth.localhost:${P1_PORT}`,
 } as const;
 
 /** Firm codes the demo data assigns to the hosts above. */

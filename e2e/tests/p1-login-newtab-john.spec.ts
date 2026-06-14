@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { URLS, P1_CREDENTIALS } from '../fixtures/config.js';
+import { URLS, P1_CREDENTIALS, P1_PORT } from '../fixtures/config.js';
 import { FIRM, p1LoginState, sessionFirm, expectLoggedIn } from '../fixtures/p1.js';
 import { clientSessionCount, logoutAllRealmSessions } from '../fixtures/kcadmin.js';
 
@@ -25,7 +25,7 @@ import { clientSessionCount, logoutAllRealmSessions } from '../fixtures/kcadmin.
  */
 
 /** Firm-5 whitelabel host. `*.localhost` resolves to 127.0.0.1 with no hosts entry. */
-const JOHN_HOST = 'http://john.localhost:8888';
+const JOHN_HOST = `http://john.localhost:${P1_PORT}`;
 /** john's P1 entity id — the firm-5 account of tim1's person (see V18). */
 const JOHN_ENTITY_ID = '019E8978F9AE7676915751838956A526';
 

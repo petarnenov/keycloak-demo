@@ -21,7 +21,7 @@ test.describe('Whitelabel cross-host SSO', () => {
     // Silent-SSO onto the whitelabel host — must land on c1wealth, not bounce
     // to localhost, and report a live P1 session there.
     await silentSsoP1(page, P1_HOSTS.whitelabel);
-    expect(new URL(page.url()).host, 'landed on the whitelabel host').toBe('c1wealth.localhost:8888');
+    expect(new URL(page.url()).host, 'landed on the whitelabel host').toBe(new URL(P1_HOSTS.whitelabel).host);
     expect(await p1LoginState(page.request, P1_HOSTS.whitelabel)).toBe('loggedUser');
 
     // And onto the canonical host off the same KC session.

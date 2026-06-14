@@ -2,10 +2,17 @@
  * Shared environment configuration for the SSO E2E suite. Centralised here so
  * that "what URLs are the demo on?" is a single edit when ports or hosts
  * change. See `keycloak-demo/docker-compose.yml` for the source of truth.
+ *
+ * P1 is reached on a host port that depends on how the stack is exposed:
+ *   - docker compose: P1 publishes 8888 directly.
+ *   - Kubernetes (minikube): `kubectl port-forward svc/p1-tomcat 8080:8080`.
+ * Default to the K8s port (8080); override with `P1_PORT` for compose (8888).
  */
+export const P1_PORT = process.env.P1_PORT ?? '8080';
+
 export const URLS = {
   /** P1 monolith — the SAML IdP that fronts every demo login. */
-  p1Base: 'http://localhost:8888',
+  p1Base: `http://localhost:${P1_PORT}`,
   /** Keycloak's public reverse-proxied origin (TLS by `auth` nginx). */
   kcBase: 'https://auth.geowealth.int:5180',
   realm: 'demo-realm',

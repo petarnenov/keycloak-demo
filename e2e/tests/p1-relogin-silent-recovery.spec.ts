@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { URLS, P1_CREDENTIALS } from '../fixtures/config.js';
+import { URLS, P1_CREDENTIALS, P1_PORT } from '../fixtures/config.js';
 import { FIRM, p1LoginState, sessionFirm, expectLoggedIn } from '../fixtures/p1.js';
 import { clientSessionCount, logoutAllRealmSessions } from '../fixtures/kcadmin.js';
 
@@ -25,7 +25,7 @@ import { clientSessionCount, logoutAllRealmSessions } from '../fixtures/kcadmin.
  *     SSO instead of going straight to the credential form.
  */
 
-const C1_HOST = 'http://c1wealth.localhost:8888';
+const C1_HOST = `http://c1wealth.localhost:${P1_PORT}`;
 
 const P1_REQUEST_TIMEOUT = 30_000;
 
