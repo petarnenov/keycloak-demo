@@ -13,7 +13,10 @@ cd "$(dirname "$0")/.."
 
 NS=geowealth-demo
 OVERLAY=k8s/overlays/full-stack
-PROFILE=geowealth
+# Minikube profile. Override (MINIKUBE_PROFILE) to run a second cluster or to dodge
+# a stale profile of the same name created with a different driver (e.g. a leftover
+# rootful-podman "geowealth" blocks a docker "geowealth" with GUEST_DRIVER_MISMATCH).
+PROFILE="${MINIKUBE_PROFILE:-geowealth}"
 # Cluster size. Defaults fit the base stack on a modest host; bump on a big box to
 # schedule more P1 agents / replicas, e.g. `MINIKUBE_MEM_MIB=49152 MINIKUBE_CPUS=12
 # ./k8s/up.sh`. NOTE: minikube fixes memory/CPU at cluster CREATION — to resize an

@@ -123,6 +123,11 @@ token-handler can resolve the public issuer in-cluster for OIDC discovery → ru
 If the P1 image build fails, confirm `$HOME/geowealth` is on the right branch (or
 point `GEOWEALTH_DIR=/path ./k8s/up.sh` elsewhere).
 
+`MINIKUBE_PROFILE` overrides the profile name (default `geowealth`) — use it to run
+a second cluster, or to avoid a stale profile of the same name created with a
+different driver (a leftover rootful-podman `geowealth` blocks a docker `geowealth`
+with `GUEST_DRIVER_MISMATCH`), e.g. `MINIKUBE_PROFILE=gwk8s ./k8s/up.sh`.
+
 ## 6. Access: `/etc/hosts` + port-forwards
 
 The realm/app config uses the ports `:5184 / :5185 / :5180 / :8080`, which come
