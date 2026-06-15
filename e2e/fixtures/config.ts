@@ -3,10 +3,11 @@
  * that "what URLs are the demo on?" is a single edit when ports or hosts
  * change. See `keycloak-demo/docker-compose.yml` for the source of truth.
  *
- * P1 is reached on a host port that depends on how the stack is exposed:
- *   - docker compose: P1 publishes 8888 directly.
+ * P1 is reached on `localhost:8080` — the single browser-facing P1 port the demo
+ * standardised on (the `p1` SAML IdP in the realm redirects the browser there):
  *   - Kubernetes (minikube): `kubectl port-forward svc/p1-tomcat 8080:8080`.
- * Default to the K8s port (8080); override with `P1_PORT` for compose (8888).
+ *   - local geowealth Tomcat: serves on 8080 directly (see ../README.md).
+ * Override with `P1_PORT` only for a non-standard local setup.
  */
 export const P1_PORT = process.env.P1_PORT ?? '8080';
 

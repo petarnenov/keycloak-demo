@@ -59,7 +59,10 @@ export async function loginViaP1(page: Page, tenant: TenantSlug): Promise<MeResp
  * {@link fetchMeStatus} instead.
  */
 export async function fetchMe(page: Page, tenant: TenantSlug): Promise<MeResponse> {
-  const response = await page.request.get(`${URLS.domains[tenant]}/auth/me`);
+  // 30s (not the 10s default actionTimeout): right after a fresh login the
+  // forward-auth /auth/verify + a possible token refresh can be slow on a
+  // loaded dev stack, and a warm-up timeout here fails the whole test.
+  const response = await page.request.get(`${URLS.domains[tenant]}/auth/me`, { timeout: 30_000 });
   expect(response.status(), `/auth/me on ${tenant}`).toBe(200);
   return (await response.json()) as MeResponse;
 }

@@ -125,6 +125,15 @@ app:
   # Single-tenant fallback (per-domain build): inert while app.tenants is set, so
   # the bean stays empty here (no type → SubdomainAuthorizer uses the host map).
   p1:
+    # Browser-facing P1 IdP-initiated SLO endpoint the /auth/logout 303 sends the
+    # user to. MUST be reachable by the BROWSER (not the in-cluster Service DNS):
+    # logout is a top-level navigation, so an in-cluster host like p1-tomcat:8080
+    # would resolve to nothing in the user's browser. The default below targets
+    # the compose stack (P1 published on localhost:8888); a K8s deployment, where
+    # the browser reaches P1 on a different host/port, MUST override it via the
+    # APP_P1_INITIATE_SLO_URL env var — Micronaut relaxed-binds it to this property
+    # automatically. (A ${...:default} placeholder can't be used here: Micronaut
+    # mis-parses the colons in an http://host:port default.)
     initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
   authz:
     fine-enabled: ${AUTHZ_FINE_ENABLED:false}

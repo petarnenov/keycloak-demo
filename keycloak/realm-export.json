@@ -518,7 +518,11 @@
         "http://localhost:8888/saml/idp/oidc-callback.do",
         "http://c1wealth.localhost:8888/saml/idp/oidc-callback.do",
         "http://john.localhost:8888/saml/idp/oidc-callback.do",
-        "http://green.localhost:8888/saml/idp/oidc-callback.do"
+        "http://green.localhost:8888/saml/idp/oidc-callback.do",
+        "http://localhost:8080/saml/idp/oidc-callback.do",
+        "http://c1wealth.localhost:8080/saml/idp/oidc-callback.do",
+        "http://john.localhost:8080/saml/idp/oidc-callback.do",
+        "http://green.localhost:8080/saml/idp/oidc-callback.do"
       ],
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
@@ -527,7 +531,7 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:8888/*",
+        "post.logout.redirect.uris": "http://localhost:8888/*##http://localhost:8080/*",
         "backchannel.logout.url": "http://host.docker.internal:8888/saml/idp/back-channel-logout.do",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false"
@@ -603,8 +607,8 @@
       "linkOnly": false,
       "firstBrokerLoginFlowAlias": "p1-first-broker-login",
       "config": {
-        "singleSignOnServiceUrl": "http://localhost:8888/saml/idp/sso.do",
-        "singleLogoutServiceUrl": "http://localhost:8888/saml/idp/slo.do",
+        "singleSignOnServiceUrl": "http://localhost:8080/saml/idp/sso.do",
+        "singleLogoutServiceUrl": "http://localhost:8080/saml/idp/slo.do",
         "nameIDPolicyFormat": "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
         "principalType": "SUBJECT",
         "postBindingResponse": "true",

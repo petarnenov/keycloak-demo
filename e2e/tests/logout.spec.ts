@@ -23,6 +23,7 @@ test.describe('logout fans out across all subdomains', () => {
   });
 
   test('signing out on billing invalidates trading via back-channel POST', async ({ browser }) => {
+    test.setTimeout(240_000); // warms up two full P1 logins (~45-90s each) on the slow dev stack
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
 
     // Warm up all three subdomain sessions inside ONE context — they share

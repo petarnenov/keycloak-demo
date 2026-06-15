@@ -56,6 +56,37 @@ The shape is fixed; copy `domains/billing/` (or `trading/`) and adapt. Roughly:
 5. Add `/etc/hosts` entry `127.0.0.1 <name>.geowealth.int` and generate an mkcert cert pair at `proxy/certs/<name>.geowealth.int.{crt,key}`.
 6. In `~/geowealth/...useIntegrationLinks.js`, push a link with `kcAuthorize('demo-shared-client', 'https://<name>.geowealth.int:<port>/', 'demo-<name>')`.
 
+## Environment URL configuration (K8s)
+
+Every environment-specific URL/port the identity tier uses lives in **one file per
+environment**: `k8s/env/urls.{dev,qa,prod}.env`. Swap the file to retarget — no
+code, no image rebuild, no `realm-export.json` edit. Two consumers, both driven by
+that file:
+
+- **token-handler env** — the full-stack overlay generates the `app-urls`
+  ConfigMap from `urls.dev.env` and the token-handler pulls `KEYCLOAK_ISSUER` /
+  `KEYCLOAK_AUTH_SERVER_URL` / `P1_AUTHZ_URL` / `APP_P1_INITIATE_SLO_URL` from it
+  via `valueFrom: configMapKeyRef` (with `value: null` to drop the base literals).
+  (The data BFFs are forward-auth/auth-unaware, so their KC env is inert and left
+  hardcoded.)
+- **the realm** — `scripts/reconcile-realm.sh <env-file>` PATCHes the live realm
+  via the admin API: the `p1` SAML IdP `singleSignOn/singleLogoutServiceUrl` and
+  every active client's (`demo-shared-client`, `p1-self-client`) redirectUris /
+  webOrigins / post-logout / back-channel URLs. This exists because realm config
+  is data in Postgres and `--import-realm` is `IGNORE_EXISTING` — env vars alone
+  never re-drive a running realm. Idempotent; `up.sh` runs it after bring-up
+  (via a short-lived in-cluster admin port-forward), so it fixes BOTH a fresh
+  install and any drift. **Single-valued realm fields like the IdP SAML URL can't
+  list both compose `:8888` and K8s `:8080`, which is exactly why hand-patching
+  them used to drift — always change `urls.<env>.env` + reconcile, never the live
+  realm by hand.**
+
+`up.sh` also injects a hostAlias mapping the browser-facing `auth.geowealth.int`
+to the in-cluster `kc-ext` Service so the token-handler can do OIDC discovery
+against the public issuer from inside the pod (the issuer host is otherwise
+unresolvable in-cluster). The `kc-ext` ClusterIP is only known at deploy time, so
+this is a runtime patch, not a static manifest value.
+
 ## Persistence model — what survives a restart
 
 | Lives in | Persists across | Wiped only by |
@@ -106,7 +137,8 @@ Pure IdP-init (P1 → Keycloak with unsolicited Response) does **not** work clea
 | Add a new domain | follow the recipe in "Adding a new domain" above. |
 | Env var on a service | `podman compose up -d --force-recreate <service>` |
 | `docker-compose.yml` structural change | `podman compose up -d` (compose picks up the diff) |
-| `keycloak/realm-export.json` | takes effect on fresh DB only; otherwise patch the live realm via admin API |
+| `keycloak/realm-export.json` | takes effect on fresh DB only; otherwise patch the live realm via admin API. For env-specific URLs (IdP SAML endpoints, client redirect/web-origin/post-logout/back-channel), edit `k8s/env/urls.<env>.env` and run `./scripts/reconcile-realm.sh k8s/env/urls.<env>.env` (idempotent; `up.sh` runs it automatically). |
+| A URL or port that differs per environment (K8s) | edit `k8s/env/urls.<env>.env` (the single source) — see "Environment URL configuration (K8s)" below. No code / image / realm-export edit. |
 | New realm role needed for a running demo | POST `/admin/realms/demo-realm/roles` with admin token; also add to `realm-export.json` for future fresh installs |
 | New OIDC client needed for a running demo | POST `/admin/realms/demo-realm/clients` with admin token; also add to `realm-export.json` |
 | P1/Integrations link source (`~/geowealth/.../useIntegrationLinks.js`) | rebuild the GeoWealth Tomcat app — outside this repo. |

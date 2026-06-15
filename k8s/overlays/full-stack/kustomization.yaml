@@ -40,6 +40,22 @@ configMapGenerator:
   - name: p1-urls
     envs:
       - ../../../../geowealth/k8s/env/urls.dev.env
+  # The mkcert development CA. The token-handler does the OIDC code flow against
+  # Keycloak's PUBLIC mkcert-signed issuer (https://auth.geowealth.int), so it
+  # must trust this CA; its entrypoint imports the mounted file into the JVM
+  # truststore. Dev-only — prod uses a real CA already in the system trust store,
+  # so this generator + the volume patch below live in the dev overlay, not base.
+  - name: mkcert-ca
+    files:
+      - ../../../proxy/certs/mkcert-rootCA.pem
+  # The SINGLE per-env URL source (k8s/env/urls.<env>.env). Its [APP] keys feed
+  # the token-handler env below via configMapKeyRef; its [REALM] keys drive
+  # scripts/reconcile-realm.sh (the realm side). Swap to urls.qa/prod.env to
+  # retarget. The extra [REALM] keys land in this ConfigMap harmlessly (the app
+  # only reads the four it references).
+  - name: app-urls
+    envs:
+      - ../../../k8s/env/urls.dev.env
 generatorOptions:
   disableNameSuffixHash: true
 
@@ -58,13 +74,27 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: IfNotPresent
+      # One replica is enough for the dev stack. The old self-deadlock (logout
+      # blocked the request thread waiting on KC, which synchronously
+      # back-channel-POSTed this same handler → /health starved → liveness kill →
+      # 502) is gone now that AuthController fires the KC end-session on a
+      # background thread (see bff-core AuthController#logout), so a single
+      # replica serves both the logout request and the self-directed
+      # back-channel POST without deadlocking.
       - { op: replace, path: /spec/replicas, value: 1 }
   - target: { kind: HorizontalPodAutoscaler, name: token-handler }
     patch: |
       - { op: replace, path: /spec/minReplicas, value: 1 }
       - { op: replace, path: /spec/maxReplicas, value: 3 }
-  # Token Handler + BFFs talk to the IN-CLUSTER Keycloak: browser-facing issuer for
-  # redirects/iss (KC_HOSTNAME), in-cluster Service for JWKS; P1 via p1-tomcat.
+  # Token-handler URLs come from the single per-env source k8s/env/urls.dev.env
+  # (the app-urls ConfigMap above), NOT hardcoded here — change the env file to
+  # retarget. valueFrom/configMapKeyRef (rather than envFrom) so these override
+  # the base's explicit env entries by name. The four keys:
+  #   KEYCLOAK_ISSUER          browser-facing KC, MUST carry :5180 (kc-ext Service)
+  #                            — discovery + authorize redirect + `iss`.
+  #   KEYCLOAK_AUTH_SERVER_URL in-cluster KC for JWKS (http://keycloak:8080).
+  #   P1_AUTHZ_URL             in-cluster P1 for server-side authz (p1-tomcat:8080).
+  #   APP_P1_INITIATE_SLO_URL  browser-facing P1 SLO the /auth/logout 303 targets.
   - patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -76,9 +106,33 @@ patches:
               - name: token-handler
                 imagePullPolicy: IfNotPresent
                 env:
-                  - { name: KEYCLOAK_ISSUER, value: "https://auth.geowealth.int/realms/demo-realm" }
-                  - { name: KEYCLOAK_AUTH_SERVER_URL, value: "http://keycloak:8080/realms/demo-realm" }
-                  - { name: P1_AUTHZ_URL, value: "http://p1-tomcat:8080" }
+                  # `value: null` deletes the base's literal value so only
+                  # valueFrom remains (k8s rejects an env var carrying both).
+                  - name: KEYCLOAK_ISSUER
+                    value: null
+                    valueFrom: { configMapKeyRef: { name: app-urls, key: KEYCLOAK_ISSUER } }
+                  - name: KEYCLOAK_AUTH_SERVER_URL
+                    value: null
+                    valueFrom: { configMapKeyRef: { name: app-urls, key: KEYCLOAK_AUTH_SERVER_URL } }
+                  - name: P1_AUTHZ_URL
+                    value: null
+                    valueFrom: { configMapKeyRef: { name: app-urls, key: P1_AUTHZ_URL } }
+                  - name: APP_P1_INITIATE_SLO_URL
+                    valueFrom: { configMapKeyRef: { name: app-urls, key: APP_P1_INITIATE_SLO_URL } }
+                # Mount the mkcert dev CA so the entrypoint can import it into the
+                # JVM truststore (see token-handler/Dockerfile). The image runs
+                # non-root with a read-only rootfs (base securityContext), so it
+                # imports into a copy on the writable /tmp emptyDir — no root or
+                # writable rootfs needed. Strategic-merge adds this alongside the
+                # base tenants/tmp mounts.
+                volumeMounts:
+                  - name: mkcert-ca
+                    mountPath: /certs/mkcert-rootCA.pem
+                    subPath: mkcert-rootCA.pem
+                    readOnly: true
+            volumes:
+              - name: mkcert-ca
+                configMap: { name: mkcert-ca }
   - patch: |
       apiVersion: apps/v1
       kind: Deployment

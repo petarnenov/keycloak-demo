@@ -122,6 +122,32 @@ wait_ready deployment/bff-trading 180s
 wait_ready deployment/web-billing 120s
 wait_ready deployment/web-trading 120s
 
+# --- 4.5 env-driven URL reconcile -------------------------------------------
+# Everything URL/port-specific lives in k8s/env/urls.<env>.env (single source).
+URLS_ENV="${URLS_ENV:-k8s/env/urls.dev.env}"
+
+# (a) The token-handler does OIDC discovery against the BROWSER-facing KC issuer
+#     (auth.geowealth.int), which doesn't resolve inside the pod — point it at the
+#     in-cluster kc-ext Service via a hostAlias (its ClusterIP is only known now).
+log "Pointing token-handler at kc-ext for in-cluster issuer discovery"
+KCEXT_IP="$(kc get svc kc-ext -o jsonpath='{.spec.clusterIP}')"
+kc patch deployment/token-handler --type merge \
+  -p "{\"spec\":{\"template\":{\"spec\":{\"hostAliases\":[{\"ip\":\"${KCEXT_IP}\",\"hostnames\":[\"auth.geowealth.int\"]}]}}}}"
+kc rollout status deployment/token-handler --timeout=180s || true
+
+# (b) Reconcile the realm's env-specific URLs (IdP SAML endpoints + client
+#     redirect/web-origin/post-logout/back-channel) from the same env file. Realm
+#     import is IGNORE_EXISTING, so this is the only path that drives a running
+#     realm. Reached via a short-lived admin port-forward (the browser-facing KC
+#     host isn't routable from this script), so override KC_ADMIN_BASE.
+log "Reconciling realm URLs from ${URLS_ENV}"
+kc port-forward svc/keycloak 18080:8080 >/dev/null 2>&1 &
+PF_PID=$!
+sleep 3
+KC_ADMIN_BASE="http://localhost:18080" ./scripts/reconcile-realm.sh "$URLS_ENV" || \
+  log "WARNING: realm reconcile failed — check ${URLS_ENV} and KC admin creds"
+kill "$PF_PID" 2>/dev/null || true
+
 # --- 5. report --------------------------------------------------------------
 IP=$(minikube -p "$PROFILE" ip)
 log "DONE. Add to /etc/hosts:"

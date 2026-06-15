@@ -37,8 +37,9 @@ The suite drives the live stack — it does not start anything itself.
 
 1. `./start.sh` from the repo root brings up postgres, Keycloak, the three
    demo BFFs, the three demo web containers, and the `auth` TLS proxy.
-2. P1 (geowealth) is running on `http://localhost:8888`. The login flow
-   requires the SamlManager agent up; see
+2. P1 (geowealth) is running on `http://localhost:8080` (local Tomcat directly,
+   or `kubectl port-forward svc/p1-tomcat 8080:8080` for the in-cluster stack).
+   The login flow requires the SamlManager agent up; see
    [../CLAUDE.md](../CLAUDE.md) → "P1 SAML federation flow".
 3. `/etc/hosts` has entries for `auth.geowealth.int`,
    `billing.geowealth.int`, `trading.geowealth.int`, `users.geowealth.int`
