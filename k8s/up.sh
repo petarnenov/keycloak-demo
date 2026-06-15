@@ -14,7 +14,12 @@ cd "$(dirname "$0")/.."
 NS=geowealth-demo
 OVERLAY=k8s/overlays/full-stack
 PROFILE=geowealth
-NEED_MEM_MIB=12288        # Oracle+ES+P1+KC+rest need a sizeable cluster
+# Cluster size. Defaults fit the base stack on a modest host; bump on a big box to
+# schedule more P1 agents / replicas, e.g. `MINIKUBE_MEM_MIB=49152 MINIKUBE_CPUS=12
+# ./k8s/up.sh`. NOTE: minikube fixes memory/CPU at cluster CREATION — to resize an
+# existing cluster you must `minikube -p geowealth delete` first, then re-run.
+NEED_MEM_MIB="${MINIKUBE_MEM_MIB:-12288}"   # Oracle+ES+P1+KC+rest need a sizeable cluster
+MINIKUBE_CPUS="${MINIKUBE_CPUS:-4}"
 
 kc() { kubectl -n "$NS" "$@"; }
 log() { printf '\n\033[1;36m>>> %s\033[0m\n' "$*"; }
@@ -36,8 +41,16 @@ fi
 
 # --- 1. ensure a minikube cluster sized for the stack -----------------------
 if ! minikube -p "$PROFILE" status >/dev/null 2>&1; then
-  log "Starting minikube ($PROFILE, ${NEED_MEM_MIB}MiB/4cpu)"
-  minikube start -p "$PROFILE" --driver=docker --cpus=4 --memory="$NEED_MEM_MIB"
+  log "Starting minikube ($PROFILE, ${NEED_MEM_MIB}MiB/${MINIKUBE_CPUS}cpu)"
+  minikube start -p "$PROFILE" --driver=docker --cpus="$MINIKUBE_CPUS" --memory="$NEED_MEM_MIB"
+else
+  # Cluster already exists — warn if its memory differs from the requested size,
+  # since `minikube start` will NOT resize a running cluster (delete + re-create).
+  RUNNING_MEM="$(minikube -p "$PROFILE" config view 2>/dev/null | awk '/^- memory:/{print $3}')"
+  if [ -n "$RUNNING_MEM" ] && [ "$RUNNING_MEM" != "$NEED_MEM_MIB" ]; then
+    echo "NOTE: cluster '$PROFILE' was created with ${RUNNING_MEM} MiB; requested ${NEED_MEM_MIB} MiB"
+    echo "      has NO effect on a running cluster. To apply: minikube -p $PROFILE delete && re-run."
+  fi
 fi
 minikube -p "$PROFILE" addons enable ingress >/dev/null 2>&1 || true
 eval "$(minikube -p "$PROFILE" docker-env)"

@@ -98,10 +98,20 @@ ConfigMap — this step only removes the user-facing HTTPS warning.)
 
 ```bash
 cd "$HOME/keycloak-demo"
-./k8s/up.sh
+# On a big box, give minikube more RAM/CPU so more P1 agents / replicas schedule.
+# 64 GB host → ~48 GB is a good value (leave headroom for the host OS); push higher
+# only if nothing else runs on the box. Defaults (12 GB / 4 CPU) are used if unset.
+MINIKUBE_MEM_MIB=49152 MINIKUBE_CPUS=12 ./k8s/up.sh
 ```
 
-`up.sh` starts minikube (`geowealth`, 12 GB / 4 CPU, docker driver) → enables the
+> **Sizing is fixed at cluster creation.** `minikube` ignores a new `--memory` on a
+> cluster that already exists — `up.sh` will warn if the running size differs. To
+> resize: `minikube -p geowealth delete` then re-run with the new values. The
+> docker driver on Linux draws from host RAM, so don't allocate all 64 GB — leave
+> ~12–16 GB for the host.
+
+`up.sh` starts minikube (`geowealth`, docker driver, sized by `MINIKUBE_MEM_MIB` /
+`MINIKUBE_CPUS` — default 12 GB / 4 CPU) → enables the
 ingress addon → builds every image into minikube's docker daemon (including the
 heavy P1 image) → `kubectl apply`s the `full-stack` overlay → loads the real
 Secrets from local files → waits in ordered waves (Oracle 900s → seed → KC → P1 →
