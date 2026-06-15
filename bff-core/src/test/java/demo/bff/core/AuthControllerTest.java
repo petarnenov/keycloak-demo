@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,8 +38,22 @@ class AuthControllerTest {
     private static AuthController controller(SidSessionRegistry reg, SessionStore store,
                                              HttpClient kc, SubdomainRequirement req) {
         // Empty tenants list → single-tenant mode → effectiveFor() uses `req`.
+        // A same-thread executor runs the fire-and-forget KC end-session inline,
+        // so logout assertions on the KC call stay deterministic.
         return new AuthController(reg, store, kc, req, new SubdomainRequirements(List.of()),
-                "https://auth/realms/demo", "demo-client", "secret", SLO);
+                directExecutor(), "https://auth/realms/demo", "demo-client", "secret", SLO);
+    }
+
+    /** Runs submitted tasks synchronously on the calling thread (test determinism). */
+    private static ExecutorService directExecutor() {
+        return new AbstractExecutorService() {
+            @Override public void execute(Runnable command) { command.run(); }
+            @Override public void shutdown() { }
+            @Override public List<Runnable> shutdownNow() { return List.of(); }
+            @Override public boolean isShutdown() { return false; }
+            @Override public boolean isTerminated() { return false; }
+            @Override public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
+        };
     }
 
     /** A request whose host headers are absent — single-tenant /auth/me ignores the host. */

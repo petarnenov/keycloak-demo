@@ -23,6 +23,7 @@ import io.micronaut.security.authentication.Authentication;
 import io.micronaut.security.rules.SecurityRule;
 import io.micronaut.session.Session;
 import io.micronaut.session.SessionStore;
+import jakarta.inject.Named;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Identity + logout endpoints for the SPA in the BFF / Token Handler model. The
@@ -106,12 +108,14 @@ public class AuthController {
     private final String p1InitiateSloUrl;
     private final SubdomainRequirement requirement;
     private final SubdomainRequirements requirements;
+    private final ExecutorService blockingExecutor;
 
     public AuthController(SidSessionRegistry registry,
                           SessionStore<?> sessionStore,
                           @Client("kc") HttpClient kc,
                           SubdomainRequirement requirement,
                           SubdomainRequirements requirements,
+                          @Named(TaskExecutors.BLOCKING) ExecutorService blockingExecutor,
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-secret}") String clientSecret,
@@ -121,6 +125,7 @@ public class AuthController {
         this.kc = kc;
         this.requirement = requirement;
         this.requirements = requirements;
+        this.blockingExecutor = blockingExecutor;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         // Use full URLs (issuer + path) because @Client("kc")'s base path is
@@ -293,7 +298,20 @@ public class AuthController {
         Object sid = authentication != null ? authentication.getAttributes().get("sid") : null;
         Object refreshToken = authentication != null ? authentication.getAttributes().get("refreshToken") : null;
 
-        endSessionAtKeycloak(refreshToken);
+        // Fire-and-forget the KC end-session on a background thread instead of
+        // blocking the request on it. Keycloak's RP-initiated logout fans
+        // back-channel-logout POSTs out to every client in the SSO session — one
+        // leg of which targets THIS token-handler (demo-shared-client's
+        // backchannel.logout.url). Done inline on a single replica it deadlocked:
+        // the request thread blocked waiting for KC while KC waited for the
+        // self-directed back-channel POST, which needed a free thread — starving
+        // /health until the liveness probe killed the pod (502). Detaching frees
+        // the request thread at once; the local session is torn down below and the
+        // 303 returns immediately, while the SSO end-session + sibling fan-out run
+        // in the background (well within the seconds a client polls /auth/me after
+        // logout). Still best-effort: failures are logged, never surfaced.
+        final Object rt = refreshToken;
+        blockingExecutor.submit(() -> endSessionAtKeycloak(rt));
 
         if (session != null) {
             // Clear the session FIRST: this drops the stored Authentication, so the
@@ -324,9 +342,10 @@ public class AuthController {
 
     /**
      * Server-side RP-initiated logout to Keycloak's {@code /protocol/openid-connect/logout}
-     * endpoint with our stored {@code refresh_token}. Best-effort: failures are
-     * logged but do not block the user-facing redirect to P1 SLO. See class
-     * javadoc for why this hop is necessary.
+     * endpoint with our stored {@code refresh_token}. Runs on the blocking
+     * executor (NOT the request thread — see {@link #logout}) so the self-directed
+     * back-channel-logout POST can never deadlock the caller. Best-effort: failures
+     * are logged but never surfaced. See class javadoc for why this hop is necessary.
      */
     private void endSessionAtKeycloak(Object refreshToken) {
         if (!(refreshToken instanceof String) || ((String) refreshToken).isEmpty()) {
