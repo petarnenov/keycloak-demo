@@ -193,6 +193,170 @@ spec:
             requests: { cpu: 100m, memory: 512Mi }
             limits:   { cpu: 500m, memory: 1.5Gi }
 ---
+# useragents bundle — provides UserManager, AccountManager, AccountTransactionManager,
+# EBrokerManager, EBrokerAccountManager. UserManager.loadFirm is the second-stage
+# Akka call BasicAction.setUpFirmPropertiesInSession makes after IdentifyFirmByUrlMsg.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p1-useragents
+  labels: { app.kubernetes.io/name: p1-useragents, app.kubernetes.io/component: legacy }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: p1-useragents } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: p1-useragents, app.kubernetes.io/component: legacy }
+    spec:
+      containers:
+        - name: agent
+          image: keycloak-demo-geowealth:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ROLE, value: agent }
+            - { name: AGENT, value: useragents }
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
+            - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+            - { name: ORACLE_HOST, value: oracle }
+            - { name: ES_HOST, value: elasticsearch }
+            - { name: REDIS_HOST, value: redis }
+            - { name: MEMCACHED_HOST, value: memcached }
+            - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 500m, memory: 1.5Gi }
+---
+# mostagents bundle — provides the `mostagents` watchdog role + InstrumentManager etc.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p1-mostagents
+  labels: { app.kubernetes.io/name: p1-mostagents, app.kubernetes.io/component: legacy }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: p1-mostagents } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: p1-mostagents, app.kubernetes.io/component: legacy }
+    spec:
+      containers:
+        - name: agent
+          image: keycloak-demo-geowealth:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ROLE, value: agent }
+            - { name: AGENT, value: mostagents }
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
+            - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+            - { name: ORACLE_HOST, value: oracle }
+            - { name: ES_HOST, value: elasticsearch }
+            - { name: REDIS_HOST, value: redis }
+            - { name: MEMCACHED_HOST, value: memcached }
+            - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 500m, memory: 1.5Gi }
+---
+# searchagents — provides SearchManager, ClientSearchManager.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p1-searchagents
+  labels: { app.kubernetes.io/name: p1-searchagents, app.kubernetes.io/component: legacy }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: p1-searchagents } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: p1-searchagents, app.kubernetes.io/component: legacy }
+    spec:
+      containers:
+        - name: agent
+          image: keycloak-demo-geowealth:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ROLE, value: agent }
+            - { name: AGENT, value: searchagents }
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
+            - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+            - { name: ORACLE_HOST, value: oracle }
+            - { name: ES_HOST, value: elasticsearch }
+            - { name: REDIS_HOST, value: redis }
+            - { name: MEMCACHED_HOST, value: memcached }
+            - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 500m, memory: 1.5Gi }
+---
+# cspagents — provides InstrumentPerformanceManager.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p1-cspagents
+  labels: { app.kubernetes.io/name: p1-cspagents, app.kubernetes.io/component: legacy }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: p1-cspagents } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: p1-cspagents, app.kubernetes.io/component: legacy }
+    spec:
+      containers:
+        - name: agent
+          image: keycloak-demo-geowealth:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ROLE, value: agent }
+            - { name: AGENT, value: cspagents }
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
+            - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+            - { name: ORACLE_HOST, value: oracle }
+            - { name: ES_HOST, value: elasticsearch }
+            - { name: REDIS_HOST, value: redis }
+            - { name: MEMCACHED_HOST, value: memcached }
+            - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: 500m, memory: 1.5Gi }
+---
+# Bundle of dev-common agent roles — provides AuthorizationManager,
+# AuthenticationManager, GeowealthPolicyRuleManager, entitypropertymanager,
+# policyrules, DistributedCacheControllerManager, cacheagents, custodianagents,
+# billingagents, portalagents, PortalManager, PortletManager, BillingManager,
+# BillingSpecificationManager (see etc/devcommonagents.conf). Required because
+# HomepageAction calls AuthorizationManager via Mailer.sendAnyMessageToLocalActorAndWait
+# — without this agent, the call hangs for ServiceTimeoutException and the
+# react/indexReact.do entry page never renders for the user post-SAML.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p1-devcommonagents
+  labels: { app.kubernetes.io/name: p1-devcommonagents, app.kubernetes.io/component: legacy }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: p1-devcommonagents } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: p1-devcommonagents, app.kubernetes.io/component: legacy }
+    spec:
+      containers:
+        - name: agent
+          image: keycloak-demo-geowealth:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: ROLE, value: agent }
+            - { name: AGENT, value: devcommonagents }
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx1536m" }
+            - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+            - { name: ORACLE_HOST, value: oracle }
+            - { name: ES_HOST, value: elasticsearch }
+            - { name: REDIS_HOST, value: redis }
+            - { name: MEMCACHED_HOST, value: memcached }
+            - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
+          resources:
+            requests: { cpu: 200m, memory: 1Gi }
+            limits:   { cpu: "1",  memory: 2Gi }
+---
 apiVersion: v1
 kind: Service
 metadata:

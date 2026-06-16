@@ -22,20 +22,81 @@ spec:
   ports:
     - { name: http, port: 8080, targetPort: 8080 }
 ---
-# Same backend as `keycloak`, but exposed on the browser-facing port (:5180) so
-# that an in-cluster hostAlias resolving `auth.geowealth.int` to this Service's
-# ClusterIP makes the issuer URL (https://auth.geowealth.int:5180/...) reachable
-# from inside the pod. up.sh patches token-handler with that hostAlias for OIDC
-# discovery — without this Service the patch step fails with "kc-ext not found".
+# TLS-terminating proxy for the browser-facing issuer URL inside the cluster.
+# token-handler's OpenID discovery + token exchange hits
+# https://auth.geowealth.int:5180/... (the issuer KC emits in `iss`); via
+# the up.sh-patched hostAlias `auth.geowealth.int → kc-ext.ClusterIP` that
+# resolves to this Service. A plain Service that proxied to keycloak:8080
+# couldn't satisfy an HTTPS handshake — so the Service selects a tiny nginx
+# pod (kc-ext Deployment below) that terminates TLS on :5180 with the mkcert
+# `auth-tls` cert and forwards to keycloak:8080 over plain HTTP.
 apiVersion: v1
 kind: Service
 metadata:
   name: kc-ext
-  labels: { app.kubernetes.io/name: keycloak }
+  labels: { app.kubernetes.io/name: kc-ext }
 spec:
-  selector: { app.kubernetes.io/name: keycloak }
+  selector: { app.kubernetes.io/name: kc-ext }
   ports:
-    - { name: http, port: 5180, targetPort: 8080 }
+    - { name: https, port: 5180, targetPort: 5180 }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kc-ext-nginx
+  labels: { app.kubernetes.io/name: kc-ext }
+data:
+  nginx.conf: |
+    worker_processes 1;
+    events { worker_connections 1024; }
+    http {
+      server_tokens off;
+      server {
+        listen 5180 ssl;
+        http2 on;
+        server_name auth.geowealth.int;
+        ssl_certificate     /certs/tls.crt;
+        ssl_certificate_key /certs/tls.key;
+        location / {
+          proxy_pass         http://keycloak.geowealth-demo.svc.cluster.local:8080;
+          proxy_http_version 1.1;
+          proxy_set_header   Host              $host;
+          proxy_set_header   X-Forwarded-Proto https;
+          proxy_set_header   X-Forwarded-Host  $host;
+          proxy_set_header   X-Forwarded-Port  5180;
+          proxy_set_header   X-Forwarded-For   $remote_addr;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kc-ext
+  labels: { app.kubernetes.io/name: kc-ext, app.kubernetes.io/component: identity }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: kc-ext } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: kc-ext, app.kubernetes.io/component: identity }
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 5180, name: https }]
+          volumeMounts:
+            - { name: nginx-conf, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf }
+            - { name: tls,        mountPath: /certs, readOnly: true }
+          resources:
+            requests: { cpu: 10m,  memory: 16Mi }
+            limits:   { cpu: 200m, memory: 64Mi }
+      volumes:
+        - name: nginx-conf
+          configMap: { name: kc-ext-nginx }
+        - name: tls
+          secret: { secretName: auth-tls }
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -73,8 +134,12 @@ spec:
             - { name: KC_HEALTH_ENABLED, value: "true" }
             - { name: KC_HTTP_ENABLED, value: "true" }
             - { name: KC_PROXY_HEADERS, value: "xforwarded" }
-            # Browser-facing issuer — the ingress host. Overlays set the real value.
-            - { name: KC_HOSTNAME, value: "https://auth.geowealth.int" }
+            # Browser-facing issuer — MUST include the browser-facing port (:5180
+            # in dev, where the ingress is reached via port-forward 5180→443).
+            # KC emits this verbatim as the issuer + every endpoint URL in the
+            # discovery document, so the SPA and token-handler follow redirects
+            # back through the same port the browser used. Overlays set per-env.
+            - { name: KC_HOSTNAME, value: "https://auth.geowealth.int:5180" }
             - { name: KC_HOSTNAME_STRICT, value: "false" }
           ports:
             - { name: http, containerPort: 8080 }
