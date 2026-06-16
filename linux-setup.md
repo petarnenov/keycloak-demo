@@ -122,8 +122,13 @@ grep -E "geowealth\.int|\.localhost" /etc/hosts   # verify
 ## 5. Create `.envrc`
 
 `.envrc` is **gitignored** — it holds secrets, so it is not in the clone. The
-BFFs are confidential OIDC clients and need their client secrets to match what
-the live Keycloak realm has for `demo-billing-client` / `demo-trading-client`.
+login flow runs through the multi-tenant `token-handler`, which is a confidential
+OIDC client and needs its client secret (`OAUTH_CLIENT_SECRET`) to match what the
+live Keycloak realm has for the shared client `demo-shared-client`.
+
+> `demo-billing-client` / `demo-trading-client` are now **vestigial** (per-domain,
+> pre-multi-tenant) and are **not** used by the login flow — don't chase their
+> secrets.
 
 Easiest path: copy `.envrc` verbatim from a machine where the stack already
 works (it contains the matching secrets). Otherwise create it from this
@@ -140,16 +145,15 @@ export POC_BRANDING_API_TOKEN=""
 export AUTHZ_FINE_ENABLED="true"
 export P1_AUTHZ_URL="http://host.docker.internal:8888"
 
-# Confidential OIDC client secrets — MUST match the live realm's client
-# secrets for demo-billing-client / demo-trading-client.
-export BILLING_OAUTH_CLIENT_SECRET="<billing-client-secret>"
-export TRADING_OAUTH_CLIENT_SECRET="<trading-client-secret>"
+# Confidential OIDC client secret for the multi-tenant token-handler — MUST
+# match the live realm's secret for the shared client demo-shared-client.
+export OAUTH_CLIENT_SECRET="<shared-client-secret>"
 EOF
 ```
 
 > If P1 is not running on this machine, set `AUTHZ_FINE_ENABLED="false"` so the
-> BFFs do not try to reach `host.docker.internal:8888` for the per-entity
-> permission map; they fall back to coarse `@Secured` role checks.
+> token-handler / BFFs do not try to reach `host.docker.internal:8888` for the
+> per-entity permission map; they fall back to coarse `@Secured` role checks.
 
 ---
 
@@ -181,13 +185,13 @@ curl -sk -d 'client_id=admin-cli&grant_type=password&username=admin&password=adm
 
 ---
 
-## 7. Reconcile the confidential client secrets
+## 7. Reconcile the confidential client secret
 
 On a fresh `--reset`, the realm is seeded from `keycloak/realm-export.json`,
-which does **not** carry the BFF client secrets. So the secret Keycloak
-generates for `demo-billing-client` / `demo-trading-client` will not match
-`.envrc`. Make the two agree — either read the secret out of Keycloak into
-`.envrc`, or push your `.envrc` value into Keycloak via the admin API:
+which does **not** carry the client secret. So the secret Keycloak generates for
+the shared client `demo-shared-client` will not match `.envrc`. Make the two
+agree — either read the secret out of Keycloak into `.envrc`, or push your
+`.envrc` value into Keycloak via the admin API:
 
 ```bash
 TOKEN=$(curl -sk -d 'client_id=admin-cli&grant_type=password&username=admin&password=admin' \
@@ -196,14 +200,14 @@ TOKEN=$(curl -sk -d 'client_id=admin-cli&grant_type=password&username=admin&pass
 
 # read the current secret Keycloak holds (find the client UUID first):
 curl -sk -H "Authorization: Bearer $TOKEN" \
-  'https://auth.geowealth.int:5180/admin/realms/demo-realm/clients?clientId=demo-billing-client'
-# then GET .../clients/<uuid>/client-secret  → put that value into .envrc
+  'https://auth.geowealth.int:5180/admin/realms/demo-realm/clients?clientId=demo-shared-client'
+# then GET .../clients/<uuid>/client-secret  → put that value into .envrc as OAUTH_CLIENT_SECRET
 ```
 
-After editing `.envrc`, recreate the BFFs so they pick the new env up:
+After editing `.envrc`, recreate the token-handler so it picks the new env up:
 
 ```bash
-docker compose up -d --force-recreate bff-billing bff-trading
+docker compose up -d --force-recreate token-handler
 ```
 
 ---

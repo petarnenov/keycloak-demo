@@ -6,14 +6,27 @@ standards and production-readiness criteria. Companion to
 [`p1-auth-flow.md`](p1-auth-flow.md) (authorization model) and
 [`sso-role-mapping.md`](sso-role-mapping.md) (role/tenancy vocabulary).
 
+> **Architecture update (2026-06-15).** Parts of this report were written
+> against the pre-token-handler model (per-domain BFFs holding their own
+> session/tokens, per-domain session cookies, in-memory session store). The
+> stack has since moved to a **single multi-tenant `token-handler`** that owns
+> all auth in front of **auth-unaware (forward-auth) data BFFs**, one shared
+> OIDC client (`demo-shared-client`), one host-scoped `GWSESSION` cookie, and a
+> **Redis** session/sid store. The `users` domain was removed (2026-05-30);
+> only billing + trading remain. Where the text below still describes the old
+> shape it has been corrected inline; for the authoritative current flow see
+> [`login-logout-algorithm.md`](login-logout-algorithm.md) §7 and
+> [`CLAUDE.md`](CLAUDE.md).
+
 ## Architecture in one diagram
 
 ```
 Browser  →  https://<domain>.geowealth.int:518X  (SPA in nginx container)
            ├─ /            → React SPA (static)
-           ├─ /api/*       → BFF (Micronaut)
-           ├─ /auth/*      → BFF
-           └─ /oauth/*     → BFF (micronaut-security-oauth2)
+           ├─ /api/*       → nginx auth_request → token-handler /auth/verify
+           │                  → X-Auth-* headers → bff-<domain> (data, auth-unaware)
+           ├─ /auth/*       → token-handler (multi-tenant)
+           └─ /oauth/*      → token-handler (micronaut-security-oauth2)
                               │
                               │  PKCE (S256), state, nonce, secure session
                               ▼
@@ -24,10 +37,16 @@ Browser  →  https://<domain>.geowealth.int:518X  (SPA in nginx container)
                               P1 SAML IdP (http://localhost:8888)
 ```
 
-The BFF keeps access/refresh/id tokens in a server-side `InMemorySession`;
-the browser only ever carries the httpOnly `BSESSION` / `TSESSION` /
-`USESSION` cookie. The OIDC code flow runs server-side; SAML federation
-to P1 is brokered through Keycloak.
+A single multi-tenant `token-handler` keeps access/refresh/id tokens
+server-side in a **Redis** session store; the browser only ever carries the
+httpOnly, host-scoped `GWSESSION` cookie (cookies are host-scoped, so
+`billing.geowealth.int` and `trading.geowealth.int` get distinct cookies under
+the same name). The OIDC code flow runs server-side; SAML federation to P1 is
+brokered through Keycloak. The per-domain data BFFs (`bff-billing` /
+`bff-trading`) are **auth-unaware**: nginx runs an `auth_request` against the
+token-handler's `/auth/verify`, copies the returned `X-Auth-*` identity onto the
+upstream request, drops the session cookie, and only then proxies to the data
+BFF.
 
 ---
 
@@ -38,11 +57,11 @@ to P1 is brokered through Keycloak.
 | **IETF "OAuth 2.0 for Browser-Based Apps" (BFF / Token Handler)** | Tokens never reach the browser. SPAs hold no `keycloak-js`, no token in `localStorage`/`sessionStorage`. The only browser-side identity material is the httpOnly session cookie. |
 | **OIDC Authorization Code Flow with PKCE (S256)** | Visible in the `Location` header of `/oauth/login/keycloak` — `code_challenge_method=S256` plus a fresh `code_challenge` per request. |
 | **State + nonce, server-side persistence** | `application.yml` has `nonce.persistence: session` + `state.persistence: session` — neither leaks to a client cookie, so the OIDC callback validates cleanly regardless of SameSite/third-party rules. |
-| **httpOnly + Secure + SameSite=Lax cookies** | All three BFF session cookies (`BSESSION`/`TSESSION`/`USESSION`) carry these flags; the SPA can't read them from JS. |
+| **httpOnly + Secure + SameSite=Lax cookies** | The single host-scoped `GWSESSION` session cookie set by the multi-tenant token-handler carries these flags; the SPA can't read it from JS. (Replaced the former per-domain `BSESSION`/`TSESSION`/`USESSION` cookies.) |
 | **OIDC Back-Channel Logout 1.0** | `LogoutTokenValidator` (RS256 + iss + aud + `events` claim + `logout+jwt` typ verifier), `BackchannelLogoutController`, and `SidSessionRegistry` to correlate KC's `sid` to the BFF's session. |
-| **Server-side token refresh before expiry** | `TokenRefreshFilter` runs after the security filter; if the access token is within 60s of expiry it does a `refresh_token` grant against KC and rebuilds the `Authentication` (with the same shape as `KeycloakAuthenticationMapper`) inline. |
+| **Server-side token refresh before expiry** | `TokenRefreshFilter` (in the token-handler) runs after the security filter; if the access token is within 60s of expiry it does a `refresh_token` grant against KC and rebuilds the `Authentication` (with the same shape as `KeycloakAuthenticationMapper`) inline. |
 | **SAML 2.0 federation** | P1 is configured as an external SAML IdP in Keycloak with signed `AuthnRequest`s, signed assertions (`wantAssertionsSigned`/`wantAuthnRequestsSigned`/`validateSignature`), and X.509 signing cert validation. |
-| **Defense in depth at the BFF** | `@Secured` on every controller + `intercept-url-map` floor in `application.yml` (`/api/** → isAuthenticated()`). |
+| **Defense in depth at the BFF** | The token-handler runs the coarse + per-host Tier-2 authz decision in `/auth/verify`; nginx gates `/api/**` on it. The data BFFs additionally keep the `/api/** → isAuthenticated()` floor as a defence-in-depth backstop (inert under forward-auth, since nginx strips the cookie). |
 | **Tier 2/3 fine-grained authz scaffolding** | `P1AuthzClient` for the `<objectTypeCd>_<permissionCd>` permission map with TTL cache, fail-closed behaviour, and opt-in via `app.authz.fine-enabled`. |
 | **Reactive 401 → login redirect** | The SPA's `api.ts` treats any 401 as "no BFF session" and bounces the browser to `/oauth/login/keycloak`. A `sessionStorage` loop guard prevents infinite redirects. |
 | **CORS discipline** | Each BFF allows only its own SPA origin (`CORS_ORIGIN: https://<domain>:518X`). |
@@ -56,26 +75,25 @@ Ordered by severity.
 
 ### 🔴 Critical — security blockers
 
-1. **`micronaut.http.client.ssl.insecure-trust-all-certs: true`** in all three BFFs' `application.yml`.
-   - The BFF trusts **any** TLS certificate on server-to-server calls to KC (and to P1, in the trading/billing wiring).
+1. **`micronaut.http.client.ssl.insecure-trust-all-certs: true`** in the token-handler's `application.yml` (and the now-dormant copy in each data BFF).
+   - The token-handler trusts **any** TLS certificate on server-to-server calls to KC (and to P1). The data BFFs are forward-auth/auth-unaware, so their copy is inert.
    - In production: MITM is trivial; the BFF will happily accept a forged KC.
    - **Fix:** remove the flag, import the org's CA into the JRE truststore (the Dockerfile already does this for the mkcert CA — swap the source for the real CA).
 
 2. **`publicClient: true` + empty `OAUTH_CLIENT_SECRET`** on the demo realm clients.
-   - Realm export marks all three clients as public; the demo works because PKCE compensates.
-   - For a server-side BFF the canonical shape is a **confidential** client with a secret.
+   - Realm export marks the clients as public; the demo works because PKCE compensates. The active login client is now the single shared `demo-shared-client` (the per-domain `demo-billing-client`/`demo-trading-client` are vestigial).
+   - For a server-side token handler the canonical shape is a **confidential** client with a secret.
    - **Fix:** flip `publicClient: false`, generate a real secret, source it from a vault (HashiCorp Vault / AWS Secrets Manager / k8s External Secrets Operator), and rotate.
 
-3. **`InMemorySession` for everything that matters**.
-   - Micronaut's default `SessionStore` is JVM-heap. `SidSessionRegistry` is also a `ConcurrentHashMap` in heap.
-   - In production: 2+ BFF replicas can't share state without sticky sessions. A BFF restart logs **every** user out.
-   - **Fix:** Redis-backed session store (`micronaut-redis-session` or a custom `SessionStore` backed by Lettuce). Migrate `SidSessionRegistry` to a Redis Set with TTL aligned to the KC SSO session lifespan.
+3. **~~`InMemorySession` for everything that matters~~** — ✅ **RESOLVED.**
+   - Sessions and the `SidSessionRegistry` sid→session map now live in a **shared Redis store** (not JVM-heap). Any replica serves any session; a redeploy does **not** log users out; a back-channel logout `POST` landing on any replica tears down the session on any replica.
+   - Original concern (kept for history): Micronaut's default `SessionStore` was JVM-heap and `SidSessionRegistry` was a heap `ConcurrentHashMap`, so 2+ replicas couldn't share state and a restart logged everyone out.
 
 4. **mkcert-issued TLS certificates** under `proxy/certs/`.
    - Locally trusted by the user's dev machine only.
    - **Fix:** real CA-issued certs (Let's Encrypt / ACM / org CA).
 
-5. **`http://localhost:8888` hardcoded** as the P1 base URL in all three BFFs' `application.yml`.
+5. **`http://localhost:8888` hardcoded** as the P1 base URL in the token-handler's `application.yml` (and the dormant data-BFF copies).
    - In production P1 lives elsewhere; the URL is per-environment.
    - **Fix:** required env var with validation; a ConfigMap in k8s; `@Value` without a default so startup fails when the value isn't set.
 
@@ -130,9 +148,8 @@ Ordered by severity.
     - Each call parses the JWT and compares a `Date` — not fatal, but pure overhead on the hot path.
     - **Fix:** memoize the decision per request scope, or coalesce checks to once-per-N-seconds at filter level.
 
-17. **`SidSessionRegistry` has no TTL eviction.**
-    - The `ConcurrentHashMap<String, Set<String>>` grows without bound. Fine for the demo, leaks in production.
-    - **Fix:** Caffeine cache with `expireAfterWrite` = session lifespan; or hand the responsibility to the Redis store from #3.
+17. **~~`SidSessionRegistry` has no TTL eviction~~** — ✅ **RESOLVED** by #3.
+    - `SidSessionRegistry` now lives in the shared Redis store rather than a heap `ConcurrentHashMap`, so the sid→session map is no longer an unbounded in-process leak.
 
 18. **The login-guard is per-tab (`sessionStorage`)**.
     - Multi-tab UX is jagged: each tab has its own guard timestamp; a successful login in one tab doesn't unblock another mid-redirect.
@@ -159,9 +176,9 @@ current flow off "demo grade" and into anything customer-facing:
    CA-issued certs, and import the org CA into the BFF JRE truststore.
 2. **Confidential OAuth clients** — flip `publicClient: false`, source
    the secret from a vault (not an env var), rotate.
-3. **Shared session store** — Redis for BFF sessions AND for
-   `SidSessionRegistry`; without this, HA + zero-downtime deploys are
-   impossible.
+3. ✅ **Shared session store** — **DONE.** Redis now backs both the
+   token-handler sessions and `SidSessionRegistry`, so HA + zero-downtime
+   deploys work (a redeploy no longer logs users out).
 4. **CSRF tokens** on state-changing endpoints.
 5. **Rate limiting** on `/oauth/login/keycloak`, `/api/*`, and
    `/backchannel-logout`.
@@ -188,9 +205,10 @@ pattern (BFF), OIDC with PKCE, SAML federation behind Keycloak, OIDC
 Back-Channel Logout 1.0. That foundation is good.
 
 **At the detail level** there are enough security gaps that the current
-code is **demo-grade, not production-grade**. Without `insecure-trust-all-certs: false`,
-shared session storage, CSRF tokens, and rate limiting, this stack
-cannot ship — even if the realm config itself were enterprise-ready.
+code is **demo-grade, not production-grade**. Shared session storage is now
+done (Redis), but without `insecure-trust-all-certs: false`, CSRF tokens, and
+rate limiting, this stack cannot ship — even if the realm config itself were
+enterprise-ready.
 
 **Sign-out specifically** is a workaround for a P1-side bug (SAML SLO
 can't see the user's `JSESSIONID` over the cross-port hop). Fixing P1

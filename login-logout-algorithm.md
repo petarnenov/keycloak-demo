@@ -41,10 +41,11 @@ round-trip), cross-host silent SSO recovery on user reload, and the BFF
 |---|---|---|---|
 | **P1 Tomcat** (Struts + Akka agents) | `localhost:8888` (webpack-dev-server → Tomcat :8080) | `LoggedUser`, `LoggedAdviser`, `firmInfo`, `ConversationManager`, `UrlWhitelabelInformation` in `HttpSession` | `JSESSIONID` (HttpOnly, session-scoped) |
 | **P1 React SPA** | `localhost:8888` (whitelabel hosts: `c1wealth.localhost`, `john.localhost`, …) | login-guard flags | URL hash `#login?silent_failed=1` (no sessionStorage — Gap 6 loop prevention is server-side) |
-| **Keycloak** | `auth.geowealth.int:5180` (nginx → keycloak:8080) | SSO user session, federated identity link, per-client `client-session` for `p1-self-client`, `demo-billing-client`, `demo-trading-client` | `KEYCLOAK_IDENTITY`, `KEYCLOAK_SESSION` (persistent, `Max-Age = ssoSessionMaxLifespan`) |
-| **Billing SPA** | `billing.geowealth.int:5184` | `me` payload (BFF's `/auth/me` projection) in React state, login-guard flag in sessionStorage | `BSESSION` cookie (HttpOnly, Secure, SameSite=Lax) — set by Micronaut on the BFF |
-| **Trading SPA** | `trading.geowealth.int:5185` | Same shape as billing | `BSESSION` (per BFF) |
-| **`bff-billing`, `bff-trading`** | container-internal :8080 (behind Vite preview on each SPA host) | Server session keyed by `BSESSION` holding `access_token`, `refresh_token`, `id_token`, `sid`, last-refresh timestamp; `SidSessionRegistry` mapping `sid → session-ids` | Sessions live in Micronaut's in-memory `SessionStore`; sid lookup is per-process |
+| **Keycloak** | `auth.geowealth.int:5180` (nginx → keycloak:8080) | SSO user session, federated identity link, per-host `client-session` for the one shared `demo-shared-client` (+ `p1-self-client`; the per-domain `demo-billing-client`/`demo-trading-client` still exist but are **vestigial**) | `KEYCLOAK_IDENTITY`, `KEYCLOAK_SESSION` (persistent, `Max-Age = ssoSessionMaxLifespan`) |
+| **Billing SPA** | `billing.geowealth.int:5184` | `me` payload (Token Handler's `/auth/me` projection) in React state, login-guard flag in sessionStorage | `GWSESSION` cookie (HttpOnly, Secure, SameSite=Lax, **host-scoped**) — set by the multi-tenant Token Handler |
+| **Trading SPA** | `trading.geowealth.int:5185` | Same shape as billing | `GWSESSION` (one cookie name, host-scoped → distinct per host) |
+| **`token-handler`** (multi-tenant; one instance fronts all domains) | container-internal :8080 (reached via each SPA host's nginx) | Server session holding `access_token`, `refresh_token`, `id_token`, `sid`, last-refresh timestamp; `SidSessionRegistry` mapping `sid → session-ids` | Sessions + sid map live in **Redis** (shared store, B2) — any replica serves any session; a redeploy does not log users out |
+| **`bff-billing`, `bff-trading`** (data BFFs) | container-internal :8080 | **Auth-unaware (forward-auth):** no session, no token refresh, no security filters — read identity from `X-Auth-*` headers nginx injects after `/auth/verify`; serve data + the Tier-3 list `refine` | none (nginx drops the session cookie before proxying) |
 
 Realm timing knobs (`keycloak/realm-export.json`):
 
@@ -66,7 +67,8 @@ Phase 15 silent SSO + Gap 6 establish round-trip exist.
 
 ```
 keycloak/realm-export.json
-  └── 3 OIDC clients (demo-billing-client, demo-trading-client, p1-self-client)
+  └── OIDC clients: demo-shared-client (the one multi-tenant login client) + p1-self-client
+      (demo-billing-client / demo-trading-client still seeded but vestigial)
       + the `p1` SAML IdP (signing cert baked in)
       + 8 SAML role-IdP mappers (one per realm-level capability role)
       + the first-broker-login flow `p1-first-broker-login` (silent email-link)
@@ -177,12 +179,12 @@ Browser ───── GET / ─────────►│  Vite preview + 
      If the request had silent=1, OAuth2RedirectUrlBuilder added &prompt=none
                        │
                        ▼ (browser follows)
-   KC authorize?client_id=demo-billing-client&kc_idp_hint=p1&prompt=none&...
+   KC authorize?client_id=demo-shared-client&kc_idp_hint=p1&prompt=none&...
      │
      ├── KC has SSO session ────►  silent OIDC code → 302 to BFF callback ─►
      │                              code exchange → KeycloakAuthenticationMapper
      │                              builds Authentication → Micronaut writes
-     │                              BSESSION cookie → 302 back to SPA `/`.
+     │                              GWSESSION cookie → 302 back to SPA `/`.
      │
      └── KC has NO session ────►  prompt=none → error=login_required
                                   KC redirects to redirect.login-failure
@@ -208,7 +210,7 @@ Browser ───── GET / ─────────►│  Vite preview + 
                                       auto-link by email → creates user
                                       session → issues OIDC code → 302 to BFF
                                       callback → token exchange →
-                                      KeycloakAuthenticationMapper → BSESSION
+                                      KeycloakAuthenticationMapper → GWSESSION
                                       cookie set → 302 to SPA `/`.
 ```
 
@@ -217,10 +219,11 @@ tokens server-side; `sid` recorded in `SidSessionRegistry`). The SPA's
 `/auth/me` returns 200 with the Token-Handler-projected identity
 (`personId`, `tenantIdentity`, `firmCd`, `memberships`, `roles`).
 
-Why two clients for one user identity? `demo-billing-client` and
-`demo-trading-client` each get their own KC client-session; the user-level
-KC session is shared. That's why opening trading right after billing
-completes silently with no IdP UI.
+Why does opening trading right after billing complete silently? All domains
+now log in through the one shared `demo-shared-client`, but each host gets its
+own `GWSESSION` (cookies are host-scoped) and its own KC client-session under
+the shared user-level KC session — so the second host rides the existing SSO
+session with no IdP UI.
 
 ### ② Cold P1 visit at `localhost:8888` (no P1 session, no KC session)
 
@@ -416,7 +419,7 @@ Tile in P1's `useIntegrationLinks.js` is `kcAuthorize(...)`-built:
 
 ```
 https://auth.geowealth.int:5180/realms/demo-realm/protocol/openid-connect/auth
-  ?client_id=demo-billing-client
+  ?client_id=demo-shared-client
   &response_type=code
   &scope=openid
   &redirect_uri=https://billing.geowealth.int:5184/
@@ -428,7 +431,7 @@ https://auth.geowealth.int:5180/realms/demo-realm/protocol/openid-connect/auth
   `http://localhost:8888/saml/idp/sso.do` (`p1` IdP config in realm export).
 - Browser navigates to P1 (has session) → `IdpSsoAction` builds signed SAML
   Response → POSTs back to KC broker endpoint.
-- KC creates session + `demo-billing-client` client-session → 302 to
+- KC creates session + `demo-shared-client` client-session → 302 to
   `redirect_uri` with code.
 - The billing SPA's `AuthProvider` mounts, calls `/auth/me` → BFF processed
   the code on a prior visit? Actually no — for an SP-init from P1, the URL
@@ -444,7 +447,7 @@ https://auth.geowealth.int:5180/realms/demo-realm/protocol/openid-connect/auth
 
 | URL | Initiator | Reaches |
 |---|---|---|
-| `GET /auth/logout` on a demo BFF host | SPA "Sign out" button (`window.location.assign(LOGOUT_URL)`) | bff-core `AuthController.logout` |
+| `POST /auth/logout` on a demo domain host | SPA "Sign out" button (top-level form POST — CSRF defence, see §7 Q13) | bff-core `AuthController.logout` (in the Token Handler) |
 | `GET /saml/idp/initiate-slo.do` on localhost:8888 | P1 React UI Logout link (`appServices.logout()`) | `IdpInitiateSloAction` |
 | `POST /backchannel-logout` on a BFF | KC back-channel from a sibling logout | `BackchannelLogoutController` |
 | `POST /saml/idp/back-channel-logout.do` on P1 | KC back-channel logout token | `BackChannelLogoutAction` |
@@ -453,10 +456,10 @@ https://auth.geowealth.int:5180/realms/demo-realm/protocol/openid-connect/auth
 ### ⑥ Logout from a demo SPA (Sign out button)
 
 ```
-SPA: AuthProvider.logout = () => window.location.assign('/auth/logout')
+SPA: AuthProvider.logout = () => postLogout()   // builds + submits a top-level form POST to /auth/logout
                        │
                        ▼
-GET /auth/logout  (browser top-level navigation, BSESSION cookie attached)
+POST /auth/logout  (top-level form POST, GWSESSION cookie attached)
                        │
                        ▼
 bff-core AuthController.logout()  (2026-06-04: @Secured(IS_ANONYMOUS), @Nullable Authentication)
@@ -579,7 +582,7 @@ BackchannelLogoutController.logout(@Nullable @Body("logout_token") String t)
          contains `http://schemas.openid.net/event/backchannel-logout`
        return sid
    • registry.invalidateBySid(sid) → walks SidSessionRegistry's
-     in-memory `sid → session-id-set` map, deletes each session from
+     Redis `sid → session-id-set` map (key `bff:sid:<sid>`), deletes each session from
      SessionStore, logs the killed count.
    • 200 OK
                        │
@@ -614,7 +617,7 @@ as long as KC's session is younger than P1's idle limit.
 
 | Invariant | Where enforced |
 |---|---|
-| BFF holds tokens — SPA never sees access/refresh/id_token | `BSESSION` cookie HttpOnly+Secure; KC's `code` is delivered to the BFF callback, not the SPA route. `/auth/me` projects only sub-identity fields. |
+| Token Handler holds tokens — SPA never sees access/refresh/id_token | `GWSESSION` cookie HttpOnly+Secure (host-scoped); KC's `code` is delivered to the Token Handler callback, not the SPA route. `/auth/me` projects only sub-identity fields. Tokens live server-side in Redis. |
 | Every login is brokered through P1 SAML — no native KC users | Realm has no users in the local store; `IdpHintFilter` pins `kc_idp_hint=p1` on every BFF-initiated authorize; the demo SPA's login URL is `/oauth/login/silent`, never `/oauth/login/keycloak` directly. |
 | Token rolling refresh on the BFF side, no SPA-side keepalive | `TokenRefreshFilter` refreshes when `< 60 s` of access-token lifetime remain; failure invalidates the session and the SPA's next call goes through `startLogin()`. |
 | Loop guards everywhere prevent navigation storms | `sessionStorage.bff:lastLoginRedirect` (10 s window) on the BFF SPA; `SilentSsoAction.SESSION_KEY_ESTABLISH_DONE` (per-HttpSession, server-side) on P1 prevents Gap 6 looping; `SilentSsoAction` 2 s rate-limit by IP. |

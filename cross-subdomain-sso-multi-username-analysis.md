@@ -1,5 +1,17 @@
 # Cross-subdomain SSO — what happens if `tim1`/`tim5`/`tim10` are one physical person
 
+> **Architecture update (2026-06-15).** This is a historical analysis written
+> against the earlier model of one OIDC client + one BFF session per subdomain.
+> The shipped cross-subdomain flow now runs through **one multi-tenant
+> `token-handler`** with **one shared OIDC client `demo-shared-client`** and
+> **one host-scoped cookie `GWSESSION`** (sessions in **Redis**); the
+> per-domain clients are vestigial and the data BFFs are auth-unaware
+> (forward-auth). The `users` domain was removed (2026-05-30). The gap analysis
+> below (person-stable `personId`, per-tenant `tenantIdentity_*`/roles) is
+> unchanged in substance and still applies; only the per-client / per-BFF
+> framing is dated. Authoritative current state: **`CLAUDE.md`** and
+> **`login-logout-algorithm.md` §7**. Inline notes flag the dated spots.
+
 Thought-experiment companion to
 [`cross-subdomain-sso-implementation.md`](cross-subdomain-sso-implementation.md).
 The demo today logs in as a single P1 user (`tim1`) and the SAML
@@ -62,6 +74,10 @@ then opens `trading.geowealth.int`.
 5. SPA → `/auth/me` 401 (different BFF session) → `/oauth/login/silent` →
    KC `prompt=none`. **KC SSO cookie alive** → KC issues code for
    `demo-trading-client` immediately — no SAML hop, no P1 round-trip.
+   *(Shipped model: the code is now issued for the shared `demo-shared-client`
+   driven by the one multi-tenant `token-handler`; the "different BFF session"
+   is now the host-scoped `GWSESSION` cookie resolved by the token-handler
+   against Redis, not a separate per-domain BFF.)*
 6. BFF code exchange. KC builds the token from `kcU-A`'s stored state:
    - `personId` = `U-1001` (user attribute set at first-broker-login)
    - `tenant_identity` from `tenantIdentity_trading` user attribute =
@@ -105,7 +121,10 @@ then opens `trading.geowealth.int`.
   cosmetic.
 - **Audience scoping (Approach A of § 4.3).** One client per
   subdomain, per-client protocol mappers, no token-exchange wiring
-  needed for the SSO to work.
+  needed for the SSO to work. *(Shipped model: now one shared
+  `demo-shared-client` behind the multi-tenant `token-handler`; per-host
+  tenant resolution replaces the per-client split, the per-domain clients
+  are vestigial.)*
 
 ## 3. The three concrete gaps and the data-model changes that close them
 
@@ -329,7 +348,12 @@ Roughly:
     live realm.
 - **bff-core:** none. The BFFs already read the `roles` claim
   generically; the per-domain `@Secured` lists already gate by
-  namespace.
+  namespace. *(Shipped model: the per-request authorization decision now
+  lives in the multi-tenant `token-handler` `/auth/verify` (coarse + per-host
+  Tier-2 gate); the data BFFs are auth-unaware and read identity from
+  `X-Auth-*` headers, so the per-domain `@Secured` gate is now exercised in
+  the token-handler, not per data BFF. Only the Tier-3 list `refine` still
+  runs in the data BFF.)*
 - **SPA:** none. The new `personId` / `tenant_identity` /
   `active_tenant` claims are already surfaced in `/auth/me` and
   rendered in the sidebar.

@@ -67,13 +67,13 @@ Sample decoded id_token from this demo's logs (BFF Token Handler shape):
 {
   "iss": "https://auth.geowealth.int:5180/realms/demo-realm",
   "sub": "6dea5071-cd75-4bdd-a2fb-c81e1c8b4afc",
-  "aud": "demo-billing-client",
+  "aud": "demo-shared-client",
   "exp": 1779890342,
   "iat": 1779888542,
   "auth_time": 1779888512,
   "nonce": "...",
   "sid": "1475a035-1edd-4c5d-...",
-  "azp": "demo-billing-client",
+  "azp": "demo-shared-client",
   "preferred_username": "tim1",
   "email": "gidpncljautyubiiupia@fake.net",
   "name": "Tim Arnold",
@@ -99,7 +99,7 @@ sign-in:
 3. SPA: location.assign('/oauth/login/keycloak')
 4. BFF: builds authorize URL with state + nonce + PKCE code_challenge
 5. Browser → KC: GET /protocol/openid-connect/auth?
-       client_id=demo-billing-client
+       client_id=demo-shared-client
        &response_type=code                 ← we want a code, not a token directly
        &scope=openid+email+profile         ← "openid" is mandatory for OIDC
        &redirect_uri=…/oauth/callback/keycloak
@@ -122,7 +122,7 @@ sign-in:
        &code=ABC
        &redirect_uri=…
        &code_verifier=…                    ← the PKCE proof
-       &client_id=demo-billing-client
+       &client_id=demo-shared-client
        (&client_secret=… if confidential)
 
 14. KC: validates code_verifier matches the original code_challenge
@@ -257,8 +257,9 @@ auto-submit POST, ending both sessions cleanly.
 
 | Component | Role in OIDC terms |
 |---|---|
-| KC realm `demo-realm` | The OIDC OP for all three clients |
-| `demo-billing-client` / `demo-trading-client` | OIDC clients (RPs) |
+| KC realm `demo-realm` | The OIDC OP for all clients |
+| `demo-shared-client` | The active multi-tenant OIDC login client (RP) — runs all login / code flow for every domain via the one `token-handler` |
+| `demo-billing-client` / `demo-trading-client` | OIDC clients (RPs) (vestigial — pre-multi-tenant per-domain clients) |
 | The three BFFs (`bff-*`) | RP logic: hold tokens server-side, do code exchange + refresh |
 | `KeycloakAuthenticationMapper` | Translates `OpenIdTokenResponse` + `OpenIdClaims` into the Micronaut `Authentication` stored in the session |
 | `TokenRefreshFilter` | Runs the OIDC refresh_token grant before access tokens expire |

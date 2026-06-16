@@ -1,5 +1,21 @@
 # Cross-subdomain SSO — implementation in this demo
 
+> **Architecture update (2026-06-15).** This document was written when each
+> subdomain ran its own OIDC client + its own per-domain BFF session. The
+> shipped cross-subdomain flow now runs through **one multi-tenant
+> `token-handler`** using **one shared OIDC client `demo-shared-client`**
+> (redirect_uri derived per-host) and **one host-scoped session cookie
+> `GWSESSION`**, with sessions in **Redis**; the per-domain clients
+> (`demo-billing-client`/`demo-trading-client`) still exist in the realm but
+> are **vestigial**, and the data BFFs are auth-unaware (forward-auth: nginx
+> `auth_request` → `/auth/verify` → `X-Auth-*` headers). The `users` domain
+> was removed (2026-05-30); only **billing + trading** remain. The
+> silent-first chain and the `personId` / `tenant_identity` / `active_tenant`
+> claim shapes below are unchanged and still accurate. For the authoritative
+> current architecture see **`CLAUDE.md`** and **`login-logout-algorithm.md` §7**.
+> Inline notes flag the spots where the original narrative below describes the
+> superseded per-client model.
+
 How the architecture described in **`cross-subdomain-sso-keycloak (1).md`**
 (person-stable Keycloak subject + per-tenant identity claims, silent re-auth
 between subdomains) maps onto `keycloak-demo` and `geowealth` as actually
@@ -54,11 +70,15 @@ This demo realizes that constraint as follows:
   `tenantIdentity.users` — populated by P1 and read by each client's own
   `oidc-usermodel-attribute-mapper`.
 
-- **`active_tenant` is derived per client.** Since each subdomain has its
+- **`active_tenant` is derived per client.** Since each subdomain had its
   own OIDC client (`demo-billing-client`, `demo-trading-client`,
-  `demo-users-client`), each client adds one hardcoded protocol mapper
+  `demo-users-client`), each client added one hardcoded protocol mapper
   emitting `active_tenant` with its own slug. No need to round-trip the
   tenant to P1 — Keycloak already knows which client started the flow.
+  *(Now superseded: login runs through the single shared `demo-shared-client`
+  via the one multi-tenant `token-handler`; the per-domain clients are
+  vestigial and the `users` domain was removed. `active_tenant` is resolved
+  per request `Host` by the token-handler rather than per dedicated client.)*
 
 ## Document § 3 — which model we picked
 
@@ -114,6 +134,12 @@ We use **Approach A: audience-scoped tokens** (one Keycloak client per
 subdomain). The three OIDC clients are already configured; this change
 adds the per-client protocol mappers that emit
 `active_tenant` + `tenant_identity` + `personId`.
+
+> *Now superseded:* login no longer runs one client per subdomain. A single
+> shared `demo-shared-client` (redirect_uri derived per-host) is driven by the
+> one multi-tenant `token-handler`; the per-domain clients are vestigial and
+> the `users` domain was removed. The `personId` / `tenant_identity` /
+> `active_tenant` claim shapes are unchanged.
 
 Approach B (Standard Token Exchange / RFC 8693) is **out of scope** for
 this demo — none of the BFFs need to act on behalf of another BFF.

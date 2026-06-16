@@ -37,13 +37,35 @@ against branch `petarnenov/domains-refactor` (keycloak-demo) and
 > The relogin recovery is guarded by
 > `e2e/tests/p1-relogin-silent-recovery.spec.ts`.
 
+> **Architecture update — 2026-06-15 (token-handler / BFF SPAs).** The
+> SPA-side mechanics described below — keycloak-js, OIDC tokens held in
+> browser memory, hidden-iframe `check-sso`, `keycloak.login()` /
+> `keycloak.logout()` — describe the **SUPERSEDED** model. The demo SPAs
+> are now **token-handler / BFF SPAs**: they hold **no tokens**, read an
+> `/auth/me` projection over an httpOnly `GWSESSION` cookie, log in via
+> `/oauth/login/silent`, and log out via a POST form to `/auth/logout`.
+> The reactive model is "a 401 on any call triggers a loop-guarded
+> `startLogin()`" — there is no client-side keepalive/token-refresh.
+> Out-of-band logout reaches the SPAs via **OIDC back-channel logout**
+> (KC → token-handler `/backchannel-logout` → `SidSessionRegistry`
+> invalidate → next `/auth/me` is 401). All auth now runs in **one
+> multi-tenant `token-handler` service** (pure `bff-core`) fronting
+> **all** domains via one shared OIDC client `demo-shared-client`; the
+> data BFFs (`bff-billing`, `bff-trading`) are auth-unaware (nginx
+> `auth_request` → `/auth/verify` → `X-Auth-*` headers). Sessions live
+> in **Redis**, so a redeploy/restart no longer logs users out. The
+> `users` domain was removed (2026-05-30). The protocol hops (SAML /
+> OIDC) below remain accurate; only the SPA token-handling changed. For
+> the current model see **`login-logout-algorithm.md`** (esp. its
+> section 7 Q&A) and **`CLAUDE.md`**.
+
 ## 0. Actors and where state lives
 
 | Actor | Origin | State held | Cookie / storage |
 |---|---|---|---|
 | **P1 React + Tomcat** | `localhost:8888` (Node proxy → Tomcat 8080) | `LoggedUser` in `HttpSession` (key `loggedAdviser`) | `JSESSIONID` (HttpOnly, session-scoped — clears on browser close) |
 | **Keycloak** | `auth.geowealth.int:5180` (nginx → keycloak:8080) | SSO user session + federated identity link | `KEYCLOAK_IDENTITY`, `KEYCLOAK_SESSION` (persistent, `Max-Age = ssoSessionMaxLifespan`) |
-| **Trading SPA** | `trading.geowealth.int:5185` | OIDC token in memory + keycloak-js singleton | Trading-domain cookies are non-material; tokens live in JS memory |
+| **Trading SPA** | `trading.geowealth.int:5185` | No tokens; `/auth/me` projection in React state (legacy: OIDC token in memory + keycloak-js) | httpOnly `GWSESSION` cookie (host-scoped) — session + tokens live server-side in the token-handler's Redis store |
 | **Billing SPA** | `billing.geowealth.int:5184` | Same as trading | Same |
 
 Realm timing knobs (`keycloak/realm-export.json`):
@@ -613,6 +635,14 @@ access from sibling SPAs. Real fix: configure
 that nukes the SPA's local state. Not currently shipped — this is a
 demo-tier accepted compromise.
 
+> **Resolved under the token-handler / Redis model (2026-06-15).** This
+> stale-token window NO LONGER exists: the SPA holds no token, and
+> out-of-band logout now propagates via OIDC back-channel logout (KC →
+> token-handler `/backchannel-logout` → `SidSessionRegistry`
+> invalidate), so the sibling SPA's next `/auth/me` over `GWSESSION`
+> returns 401 and triggers `startLogin()`. The "real fix" above is what
+> shipped.
+
 ### E6. Incognito / different browser profile
 
 Entry: user opens P1 in an incognito window (no cookies anywhere).
@@ -707,6 +737,15 @@ calls then 401 on the BFF, which propagates the logout. More moving
 parts but no browser involvement.
 
 Neither is shipped — both add complexity beyond what the demo needs.
+
+> **Closed under the token-handler / Redis model (2026-06-15).** Fix
+> path B effectively shipped: `demo-shared-client` now carries a
+> back-channel `logout.url` pointing at the multi-tenant token-handler,
+> which on KC's `logout_token` POST runs `SidSessionRegistry
+> .invalidateBySid` against Redis. Since the SPA holds no token and
+> reads identity only via `/auth/me` over `GWSESSION`, the next call
+> after invalidation is a 401 → `startLogin()`. The stale-token window
+> is gone.
 
 ### Gap 4 — KC `accessTokenLifespan` = 5 min creates noticeable refresh churn
 
