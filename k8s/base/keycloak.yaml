@@ -22,6 +22,21 @@ spec:
   ports:
     - { name: http, port: 8080, targetPort: 8080 }
 ---
+# Same backend as `keycloak`, but exposed on the browser-facing port (:5180) so
+# that an in-cluster hostAlias resolving `auth.geowealth.int` to this Service's
+# ClusterIP makes the issuer URL (https://auth.geowealth.int:5180/...) reachable
+# from inside the pod. up.sh patches token-handler with that hostAlias for OIDC
+# discovery — without this Service the patch step fails with "kc-ext not found".
+apiVersion: v1
+kind: Service
+metadata:
+  name: kc-ext
+  labels: { app.kubernetes.io/name: keycloak }
+spec:
+  selector: { app.kubernetes.io/name: keycloak }
+  ports:
+    - { name: http, port: 5180, targetPort: 8080 }
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
