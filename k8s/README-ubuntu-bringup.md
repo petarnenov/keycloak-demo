@@ -262,22 +262,19 @@ kubectl -n geowealth-demo port-forward svc/p1-tomcat 8080:8080 --address 127.0.0
     curl -sk -o /dev/null -w '%{http_code}\n' \
     https://auth.geowealth.int:5180/realms/demo-realm/.well-known/openid-configuration   # expect 200
   ```
-- **Oracle CrashLoopBackOff with "Break signaled" right after "uncompressing
-  database data files"** → orphan datafiles from a previous PV survived in
-  `/tmp/hostpath-provisioner/geowealth-demo/data-oracle-0/` but `dbconfig/` was
-  not preserved, so the `gvenzl/oracle-free` entrypoint treats the volume as a
-  first init and `7zzs` aborts because there's nothing on stdin to answer its
-  overwrite prompt. Wipe **only** the Oracle PV directory contents and let the
-  StatefulSet recreate the pod from a clean dir (the seed Job re-applies the
-  baseline schema, no data loss for a demo):
+- **Oracle pod stuck / datafiles corrupted on the PV** → the StatefulSet now
+  runs the BAKED image (`keycloak-demo-db:seeded`): on a fresh PVC the
+  container's restore-oradata.sh seeds `/opt/oracle/oradata` from the image's
+  `/opt/oracle/baked-oradata` snapshot, then gvenzl just opens the DB. Recovery
+  is "wipe the PV dir, let restore run again" — no separate seed Job to delete:
   ```bash
   minikube -p geowealth ssh -- 'sudo rm -rf \
-    /tmp/hostpath-provisioner/geowealth-demo/data-oracle-0/FREE \
-    /tmp/hostpath-provisioner/geowealth-demo/data-oracle-0/FREEPDB1'
+    /tmp/hostpath-provisioner/geowealth-demo/data-oracle-0/*'
   kubectl -n geowealth-demo delete pod oracle-0 --grace-period=0 --force
-  kubectl -n geowealth-demo delete job oracle-seed --ignore-not-found
-  ./k8s/up.sh    # idempotent — re-wait + re-seed
+  ./k8s/up.sh    # idempotent — pod restarts, restore-oradata.sh re-seeds
   ```
+  If a bad migration was baked into the image itself, rebuild it via up.sh
+  (`docker build -t keycloak-demo-db:seeded -f db/Dockerfile db`).
 - **Browser AppLoader spinner sticks / `ServiceTimeoutException` on
   `IdentifyFirmByUrlMsg` / `LoadFirmMsg` / etc. in p1-tomcat logs** → an Akka
   cluster split. Re-restart in the CORRECT order **coordinator → agents → web**

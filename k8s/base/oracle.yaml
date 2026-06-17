@@ -1,62 +1,17 @@
-# Oracle Database Free 23ai — the GP application schema, IN-CLUSTER (this goal
-# reverses the earlier "Oracle stays external" decision). The Flyway baseline +
-# seeds (db/migration) are applied by the oracle-seed Job; the SERVER-SIDE parts
-# that a remote client can't do (MAX_STRING_SIZE=EXTENDED via utl32k.sql, and
-# loading the 5.9 MB V1 DDL) run here as gvenzl init scripts on first init.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: oracle-creds
-  labels: { app.kubernetes.io/name: oracle }
-type: Opaque
-stringData:
-  # SYS/SYSTEM password (gvenzl ORACLE_PASSWORD) + the GP app user. PLACEHOLDER —
-  # prod injects via External Secrets/Vault. Matches db/stack defaults.
-  sys-password: "oracle_sys_pw"
-  app-password: "gp123"
----
-# gvenzl runs these once, on first DB init, INSIDE the pod (where $ORACLE_HOME and
-# utl32k.sql exist). 01 = EXTENDED string size (the baseline schema needs it) +
-# DBMS_CRYPTO grant; 02 = load the staged V1 DDL as GP, then drop the
-# flyway_schema_history table V1's DDL recreates (so `flyway baseline` can run).
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: oracle-init
-  labels: { app.kubernetes.io/name: oracle }
-data:
-  01-extended.sh: |
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo ">>> [init] enabling MAX_STRING_SIZE=EXTENDED + granting DBMS_CRYPTO"
-    sqlplus -s "sys/${ORACLE_PASSWORD}@localhost:1521/FREE as sysdba" <<'SQL'
-    WHENEVER SQLERROR CONTINUE
-    ALTER PLUGGABLE DATABASE FREEPDB1 CLOSE IMMEDIATE;
-    ALTER PLUGGABLE DATABASE FREEPDB1 OPEN UPGRADE;
-    ALTER SESSION SET CONTAINER=FREEPDB1;
-    ALTER SYSTEM SET MAX_STRING_SIZE=EXTENDED;
-    @?/rdbms/admin/utl32k.sql
-    ALTER SESSION SET CONTAINER=CDB$ROOT;
-    ALTER PLUGGABLE DATABASE FREEPDB1 CLOSE IMMEDIATE;
-    ALTER PLUGGABLE DATABASE FREEPDB1 OPEN;
-    ALTER PLUGGABLE DATABASE FREEPDB1 SAVE STATE;
-    ALTER SESSION SET CONTAINER=FREEPDB1;
-    GRANT EXECUTE ON SYS.DBMS_CRYPTO TO GP;
-    EXIT
-    SQL
-  02-baseline.sh: |
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo ">>> [init] loading V1 baseline schema (~1792 tables) as GP"
-    sqlplus -s "GP/${APP_USER_PASSWORD}@localhost:1521/FREEPDB1" <<'SQL'
-    SET DEFINE OFF
-    WHENEVER SQLERROR CONTINUE
-    @/seed/V1__baseline_schema.sql
-    DROP TABLE "flyway_schema_history" CASCADE CONSTRAINTS PURGE;
-    EXIT
-    SQL
-    echo ">>> [init] V1 loaded; flyway_schema_history dropped (ready for flyway baseline)"
----
+# Oracle Database Free 23ai — the GP application schema, IN-CLUSTER.
+#
+# Uses the BAKED image `keycloak-demo-db:seeded` (built from db/Dockerfile):
+# schema + Flyway seeds (V1..VN + R__local_login_hash) are pre-loaded into
+# datafiles at IMAGE BUILD time. A fresh pod runs restore-oradata.sh once to
+# seed the empty PVC from the image's `/opt/oracle/baked-oradata` snapshot
+# (~30-60s; one-time cost per PVC) and then Oracle opens the already-
+# initialized DB (~10s). Compare to the previous gvenzl-base + init-scripts
+# + Flyway-Job flow which took ~10-15 min on every fresh up.sh.
+#
+# Trade-off: SYS/APP creds and the gitignored login hash are baked into the
+# image. up.sh builds INTO minikube's docker daemon via docker-env so the
+# image never leaves the cluster. For a real prod pipeline split the build:
+# bake schema-only here, then a tiny Job applies R__ from a Secret.
 apiVersion: v1
 kind: Service
 metadata:
@@ -86,47 +41,28 @@ spec:
         app.kubernetes.io/name: oracle
         app.kubernetes.io/component: data
     spec:
-      # Stage the 5.9 MB V1 DDL from the db-seed image into a shared volume so the
-      # gvenzl init script (02-baseline.sh) can load it server-side.
-      initContainers:
-        - name: stage-v1
-          image: keycloak-demo-db-seed:latest
-          imagePullPolicy: IfNotPresent
-          command: ["sh", "-c", "cp /flyway/sql/V1__baseline_schema.sql /seed/"]
-          volumeMounts:
-            - { name: seed, mountPath: /seed }
       containers:
         - name: oracle
-          image: gvenzl/oracle-free:23-slim
+          image: keycloak-demo-db:seeded
+          imagePullPolicy: IfNotPresent
           ports:
             - { name: tns, containerPort: 1521 }
-          env:
-            - name: ORACLE_PASSWORD
-              valueFrom: { secretKeyRef: { name: oracle-creds, key: sys-password } }
-            - name: APP_USER
-              value: "GP"
-            - name: APP_USER_PASSWORD
-              valueFrom: { secretKeyRef: { name: oracle-creds, key: app-password } }
           resources:
             requests: { cpu: "1", memory: 2Gi }
             limits:   { cpu: "2", memory: 4Gi }
+          # First pod on a fresh PVC: restore-oradata.sh runs before the gvenzl
+          # entrypoint and copies ~3-4 GB of baked datafiles into the volume
+          # (~30-60s). Keep the budget wide enough for that one-time copy.
+          # On a populated PVC (pod restart): Oracle reopens the DB in ~10s.
           startupProbe:
             exec: { command: ["healthcheck.sh"] }
-            # Oracle first-init (create DB + EXTENDED dance + load 5.9 MB V1) is slow.
-            periodSeconds: 15
-            failureThreshold: 40   # ~10 min
+            periodSeconds: 10
+            failureThreshold: 18   # ~3 min, covers the one-time restore + open
           readinessProbe:
             exec: { command: ["healthcheck.sh"] }
             periodSeconds: 15
           volumeMounts:
             - { name: data, mountPath: /opt/oracle/oradata }
-            - { name: seed, mountPath: /seed }
-            - { name: init, mountPath: /container-entrypoint-initdb.d }
-      volumes:
-        - name: seed
-          emptyDir: {}
-        - name: init
-          configMap: { name: oracle-init, defaultMode: 0755 }
   volumeClaimTemplates:
     - metadata: { name: data }
       spec:

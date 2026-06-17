@@ -39,7 +39,23 @@ SQLPLUS_PDB_SYS = $(CE) exec -i $(ORA) sqlplus -s sys/$(SYS_PW)@//localhost:1521
 SQLPLUS_CDB_SYS = $(CE) exec -i $(ORA) sqlplus -s sys/$(SYS_PW)@//localhost:1521/FREE as sysdba
 
 .PHONY: provision fresh up down down-wipe wait-healthy prepare-oracle \
-        load-baseline record-baseline migrate local-hash info update verify sql help
+        load-baseline record-baseline migrate local-hash info update verify sql help \
+        seeded bake bake-up bake-down bake-wipe
+
+# --- baked image flow ---------------------------------------------------------
+# Provisions schema+seeds ONCE into a Docker image, then any container started
+# from that image is ready in ~30s on first run (one-time copy of datafiles
+# from the image's baked snapshot into the named volume) and ~10s on every
+# restart (the volume is already populated). Compare to `provision` which is
+# ~2-3 min EVERY time on an empty volume.
+#
+#   make seeded      # build image (once) + start + verify — the whole story
+#   make bake-down   # stop the container, keep the volume (restart is ~10s)
+#   make bake-wipe   # stop AND drop the volume (next bake-up re-copies)
+
+IMAGE_BAKED ?= keycloak-demo-db:seeded
+DB_CTX      := $(realpath $(CURDIR)/..)
+BAKED_VOL   ?= gw-oracle-baked-data
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -184,3 +200,32 @@ verify: ## Smoke-check schema + seeds
 
 sql: ## Open an interactive sqlplus as GP
 	$(CE) exec -it $(ORA) sqlplus $(APP_USER)/$(APP_PW)@//localhost:1521/$(PDB)
+
+# ------------------------------------------------------------------------------
+# Baked-image flow: one-shot seeded DB ready in seconds.
+# ------------------------------------------------------------------------------
+
+seeded: bake bake-up ## Build the seeded image (cached after first build) + start ready-to-use
+
+bake: ## Build the baked-DB image (~3-5 min the first time; cached re-build is instant)
+	@echo ">>> Building $(IMAGE_BAKED) from $(DB_CTX)/Dockerfile ..."
+	$(CE) build -t $(IMAGE_BAKED) -f $(DB_CTX)/Dockerfile $(DB_CTX)
+
+bake-up: ## Start a container from the baked image: first start ~30-60s, restart ~10s
+	-$(CE) rm -f $(ORA) >/dev/null 2>&1
+	@echo ">>> Starting $(ORA) from $(IMAGE_BAKED) (named volume: $(BAKED_VOL))..."
+	$(CE) run -d --name $(ORA) \
+	  -p 127.0.0.1:1521:1521 \
+	  -v $(BAKED_VOL):/opt/oracle/oradata \
+	  $(IMAGE_BAKED)
+	@$(MAKE) --no-print-directory wait-healthy
+	@$(MAKE) --no-print-directory verify
+	@echo ""
+	@echo ">>> DONE. Seeded DB is up at //127.0.0.1:1521/$(PDB) ($(APP_USER)/$(APP_PW))."
+
+bake-down: ## Stop+remove the container (keep $(BAKED_VOL) -> restart is ~10s)
+	-$(CE) rm -f $(ORA)
+
+bake-wipe: ## Stop+remove the container AND drop $(BAKED_VOL) (next bake-up re-seeds)
+	-$(CE) rm -f $(ORA)
+	-$(CE) volume rm $(BAKED_VOL)

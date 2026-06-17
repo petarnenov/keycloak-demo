@@ -1,0 +1,8 @@
+# Keep the build context tight — Dockerfile + docker/ + migration/ + local/ is all
+# bake.sh needs.
+README.md
+seed-firm1-goal.md
+flyway.conf.example
+optional/
+stack/
+tools/

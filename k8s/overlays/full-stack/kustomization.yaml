@@ -10,9 +10,8 @@ namespace: geowealth-demo
 
 resources:
   - ../../base/namespace.yaml
-  # data tier
+  # data tier — oracle.yaml is the BAKED seeded image (no separate seed Job)
   - ../../base/oracle.yaml
-  - ../../base/oracle-seed.yaml
   - ../../base/elasticsearch.yaml
   - ../../base/memcached.yaml
   - ../../base/kc-postgres.yaml
@@ -66,7 +65,7 @@ images:
   - { name: keycloak-demo-billing-web, newTag: latest }
   - { name: keycloak-demo-trading-web, newTag: latest }
   - { name: keycloak-demo-geowealth, newTag: latest }
-  - { name: keycloak-demo-db-seed, newTag: latest }
+  - { name: keycloak-demo-db, newTag: seeded }
 
 patches:
   - target: { kind: Deployment, name: token-handler }

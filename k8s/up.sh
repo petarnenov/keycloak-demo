@@ -60,7 +60,12 @@ eval "$(minikube -p "$PROFILE" docker-env)"
 
 # --- 2. build + (images already in minikube's docker via docker-env) ---------
 log "Building images into the minikube docker daemon"
-docker build -f k8s/images/db-seed/Dockerfile -t keycloak-demo-db-seed:latest .
+# Baked Oracle: schema + Flyway seeds + R__local_login_hash pre-loaded into
+# datafiles at build time. Replaces the old gvenzl-base + Flyway-Job flow that
+# ran on every fresh up.sh. First run: ~3-5 min build. Re-run: Docker cache
+# short-circuits to seconds. db/local/R__local_login_hash.sql, if present in
+# the build context, gets baked in (image lives only in this minikube docker).
+docker build -t keycloak-demo-db:seeded -f db/Dockerfile db
 # Domain images (compose builds them; here we build directly).
 docker build -t keycloak-demo-token-handler:latest -f token-handler/Dockerfile .
 docker build -t keycloak-demo-billing-bff:latest   -f domains/billing/bff/Dockerfile .
@@ -81,20 +86,11 @@ log "Applying the full-stack overlay"
 kubectl kustomize --load-restrictor LoadRestrictionsNone "$OVERLAY" | kc apply -f -
 
 # --- 3b. real secrets from local files, AFTER the overlay --------------------
-# CRITICAL ORDER: the overlay ships PLACEHOLDER Secrets (db-login-hash, SAML
-# keystore). Load the real values AFTER applying it so they override the
-# placeholders BEFORE the seed Job's flyway container runs (it waits ~10 min on
-# Oracle's initContainer, by which time the updated Secret volume has propagated).
-# Loading before the apply — as an earlier version did — let the placeholder win,
-# so the seed ran with NO login hash and every user's LDAP_PSWD_HASH stayed NULL.
-if [ -f db/local/R__local_login_hash.sql ]; then
-  log "Loading DB login hash Secret from db/local/"
-  kc create secret generic db-login-hash \
-    --from-file=R__local_login_hash.sql=db/local/R__local_login_hash.sql \
-    --dry-run=client -o yaml | kc apply -f -
-else
-  echo "  WARNING: db/local/R__local_login_hash.sql absent — no user can log in."
-fi
+# CRITICAL ORDER: the overlay ships a PLACEHOLDER Secret for the SAML keystore.
+# Load the real value AFTER applying it so it overrides the placeholder. (The
+# DB login hash USED to live here too; it's now baked into the seeded Oracle
+# image at docker-build time via db/local/R__local_login_hash.sql — see the
+# build above; nothing to load here for the DB.)
 load_tls() { # <secret> <crt> <key>
   [ -f "$2" ] && [ -f "$3" ] && kc create secret tls "$1" --cert="$2" --key="$3" \
     --dry-run=client -o yaml | kc apply -f - || echo "  (skip $1: certs absent)"
@@ -118,9 +114,11 @@ wait_ready() { # <kind/name> <timeout>
 }
 wait_job() { kc wait --for=condition=complete "job/$1" --timeout="$2" || kc logs "job/$1" --tail=40; }
 
-# Wave 1: Oracle (slow first-init: EXTENDED + 5.9MB V1) -> seed -> infra
-wait_ready statefulset/oracle 900s
-wait_job  oracle-seed 600s
+# Wave 1: Oracle (baked image — first pod copies datafiles from the image's
+# baked snapshot into the empty PVC ~30-60s; pod-restart on an existing PVC is
+# ~10s). No separate seed Job: the schema + Flyway seeds are already in the
+# datafiles inside the image.
+wait_ready statefulset/oracle 300s
 wait_ready statefulset/elasticsearch 300s
 wait_ready statefulset/kc-postgres 120s
 wait_ready deployment/memcached 120s
