@@ -39,6 +39,8 @@ if [ -f "$DATA_TIER_ENV" ]; then
   set -a; . "$DATA_TIER_ENV"; set +a
 fi
 ORACLE_HOST="${ORACLE_HOST:-oracle}"
+ORACLE_PDB="${ORACLE_PDB:-FREEPDB1}"
+ORACLE_USER="${ORACLE_USER:-gp}"
 ELASTICSEARCH_HOST="${ELASTICSEARCH_HOST:-elasticsearch}"
 MEMCACHED_HOST="${MEMCACHED_HOST:-memcached}"
 
@@ -174,6 +176,27 @@ fi
 # scaled down.
 log "Aligning data-tier endpoints with ${DATA_TIER_ENV}"
 data_tier_redirect
+
+# JDBC config for P1 (SERVICE_NAME + schema user). Always re-applied so a swap
+# of DATA_TIER_ENV (FREEPDB1 <-> ORCL12VM, etc.) re-drives the live ConfigMap.
+# P1's containers consume this via envFrom; the entrypoint substitutes
+# ${ORACLE_PDB}/${ORACLE_USER} into hibernate.properties at startup.
+log "Applying oracle-config ConfigMap (ORACLE_PDB=${ORACLE_PDB}, ORACLE_USER=${ORACLE_USER})"
+kc create configmap oracle-config \
+  --from-literal=ORACLE_PDB="${ORACLE_PDB}" \
+  --from-literal=ORACLE_USER="${ORACLE_USER}" \
+  --dry-run=client -o yaml | kc apply -f -
+
+# Password is a credential — only kept on the cluster if explicitly supplied
+# via shell env on the up.sh invocation (e.g. ORACLE_PASSWORD=... ./k8s/up.sh).
+# Absent: no Secret, and P1's entrypoint falls back to its default (gp123), which
+# is the in-cluster baked-image password.
+if [ -n "${ORACLE_PASSWORD:-}" ]; then
+  log "Applying oracle-creds Secret (ORACLE_PASSWORD from shell env)"
+  kc create secret generic oracle-creds \
+    --from-literal=ORACLE_PASSWORD="${ORACLE_PASSWORD}" \
+    --dry-run=client -o yaml | kc apply -f -
+fi
 
 # --- 4. wave-wait -----------------------------------------------------------
 

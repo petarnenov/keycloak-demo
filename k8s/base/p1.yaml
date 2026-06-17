@@ -49,6 +49,13 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          # JDBC SERVICE_NAME / user / password come from oracle-config + oracle-creds
+          # (built from k8s/env/data-tier.<env>.env in up.sh). Both optional: when
+          # absent, P1's entrypoint falls back to its in-cluster defaults
+          # (FREEPDB1 / gp / gp123) so the dev path needs no Secret.
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env: &p1env
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
@@ -84,6 +91,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: samlintegrationmanager }
@@ -119,6 +129,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: reportengine }
@@ -149,6 +162,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: proposalagents }
@@ -179,6 +195,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: emailagent }
@@ -212,6 +231,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: useragents }
@@ -243,6 +265,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: mostagents }
@@ -274,6 +299,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: searchagents }
@@ -305,6 +333,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: cspagents }
@@ -343,6 +374,9 @@ spec:
         - name: agent
           image: keycloak-demo-geowealth:latest
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: devcommonagents }
@@ -394,7 +428,9 @@ spec:
           # geowealth/k8s/env/urls.<env>.env. Retarget an env = swap the env file,
           # no code change / no image rebuild.
           envFrom:
-            - configMapRef: { name: p1-urls }
+            - { configMapRef: { name: p1-urls } }
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: tomcat }
             - { name: JAVA_OPTS_EXTRA, value: "-Xms1g -Xmx4g" }
