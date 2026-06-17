@@ -87,6 +87,43 @@ against the public issuer from inside the pod (the issuer host is otherwise
 unresolvable in-cluster). The `kc-ext` ClusterIP is only known at deploy time, so
 this is a runtime patch, not a static manifest value.
 
+## Data-tier endpoint config (K8s)
+
+Where each consumer in the cluster reaches **Oracle / Elasticsearch / Memcached**
+is also one file per environment: `k8s/env/data-tier.{dev,qa,prod}.env`
+(`DATA_TIER_ENV=` overrides the path). Each entry is either the in-cluster
+Service name (default) or an external DNS host / IP. Consumers always use the
+bare name (`oracle:1521`, `elasticsearch:9200`, `memcached:11211`) — only what
+that name resolves to in cluster DNS changes.
+
+`up.sh` reads the file and, per service:
+
+- **In-cluster mode** (`<SVC>_HOST` equals the Service name): no-op. The
+  kustomize-applied `ClusterIP` Service + StatefulSet / Deployment is the
+  canonical default. (If a previous run had redirected the Service to
+  `ExternalName`, `data_tier_pre_align` deletes that stale Service BEFORE the
+  apply so the apply can re-create the default — `Service.spec.type` is
+  immutable, so an in-place apply over an `ExternalName` Service would fail.)
+- **External mode** (`<SVC>_HOST` differs): AFTER the apply, `data_tier_redirect`
+  scales the in-cluster workload to 0 replicas, deletes the freshly-applied
+  `ClusterIP` Service, and re-applies it as `type: ExternalName,
+  externalName: <HOST>`.
+
+`ExternalName` doesn't remap ports — the external host MUST listen on the same
+port the in-cluster Service exposed (1521 / 9200 / 11211). If it can't, NAT or
+port-forward on the external side, or run a small in-cluster TCP proxy.
+
+**External = assumed already populated.** This cluster will NOT seed anything
+into an external host. When `ORACLE_HOST` is off-cluster the in-cluster
+StatefulSet is scaled to 0 (so the seeded image's `restore-oradata.sh` doesn't
+run) and the old `oracle-seed` Flyway Job is gone, so neither path touches the
+external Oracle. The BFFs and P1 are read/write consumers, not migrators.
+Same model for `ELASTICSEARCH_HOST` (no auto-reindex) and `MEMCACHED_HOST`
+(stateless). If you need to provision the external first, the simplest path
+for Oracle is `docker run keycloak-demo-db:seeded` (built from
+`db/Dockerfile`) on the target host; for Elasticsearch, run the GeoWealth
+`RefreshClientSearcherTool` against it once.
+
 ## Persistence model — what survives a restart
 
 | Lives in | Persists across | Wiped only by |
@@ -139,6 +176,7 @@ Pure IdP-init (P1 → Keycloak with unsolicited Response) does **not** work clea
 | `docker-compose.yml` structural change | `podman compose up -d` (compose picks up the diff) |
 | `keycloak/realm-export.json` | takes effect on fresh DB only; otherwise patch the live realm via admin API. For env-specific URLs (IdP SAML endpoints, client redirect/web-origin/post-logout/back-channel), edit `k8s/env/urls.<env>.env` and run `./scripts/reconcile-realm.sh k8s/env/urls.<env>.env` (idempotent; `up.sh` runs it automatically). |
 | A URL or port that differs per environment (K8s) | edit `k8s/env/urls.<env>.env` (the single source) — see "Environment URL configuration (K8s)" below. No code / image / realm-export edit. |
+| Pointing K8s at an external Oracle / Elasticsearch / Memcached (different machine) | edit `k8s/env/data-tier.<env>.env` and re-run `./k8s/up.sh` — see "Data-tier endpoint config (K8s)" below. |
 | New realm role needed for a running demo | POST `/admin/realms/demo-realm/roles` with admin token; also add to `realm-export.json` for future fresh installs |
 | New OIDC client needed for a running demo | POST `/admin/realms/demo-realm/clients` with admin token; also add to `realm-export.json` |
 | P1/Integrations link source (`~/geowealth/.../useIntegrationLinks.js`) | rebuild the GeoWealth Tomcat app — outside this repo. |

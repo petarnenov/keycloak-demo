@@ -27,6 +27,62 @@ MINIKUBE_CPUS="${MINIKUBE_CPUS:-4}"
 kc() { kubectl -n "$NS" "$@"; }
 log() { printf '\n\033[1;36m>>> %s\033[0m\n' "$*"; }
 
+# Data-tier endpoint config (Oracle / Elasticsearch / Memcached). Read from
+# k8s/env/data-tier.<env>.env; each *_HOST is either the in-cluster Service
+# name (default) or an external DNS hostname. data_tier_pre_align (run BEFORE
+# kustomize apply) deletes a stale ExternalName Service so apply can re-create
+# the in-cluster ClusterIP Service; data_tier_redirect (run AFTER apply) swaps
+# any Service whose host is external to type=ExternalName and scales the
+# in-cluster workload to 0. See k8s/env/data-tier.dev.env for the full story.
+DATA_TIER_ENV="${DATA_TIER_ENV:-k8s/env/data-tier.dev.env}"
+if [ -f "$DATA_TIER_ENV" ]; then
+  set -a; . "$DATA_TIER_ENV"; set +a
+fi
+ORACLE_HOST="${ORACLE_HOST:-oracle}"
+ELASTICSEARCH_HOST="${ELASTICSEARCH_HOST:-elasticsearch}"
+MEMCACHED_HOST="${MEMCACHED_HOST:-memcached}"
+
+data_tier_pre_align() {
+  # If env says in-cluster but live Service is ExternalName, delete it now —
+  # otherwise kustomize apply will choke (Service .spec.type is immutable).
+  local svc host
+  for entry in "oracle:$ORACLE_HOST" "elasticsearch:$ELASTICSEARCH_HOST" "memcached:$MEMCACHED_HOST"; do
+    svc=${entry%%:*}; host=${entry#*:}
+    if [ "$host" = "$svc" ] && \
+       [ "$(kc get svc "$svc" -o jsonpath='{.spec.type}' 2>/dev/null)" = "ExternalName" ]; then
+      log "data-tier: restoring in-cluster svc/$svc (was ExternalName)"
+      kc delete svc "$svc"
+    fi
+  done
+}
+
+data_tier_redirect_one() { # <svc> <host> <workload-kind/name>
+  local svc=$1 host=$2 workload=$3
+  [ "$host" = "$svc" ] && return  # in-cluster — kustomize default is correct
+  log "data-tier: pointing svc/$svc at external host '$host' (scale $workload to 0)"
+  kc scale "$workload" --replicas=0 2>/dev/null || true
+  # Service .spec.type is immutable; the freshly-applied ClusterIP must be
+  # replaced. kc delete is idempotent (--ignore-not-found); the apply that
+  # follows recreates it as ExternalName.
+  kc delete svc "$svc" --ignore-not-found
+  kc apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: $svc
+  labels: { app.kubernetes.io/name: $svc }
+spec:
+  type: ExternalName
+  externalName: $host
+EOF
+}
+
+data_tier_redirect() {
+  data_tier_redirect_one oracle        "$ORACLE_HOST"        statefulset/oracle
+  data_tier_redirect_one elasticsearch "$ELASTICSEARCH_HOST" statefulset/elasticsearch
+  data_tier_redirect_one memcached     "$MEMCACHED_HOST"     deployment/memcached
+}
+
 if [ "${1:-}" = "--down" ]; then
   log "Tearing down namespace $NS"
   kubectl delete ns "$NS" --ignore-not-found
@@ -82,6 +138,10 @@ eval "$(minikube -p "$PROFILE" docker-env -u)"
 
 # --- 3. namespace + apply the whole overlay (declarative) -------------------
 kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
+# Before the apply: if any data-tier Service is currently ExternalName (from a
+# previous run) but the env file now says in-cluster, delete it so the apply
+# can re-create the ClusterIP Service (Service.spec.type is immutable).
+data_tier_pre_align
 log "Applying the full-stack overlay"
 kubectl kustomize --load-restrictor LoadRestrictionsNone "$OVERLAY" | kc apply -f -
 
@@ -105,6 +165,15 @@ if [ -f /tmp/p1-idp-dev.p12 ]; then
   kc create secret generic p1-saml-keystore --from-file=idp.p12=/tmp/p1-idp-dev.p12 \
     --dry-run=client -o yaml | kc apply -f -
 fi
+
+# --- 3c. data-tier redirects (Oracle / Elasticsearch / Memcached) -----------
+# Driven by k8s/env/data-tier.<env>.env (override via DATA_TIER_ENV). For each
+# service: in-cluster mode → no-op (the apply above set up the default); external
+# mode → swap the Service to ExternalName and scale the in-cluster workload to
+# 0. Done BEFORE wave-wait so wait_ready doesn't sit on a workload we just
+# scaled down.
+log "Aligning data-tier endpoints with ${DATA_TIER_ENV}"
+data_tier_redirect
 
 # --- 4. wave-wait -----------------------------------------------------------
 
