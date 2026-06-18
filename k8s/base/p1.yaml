@@ -391,6 +391,48 @@ spec:
             requests: { cpu: 200m, memory: 1Gi }
             limits:   { cpu: "1",  memory: 2Gi }
 ---
+# CRM agent bundle — hosts CrmManagerTrait (alias=CRM), DocumentVaultManagerTrait,
+# CrmPortletManagerTrait, WhitelabelResourceManagerTrait (see etc/crm.xml).
+# Required for every CRM-driven page: clientDirectory.do, accountDirectory.do,
+# portfolioDirectory.do, household/client/account detail. CrmManager.executeClientSearchRequestDirectory
+# does providerSendAndWait(ExecuteClientSearchRequestDirectoryMsg) to /user/CRM
+# via DistributedPubSub; without this Deployment the message dead-letters and
+# the action hangs until MESSAGE_TIMEOUT. ClientSearcher / ES lookups themselves
+# run inside this trait — searchagents only owns SearchManager/ClientSearchManager
+# auxiliaries, NOT the CRM directory entrypoint.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p1-crm
+  labels: { app.kubernetes.io/name: p1-crm, app.kubernetes.io/component: legacy }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: p1-crm } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: p1-crm, app.kubernetes.io/component: legacy }
+    spec:
+      containers:
+        - name: agent
+          image: keycloak-demo-geowealth:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
+            - { secretRef:    { name: oracle-creds,  optional: true } }
+          env:
+            - { name: ROLE, value: agent }
+            - { name: AGENT, value: crm }
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx2g" }
+            - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
+            - { name: ORACLE_HOST, value: oracle }
+            - { name: REDIS_HOST, value: redis }
+            - { name: MEMCACHED_HOST, value: memcached }
+            - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
+          resources:
+            requests: { cpu: 250m, memory: 1Gi }
+            limits:   { cpu: "1",  memory: 2.5Gi }
+---
 apiVersion: v1
 kind: Service
 metadata:
