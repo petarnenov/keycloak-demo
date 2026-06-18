@@ -124,6 +124,56 @@ for Oracle is `docker run keycloak-demo-db:seeded` (built from
 `db/Dockerfile`) on the target host; for Elasticsearch, run the GeoWealth
 `RefreshClientSearcherTool` against it once.
 
+**Oracle JDBC coordinates beyond `_HOST`.** A real external Oracle almost
+always uses a different SERVICE_NAME (PDB) and password than the baked image:
+
+- `ORACLE_PDB` in the env file overrides the JDBC SERVICE_NAME (default
+  `FREEPDB1`, common external value `ORCL12VM`). P1's `hibernate.properties.tpl`
+  and `akka.conf.tpl` substitute it into `jdbc:oracle:thin:@//${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_PDB}`.
+- `ORACLE_USER` (default `gp`) — same template substitution.
+- `ORACLE_PASSWORD` is a **credential** and is NEVER stored in the env file.
+  Provide it on the shell: `ORACLE_PASSWORD='real-pw' ./k8s/up.sh`. Absent →
+  no `oracle-creds` Secret is applied and P1's entrypoint falls back to its
+  baked-image default (`gp123`), which won't authenticate against most
+  external instances. The standard local-dev creds are `gp/gp123` and live in
+  `~/AppServer/setup.sh` / `~/AppServer/geowealth/etc/dev-petar-akka.conf`.
+
+**Consumers auto-restart on data-tier env change.** envFrom ConfigMaps and
+Secrets DON'T auto-restart pods when their values change. Without help, a
+`data-tier.<env>.env` swap would land in `oracle-config` / `oracle-creds` but
+the running P1 pods would keep the old env until they happened to restart for
+another reason. `up.sh` guards this: it snapshots `cm/oracle-config.data` +
+`secret/oracle-creds.data` + `svc/oracle.{externalName,clusterIP}` before and
+after the apply, and if anything changed AND the consumer workloads
+pre-existed, it `kubectl rollout restart`s the eleven Oracle-consuming P1
+workloads (`p1-tomcat`, `p1-coordinator`, all nine agents) BEFORE the
+wave-wait so wait sees the new pods. On a fresh install (consumers don't
+exist yet) the restart is skipped. On an idempotent re-run with no change
+the hashes match and nothing rolls. **Beware:** any `kubectl port-forward
+svc/p1-tomcat 8080:8080` you had running will die with the old pod —
+re-establish it after the rollout (`pkill -f 'port-forward.*p1-tomcat'` then
+re-run the command in section 6 of `k8s/README-ubuntu-bringup.md`).
+
+**Agents are heap-sized for the baked PDB, not real data.** The biggest
+landmine when switching to a populated external Oracle is `p1-devcommonagents`:
+its `JAVA_OPTS_EXTRA` defaults to `-Xmx4G` (with container limit `5Gi`) in
+`k8s/base/p1.yaml`, which is the bumped value AFTER hitting `OutOfMemoryError`
+during `CrntCostBasisLoader.<init>` against a real `CostBasisAccount` table
+(it pre-loads the whole table into an in-memory cache at boot). The earlier
+`1536m` value was tuned for the near-empty baked PDB only. **User-facing
+symptom of an agent OOM:** the SPA at `localhost:8080/` (or any P1 page)
+renders blank because `AuthorizationManager` lives on `devcommonagents` →
+the agent CrashLoopBackOffs → `IdentifyFirmByUrlMsg` from `p1-tomcat` goes
+to dead letters → the action hangs and Tomcat times the request out.
+Diagnose with `kubectl -n geowealth-demo get pods | grep p1-devcommonagents`
+(non-zero RESTARTS) and the `--previous` log (look for `OutOfMemoryError`
+under `DistributedCacheController.<init>` → `CrntCostBasisLoader`). If any
+other agent OOMs on the same DB swap, bump its `JAVA_OPTS_EXTRA` + container
+`limits.memory` proportionally; the OOM signature is always `<TraitName>Loader.<init>`
+followed by heap exhaustion in the boot path. Boot against a real DB also
+takes longer (~2 min for `devcommonagents` cache pre-load) — wait for
+`Looks like we are UP to the cluster` in its logs before probing the page.
+
 ## Persistence model — what survives a restart
 
 | Lives in | Persists across | Wiped only by |

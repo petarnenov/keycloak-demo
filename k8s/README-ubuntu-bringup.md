@@ -144,6 +144,99 @@ a second cluster, or to avoid a stale profile of the same name created with a
 different driver (a leftover rootful-podman `geowealth` blocks a docker `geowealth`
 with `GUEST_DRIVER_MISMATCH`), e.g. `MINIKUBE_PROFILE=gwk8s ./k8s/up.sh`.
 
+### 5a. Pointing the cluster at an external Oracle (optional)
+
+The defaults bring up an in-cluster Oracle baked from `db/Dockerfile` with a
+tiny seeded schema — fine for the SSO flow, but most real demos need the
+populated company Oracle (e.g. `192.168.1.42` / SERVICE_NAME `ORCL12VM`). The
+swap is **one file edit + one shell var**, no code/manifest/realm change.
+
+1. Edit `k8s/env/data-tier.dev.env`:
+
+   ```
+   ORACLE_HOST=192.168.1.42      # was: oracle
+   ORACLE_PDB=ORCL12VM           # was: FREEPDB1 (matches the external SERVICE_NAME)
+   ORACLE_USER=gp                # rarely changes
+   ```
+
+   `ORACLE_PASSWORD` stays OUT of this file — it's a credential, supplied on
+   the shell at run time.
+
+2. Re-run `up.sh` with the password in the shell env:
+
+   ```bash
+   ORACLE_PASSWORD='real-pw' ./k8s/up.sh
+   ```
+
+   For the standard local-dev Oracle the creds are `gp/gp123` (see
+   `~/AppServer/setup.sh` or `~/AppServer/geowealth/etc/dev-petar-akka.conf`).
+
+What `up.sh` does, in order:
+
+- **`svc/oracle` → ExternalName.** The Service is re-created as either
+  `type: ExternalName` (for a hostname) or a selector-less Service + manual
+  `Endpoints` with `addresses[].ip` (for a literal IP — CoreDNS rejects
+  ExternalName CNAMEs to IP literals). The in-cluster `statefulset/oracle`
+  is scaled to 0 so its seeded image's `restore-oradata.sh` doesn't run.
+- **`oracle-config` ConfigMap** picks up `ORACLE_PDB` / `ORACLE_USER`.
+- **`oracle-creds` Secret** is created from `ORACLE_PASSWORD` (skipped if
+  absent → P1 falls back to its baked default `gp123`, which won't auth most
+  externals).
+- **Rollout-restart of P1 consumers** iff anything changed AND those
+  workloads already existed — `p1-tomcat`, `p1-coordinator`, and the nine
+  agents. envFrom ConfigMaps/Secrets don't trigger pod restarts on their
+  own, so without this the new env would land but the running pods would
+  keep the old values. On a fresh install the consumers don't exist yet, so
+  this is skipped. On a no-op re-run the snapshot hashes match and nothing
+  rolls.
+- **Wave-wait** sees the new pods rolling.
+
+**Heads-up — port-forwards die with the rolled pod.** If you already had
+`kubectl port-forward svc/p1-tomcat 8080:8080 --address 127.0.0.1` running
+from section 6, it'll silently drop when `p1-tomcat` rolls. Re-establish it:
+
+```bash
+pkill -f 'kubectl.*port-forward.*p1-tomcat'
+kubectl -n geowealth-demo port-forward svc/p1-tomcat 8080:8080 --address 127.0.0.1 &
+```
+
+**Heads-up — agent heap is tuned for the baked PDB.** `p1-devcommonagents`
+boots by pre-loading the full `CostBasisAccount` table into an in-memory
+cache (`CrntCostBasisLoader`). 1.5G heap fits the baked PDB but OOMs against
+real data; `k8s/base/p1.yaml` therefore sets `-Xmx4G` with `limits.memory:
+5Gi`. Symptom of an under-sized agent is a blank `localhost:8080/` page
+because the agent CrashLoopBackOffs → `AuthorizationManager` never joins
+the Akka cluster → `IdentifyFirmByUrlMsg` from `p1-tomcat` goes to dead
+letters → the request hangs. Diagnose with
+
+```bash
+kubectl -n geowealth-demo get pods | grep p1-devcommonagents          # RESTARTS > 0?
+kubectl -n geowealth-demo logs --previous deploy/p1-devcommonagents \
+  | grep -A20 OutOfMemoryError                                        # CrntCostBasisLoader?
+```
+
+If a different agent OOMs after a future DB grows, bump its `JAVA_OPTS_EXTRA`
++ container `limits.memory` in `k8s/base/p1.yaml` the same way (the pattern
+is `<X>Loader.<init>` → heap exhaustion in the boot path).
+
+**Provisioning hint — if the external is empty.** This cluster does NOT
+migrate into an external host. The simplest path to a populated external
+Oracle is `docker run` of the baked image on the target machine:
+
+```bash
+docker run -d --name oracle -p 1521:1521 -v oradata:/opt/oracle/oradata \
+  keycloak-demo-db:seeded
+```
+
+(Built from `db/Dockerfile`; schema + Flyway seeds + the local-login hash
+are already inside.) Same model applies to Elasticsearch (run
+`RefreshClientSearcherTool` once) and Memcached (stateless, no provisioning).
+
+**Switching back to in-cluster** is the same edit in reverse — set
+`ORACLE_HOST=oracle` (and `ORACLE_PDB=FREEPDB1`) and re-run `up.sh`. The
+script detects the leftover `ExternalName` Service from the previous run and
+deletes it before the apply (`Service.spec.type` is immutable).
+
 ## 6. Access: `/etc/hosts` + port-forwards
 
 The realm/app config uses the ports `:5184 / :5185 / :5180 / :8080`, which come

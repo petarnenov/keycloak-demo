@@ -55,11 +55,11 @@ spec:
           # (FREEPDB1 / gp / gp123) so the dev path needs no Secret.
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env: &p1env
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -93,6 +93,7 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
@@ -100,7 +101,6 @@ spec:
             - { name: JAVA_OPTS_EXTRA, value: "-Xmx2G" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -131,6 +131,7 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
@@ -138,7 +139,6 @@ spec:
             - { name: JAVA_OPTS_EXTRA, value: "-Xmx2048m -XX:ParallelGCThreads=4" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -164,6 +164,7 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
@@ -171,7 +172,6 @@ spec:
             - { name: JAVA_OPTS_EXTRA, value: "-Xmx2048m" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -197,6 +197,7 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
@@ -204,7 +205,6 @@ spec:
             - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -233,6 +233,7 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
@@ -240,7 +241,6 @@ spec:
             - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -267,6 +267,7 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
@@ -274,7 +275,6 @@ spec:
             - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -301,20 +301,28 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: searchagents }
-            - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
+            # ClientSearchManager runs Hibernate loaders over CLIENT/ACCOUNT-heavy
+            # tables to drive the CRM directory ("households", "clients" pages).
+            # 1G heap fits the baked PDB but OOMs inside the actor message handler
+            # against a real populated Oracle — JVM stays Running 0 restarts (Akka
+            # swallows the failure), but the reply never returns and the SPA hangs
+            # on a loading spinner (ExecuteClientSearchRequestDirectoryMsg dead
+            # letters in p1-tomcat). Same shape as the devcommonagents OOM above.
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx4G" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
-            requests: { cpu: 100m, memory: 512Mi }
-            limits:   { cpu: 500m, memory: 1.5Gi }
+            # Sized for the 4G JVM heap above; container limit must exceed heap.
+            requests: { cpu: 100m, memory: 2Gi }
+            limits:   { cpu: 500m, memory: 5Gi }
 ---
 # cspagents — provides InstrumentPerformanceManager.
 apiVersion: apps/v1
@@ -335,6 +343,7 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
@@ -342,7 +351,6 @@ spec:
             - { name: JAVA_OPTS_EXTRA, value: "-Xmx1024m" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
@@ -376,20 +384,27 @@ spec:
           imagePullPolicy: IfNotPresent
           envFrom:
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: agent }
             - { name: AGENT, value: devcommonagents }
-            - { name: JAVA_OPTS_EXTRA, value: "-Xmx1536m" }
+            # CrntCostBasisLoader pre-loads the entire CostBasisAccount table into an
+            # in-memory cache at boot. 1.5G fits the tiny baked PDB; against a populated
+            # external Oracle (e.g. 192.168.1.42/ORCL12VM) the load OOMs and the agent
+            # CrashLoopBackOffs, killing AuthorizationManager and stalling p1-tomcat
+            # requests (IdentifyFirmByUrlMsg dead-letters).
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx4G" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
-            requests: { cpu: 200m, memory: 1Gi }
-            limits:   { cpu: "1",  memory: 2Gi }
+            # Sized for the 4G JVM heap above; container limit must be > heap or
+            # kubelet OOMKills before the JVM can throw OutOfMemoryError.
+            requests: { cpu: 200m, memory: 2Gi }
+            limits:   { cpu: "1",  memory: 5Gi }
 ---
 # CRM agent bundle — hosts CrmManagerTrait (alias=CRM), DocumentVaultManagerTrait,
 # CrmPortletManagerTrait, WhitelabelResourceManagerTrait (see etc/crm.xml).
@@ -472,13 +487,13 @@ spec:
           envFrom:
             - { configMapRef: { name: p1-urls } }
             - { configMapRef: { name: oracle-config, optional: true } }
+            - { configMapRef: { name: es-config,     optional: true } }
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: tomcat }
             - { name: JAVA_OPTS_EXTRA, value: "-Xms1g -Xmx4g" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
-            - { name: ES_HOST, value: elasticsearch }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }

@@ -35,14 +35,26 @@ log() { printf '\n\033[1;36m>>> %s\033[0m\n' "$*"; }
 # any Service whose host is external to type=ExternalName and scales the
 # in-cluster workload to 0. See k8s/env/data-tier.dev.env for the full story.
 DATA_TIER_ENV="${DATA_TIER_ENV:-k8s/env/data-tier.dev.env}"
+# Precedence: explicit shell env (e.g. `ORACLE_HOST=192.168.1.42 ./up.sh`) wins
+# over the env file's value. `. file` would clobber a shell-set var, so snapshot
+# the shell-set ones first, source, then restore the non-empty snapshots.
+_sh_ORACLE_HOST="${ORACLE_HOST:-}"
+_sh_ORACLE_PDB="${ORACLE_PDB:-}"
+_sh_ORACLE_USER="${ORACLE_USER:-}"
+_sh_ELASTICSEARCH_HOST="${ELASTICSEARCH_HOST:-}"
+_sh_ELASTICSEARCH_SCHEME="${ELASTICSEARCH_SCHEME:-}"
+_sh_MEMCACHED_HOST="${MEMCACHED_HOST:-}"
 if [ -f "$DATA_TIER_ENV" ]; then
   set -a; . "$DATA_TIER_ENV"; set +a
 fi
-ORACLE_HOST="${ORACLE_HOST:-oracle}"
-ORACLE_PDB="${ORACLE_PDB:-FREEPDB1}"
-ORACLE_USER="${ORACLE_USER:-gp}"
-ELASTICSEARCH_HOST="${ELASTICSEARCH_HOST:-elasticsearch}"
-MEMCACHED_HOST="${MEMCACHED_HOST:-memcached}"
+ORACLE_HOST="${_sh_ORACLE_HOST:-${ORACLE_HOST:-oracle}}"
+ORACLE_PDB="${_sh_ORACLE_PDB:-${ORACLE_PDB:-FREEPDB1}}"
+ORACLE_USER="${_sh_ORACLE_USER:-${ORACLE_USER:-gp}}"
+ELASTICSEARCH_HOST="${_sh_ELASTICSEARCH_HOST:-${ELASTICSEARCH_HOST:-elasticsearch}}"
+# ES scheme is parameterised because external ES (dev-elastic.geowealth.com)
+# is HTTPS-only — geowealth/k8s/config/akka.conf.tpl reads ${ES_SCHEME}.
+ELASTICSEARCH_SCHEME="${_sh_ELASTICSEARCH_SCHEME:-${ELASTICSEARCH_SCHEME:-http}}"
+MEMCACHED_HOST="${_sh_MEMCACHED_HOST:-${MEMCACHED_HOST:-memcached}}"
 
 data_tier_pre_align() {
   # If env says in-cluster but live Service is ExternalName, delete it now —
@@ -58,16 +70,41 @@ data_tier_pre_align() {
   done
 }
 
-data_tier_redirect_one() { # <svc> <host> <workload-kind/name>
-  local svc=$1 host=$2 workload=$3
+data_tier_redirect_one() { # <svc> <host> <workload-kind/name> <port>
+  local svc=$1 host=$2 workload=$3 port=$4
   [ "$host" = "$svc" ] && return  # in-cluster — kustomize default is correct
-  log "data-tier: pointing svc/$svc at external host '$host' (scale $workload to 0)"
+  log "data-tier: pointing svc/$svc at external '$host:$port' (scale $workload to 0)"
   kc scale "$workload" --replicas=0 2>/dev/null || true
-  # Service .spec.type is immutable; the freshly-applied ClusterIP must be
-  # replaced. kc delete is idempotent (--ignore-not-found); the apply that
-  # follows recreates it as ExternalName.
   kc delete svc "$svc" --ignore-not-found
-  kc apply -f - <<EOF
+  # ExternalName Services REQUIRE an FQDN — CoreDNS rejects an IP literal with
+  # SERVFAIL ("Temporary failure in name resolution" inside the pod). Detect
+  # the IP case and use the canonical K8s pattern instead: a selector-less
+  # Service + a manually-managed Endpoints object pointing at the literal IP.
+  # For hostnames we keep the simpler ExternalName CNAME form.
+  if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    kc apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: $svc
+  labels: { app.kubernetes.io/name: $svc }
+spec:
+  ports:
+    - { name: tns, port: $port, targetPort: $port }
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: $svc
+  labels: { app.kubernetes.io/name: $svc }
+subsets:
+  - addresses:
+      - ip: $host
+    ports:
+      - { name: tns, port: $port }
+EOF
+  else
+    kc apply -f - <<EOF
 apiVersion: v1
 kind: Service
 metadata:
@@ -77,12 +114,13 @@ spec:
   type: ExternalName
   externalName: $host
 EOF
+  fi
 }
 
 data_tier_redirect() {
-  data_tier_redirect_one oracle        "$ORACLE_HOST"        statefulset/oracle
-  data_tier_redirect_one elasticsearch "$ELASTICSEARCH_HOST" statefulset/elasticsearch
-  data_tier_redirect_one memcached     "$MEMCACHED_HOST"     deployment/memcached
+  data_tier_redirect_one oracle        "$ORACLE_HOST"        statefulset/oracle        "${ORACLE_PORT:-1521}"
+  data_tier_redirect_one elasticsearch "$ELASTICSEARCH_HOST" statefulset/elasticsearch "${ELASTICSEARCH_PORT:-9200}"
+  data_tier_redirect_one memcached     "$MEMCACHED_HOST"     deployment/memcached      "${MEMCACHED_PORT:-11211}"
 }
 
 if [ "${1:-}" = "--down" ]; then
@@ -174,6 +212,28 @@ fi
 # mode → swap the Service to ExternalName and scale the in-cluster workload to
 # 0. Done BEFORE wave-wait so wait_ready doesn't sit on a workload we just
 # scaled down.
+
+# Snapshot the data-tier consumer-visible state BEFORE we touch anything, so we
+# can detect a real change after the apply and rollout-restart consumers iff
+# something they envFrom (oracle-config / oracle-creds) or DNS-resolve
+# (svc/oracle) actually changed. Without this, a ConfigMap update lands but the
+# already-running P1 pods keep the old env until they happen to restart for
+# another reason.
+data_tier_snapshot() {
+  {
+    kc get cm oracle-config -o jsonpath='{.data}' 2>/dev/null
+    kc get cm es-config -o jsonpath='{.data}' 2>/dev/null
+    kc get secret oracle-creds -o jsonpath='{.data}' 2>/dev/null
+    kc get svc oracle -o jsonpath='{.spec.externalName}{.spec.clusterIP}' 2>/dev/null
+    kc get svc elasticsearch -o jsonpath='{.spec.externalName}{.spec.clusterIP}' 2>/dev/null
+  } | sha256sum | awk '{print $1}'
+}
+DT_SNAPSHOT_BEFORE=$(data_tier_snapshot)
+# If the consumer workloads don't exist yet (fresh install), they'll start with
+# the new env on their own — no restart needed even though the snapshot diff.
+DT_CONSUMERS_PREEXISTED=0
+kc get statefulset/p1-tomcat >/dev/null 2>&1 && DT_CONSUMERS_PREEXISTED=1
+
 log "Aligning data-tier endpoints with ${DATA_TIER_ENV}"
 data_tier_redirect
 
@@ -187,6 +247,18 @@ kc create configmap oracle-config \
   --from-literal=ORACLE_USER="${ORACLE_USER}" \
   --dry-run=client -o yaml | kc apply -f -
 
+# ES coordinates for P1 (host + port + http/https). geowealth/k8s/config/akka.conf.tpl
+# substitutes ${ES_HOST}/${ES_PORT}/${ES_SCHEME}. Direct external hostname (no
+# Service alias) is the only thing that works for HTTPS — the dev-elastic cert
+# is signed for *.geowealth.com, not `elasticsearch`, so SNI/cert checks fail
+# if we tried to ExternalName-redirect svc/elasticsearch.
+log "Applying es-config ConfigMap (ES_HOST=${ELASTICSEARCH_HOST}, ES_SCHEME=${ELASTICSEARCH_SCHEME})"
+kc create configmap es-config \
+  --from-literal=ES_HOST="${ELASTICSEARCH_HOST}" \
+  --from-literal=ES_PORT="${ELASTICSEARCH_PORT:-9200}" \
+  --from-literal=ES_SCHEME="${ELASTICSEARCH_SCHEME}" \
+  --dry-run=client -o yaml | kc apply -f -
+
 # Password is a credential — only kept on the cluster if explicitly supplied
 # via shell env on the up.sh invocation (e.g. ORACLE_PASSWORD=... ./k8s/up.sh).
 # Absent: no Secret, and P1's entrypoint falls back to its default (gp123), which
@@ -196,6 +268,22 @@ if [ -n "${ORACLE_PASSWORD:-}" ]; then
   kc create secret generic oracle-creds \
     --from-literal=ORACLE_PASSWORD="${ORACLE_PASSWORD}" \
     --dry-run=client -o yaml | kc apply -f -
+fi
+
+# Rollout-restart P1 (the only data-tier consumer — BFFs are auth-unaware) iff
+# anything Oracle-OR-ES-related actually changed AND those workloads were
+# already running. Kubernetes does NOT auto-restart pods on envFrom
+# ConfigMap/Secret updates, so without this a host/PDB/user/password/ES-scheme
+# swap silently doesn't reach the running consumers. Done BEFORE wave-wait so
+# the wait sees the new pods.
+DT_SNAPSHOT_AFTER=$(data_tier_snapshot)
+if [ "$DT_CONSUMERS_PREEXISTED" = "1" ] && [ "$DT_SNAPSHOT_BEFORE" != "$DT_SNAPSHOT_AFTER" ]; then
+  log "Data-tier consumer env changed — rolling restart P1 workloads"
+  kc rollout restart \
+    deploy/p1-crm deploy/p1-cspagents deploy/p1-devcommonagents deploy/p1-emailagent \
+    deploy/p1-mostagents deploy/p1-proposalagents deploy/p1-reportengine \
+    deploy/p1-samlmanager deploy/p1-searchagents deploy/p1-useragents \
+    statefulset/p1-coordinator statefulset/p1-tomcat || true
 fi
 
 # --- 4. wave-wait -----------------------------------------------------------

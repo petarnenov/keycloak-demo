@@ -68,6 +68,20 @@ images:
   - { name: keycloak-demo-db, newTag: seeded }
 
 patches:
+  # Disable the legacy "Service link" auto env injection for all P1 workloads.
+  # K8s synthesises env vars like ORACLE_PORT=tcp://<svcIP>:<port> for every
+  # ClusterIP Service that exists when a pod starts; that collides head-on with
+  # the P1 entrypoint, which reads ORACLE_PORT as the JDBC port and produces a
+  # malformed URL: jdbc:oracle:thin:@//oracle:tcp://10.x.x.x:1521/<pdb>.
+  # The bug only fires when the oracle Service is ClusterIP at pod-start time
+  # (ExternalName Services don't get the synthesised env vars), so flipping the
+  # data-tier env to an IP-based external sprang the trap on the agents that
+  # restarted after the swap.
+  - target: { labelSelector: "app.kubernetes.io/component=legacy" }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/enableServiceLinks
+        value: false
   - target: { kind: Deployment, name: token-handler }
     patch: |
       - op: add
