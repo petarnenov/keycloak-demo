@@ -1,10 +1,16 @@
-# Bringing the full-stack K8s cluster up on Ubuntu
+# Bringing the full-stack K8s cluster up on Linux
 
 A step-by-step runbook for standing up the entire demo (data + identity + legacy
-P1) on a fresh Ubuntu host with `k8s/up.sh`. Tested target: Ubuntu, 64 GB RAM.
+P1) on a fresh Linux host with `k8s/up.sh`. Tested target: Ubuntu 24.04, 64 GB RAM.
+The bring-up itself is distro-agnostic — only the package install in Section 1
+differs by distro; the mapping for Debian/Fedora/Arch/RHEL is in Section 1a.
 
 `up.sh` is the single entrypoint; this doc covers the host prerequisites and the
 two non-repo files it needs, plus how to reach the stack afterwards.
+
+For a per-pod inventory of what runs and why, see
+[README-pods.md](README-pods.md). For where the demo can and can't scale
+horizontally, see [README-scale.md](README-scale.md).
 
 > **Layout requirement:** `keycloak-demo` and `geowealth` must be **sibling
 > directories under `$HOME`** (`$HOME/keycloak-demo`, `$HOME/geowealth`). The
@@ -17,16 +23,20 @@ One minikube cluster (~12 GB) running: Oracle (+ seed Job), Elasticsearch,
 memcached, kc-postgres, redis, Keycloak (+ `kc-ext` TLS-terminating proxy for
 the in-cluster `https://auth.geowealth.int:5180` issuer URL), token-handler,
 two data BFFs, two web front-ends, and the legacy P1 tier: Tomcat
-(`web-petar.conf` profile) + **9 Akka agent Deployments** —
+(`web-petar.conf` profile) + **10 Akka agent Deployments** —
 `p1-samlmanager` (SAML SSO), `p1-devcommonagents` (AuthorizationManager,
 AuthenticationManager, PortalManager, BillingManager,
 DistributedCacheControllerManager, etc.), `p1-useragents` (UserManager,
 AccountManager, EBrokerManager), `p1-mostagents` (InstrumentManager),
 `p1-searchagents` (SearchManager, ClientSearchManager), `p1-cspagents`
-(InstrumentPerformanceManager), `p1-reportengine`, `p1-proposalagents`,
-`p1-emailagent`. First bring-up takes **~20–30 min** (Oracle init ~15 min +
-the heavy P1 image build). On a freshly-cloned host (no Docker layer cache)
-budget another ~5 min for the first `docker build` of the P1 image.
+(InstrumentPerformanceManager), `p1-crm` (CrmManagerTrait,
+DocumentVaultManagerTrait, CrmPortletManagerTrait — handles every CRM
+directory action: clientDirectory.do / accountDirectory.do /
+portfolioDirectory.do; **without it the CRM landing pages hang**),
+`p1-reportengine`, `p1-proposalagents`, `p1-emailagent`. First bring-up takes
+**~20–30 min** (Oracle init ~15 min + the heavy P1 image build). On a
+freshly-cloned host (no Docker layer cache) budget another ~5 min for the
+first `docker build` of the P1 image.
 
 ## 1. Install system packages
 
@@ -52,6 +62,86 @@ sudo apt-get install -y mkcert || {
 No host Java/Gradle needed — every image is built inside Docker. The preflight in
 `up.sh` wants Docker to report > 14 GB; on Linux that is the host RAM, so 64 GB is
 fine for the 12 GB minikube.
+
+## 1a. Adapting to other Linux distros
+
+`up.sh` itself is distro-agnostic — only Section 1's `apt-get` lines change.
+Same package set, different manager:
+
+### Debian (12+)
+
+Identical to Ubuntu — use Section 1 verbatim. The optional `mkcert` package
+isn't always in stable; if `apt-get install mkcert` fails, fall back to the
+curl-download branch.
+
+### Fedora / RHEL / Rocky / AlmaLinux
+
+```bash
+sudo dnf install -y docker git curl python3 nss-tools         # nss-tools = certutil
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER" && newgrp docker
+# kubectl: dnf repo or release binary
+sudo dnf install -y kubectl || {
+  curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  sudo install -m 0755 kubectl /usr/local/bin/ && rm kubectl; }
+# minikube: no official RPM, use the binary
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
+# mkcert: no official RPM either
+curl -L "https://github.com/FiloSottile/mkcert/releases/latest/download/mkcert-v1.4.4-linux-amd64" -o mkcert
+sudo install mkcert /usr/local/bin/ && rm mkcert
+```
+
+CA trust on RHEL family lives at `/etc/pki/ca-trust/source/anchors/` — adapt
+Section 4 accordingly:
+```bash
+sudo cp proxy/certs/mkcert-rootCA.pem /etc/pki/ca-trust/source/anchors/keycloak-demo-mkcert.crt
+sudo update-ca-trust extract
+```
+
+### Arch / Manjaro
+
+```bash
+sudo pacman -Sy --noconfirm docker git curl python kubectl minikube nss mkcert
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER" && newgrp docker
+```
+
+CA trust:
+```bash
+sudo cp proxy/certs/mkcert-rootCA.pem /etc/ca-certificates/trust-source/anchors/keycloak-demo-mkcert.crt
+sudo update-ca-trust
+```
+
+### openSUSE
+
+```bash
+sudo zypper install -y docker git curl python3 mozilla-nss-tools kubectl
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER" && newgrp docker
+# minikube + mkcert: same curl-binary path as Fedora.
+```
+
+### What stays identical across distros
+
+- Docker / Docker-CE installs are the only path tested. Podman *should* work
+  via `CONTAINER_ENGINE=podman` but `up.sh`'s minikube driver string assumes
+  docker; switching needs `--driver=podman` on the minikube create
+  invocation inside `up.sh`.
+- The 14 GB Docker preflight is on host RAM. Anything ≥ 16 GB physical
+  passes the gate at the default 12 GB minikube allocation.
+- `update-ca-certificates` (Debian/Ubuntu/SUSE) vs `update-ca-trust extract`
+  (RHEL/Fedora) vs `update-ca-trust` (Arch) all do the same job — Section 4
+  picks the right one per distro.
+- Chrome/Chromium uses an NSS sqlite DB at `~/.pki/nssdb` on every distro;
+  Section 4's `certutil` line is unchanged. Firefox has its own per-profile
+  store regardless of distro — import via Settings → Certificates.
+- `kubectl port-forward` (Section 6) and the URLs / hostnames are the same
+  everywhere; the `/etc/hosts` line is identical.
+
+If something distro-specific breaks the bring-up, capture `./k8s/up.sh` output
++ `minikube logs` + the failing pod's `kubectl describe` — the runbook in
+Section 10 covers the common K8s-level failures regardless of the host distro.
 
 ## 2. Clone both repos as siblings under `$HOME`
 
@@ -183,7 +273,7 @@ What `up.sh` does, in order:
   absent → P1 falls back to its baked default `gp123`, which won't auth most
   externals).
 - **Rollout-restart of P1 consumers** iff anything changed AND those
-  workloads already existed — `p1-tomcat`, `p1-coordinator`, and the nine
+  workloads already existed — `p1-tomcat`, `p1-coordinator`, and the ten
   agents. envFrom ConfigMaps/Secrets don't trigger pod restarts on their
   own, so without this the new env would land but the running pods would
   keep the old values. On a fresh install the consumers don't exist yet, so
@@ -300,18 +390,18 @@ kubectl -n geowealth-demo rollout restart sts/p1-coordinator
 kubectl -n geowealth-demo rollout status  sts/p1-coordinator --timeout=180s
 for d in p1-samlmanager p1-reportengine p1-proposalagents p1-emailagent \
          p1-devcommonagents p1-mostagents p1-searchagents p1-cspagents \
-         p1-useragents; do
+         p1-useragents p1-crm; do
   kubectl -n geowealth-demo rollout restart deploy/$d
 done
 for d in p1-samlmanager p1-reportengine p1-proposalagents p1-emailagent \
          p1-devcommonagents p1-mostagents p1-searchagents p1-cspagents \
-         p1-useragents; do
+         p1-useragents p1-crm; do
   kubectl -n geowealth-demo rollout status deploy/$d --timeout=180s
 done
 kubectl -n geowealth-demo rollout restart sts/p1-tomcat
 
-# Confirm the full cluster joined back (look for 11 'Member is Up' lines:
-# coordinator + 9 agents + tomcat).
+# Confirm the full cluster joined back (look for 12 'Member is Up' lines:
+# coordinator + 10 agents + tomcat).
 kubectl -n geowealth-demo logs sts/p1-tomcat --tail=400 | grep -c 'Member is Up'
 
 # Restart any port-forward that died with its pod. `kubectl port-forward` does
@@ -374,7 +464,23 @@ kubectl -n geowealth-demo port-forward svc/p1-tomcat 8080:8080 --address 127.0.0
   (see Section 9). All-at-once rolling restarts leave members marked
   `UNREACHABLE` and back-channel logout / firm lookup messages go to dead
   letters. Check `kubectl -n geowealth-demo logs sts/p1-tomcat | grep -c
-  'Member is Up'` — anything below **11** is a split.
+  'Member is Up'` — anything below **12** is a split.
+- **`clientDirectory.do` / `accountDirectory.do` / any CRM directory page
+  silently hangs in the browser** → `p1-crm` is missing or down. The CRM
+  agent (`CrmManagerTrait` alias `CRM`, see `geowealth/etc/crm.xml`) handles
+  every CRM directory message; without it `Send(/user/CRM, msg)` finds no
+  subscriber and the action thread parks until `Constants.MESSAGE_TIMEOUT`.
+  Searchagents looks like the obvious suspect — it isn't; it only owns the
+  auxiliary `SearchManager`/`ClientSearchManager` traits used **inside**
+  CrmManagerTrait. Check:
+  ```bash
+  kubectl -n geowealth-demo get pods | grep p1-crm                          # Running? Restarts?
+  kubectl -n geowealth-demo logs deploy/p1-crm | grep -E 'PUT.*topic CRM|Looks like we are UP'
+  ```
+  Expect both the `Actor[.../user/CRM] was PUT on DistributedPubSub` line
+  and `Looks like we are UP to the cluster`. If `p1-crm` is missing
+  entirely you're on an older branch — pull `petarnenov/full-stack-k8s` and
+  re-run `./k8s/up.sh`.
 - **billing/trading nginx upstream resolution fails with
   `Connection refused while resolving 127.0.0.11:53`** → the web image's
   `/docker-entrypoint.d/05-resolver.sh` didn't run. The script auto-detects the
@@ -389,7 +495,7 @@ kubectl -n geowealth-demo port-forward svc/p1-tomcat 8080:8080 --address 127.0.0
 - **Oracle / Elasticsearch unschedulable** → Docker has too little memory (on
   Linux that is host RAM; 64 GB is plenty — check nothing else is hogging it).
   Memory budget per pod is tight at the default 12 GB minikube: Oracle 4 GB,
-  Elasticsearch 1 GB, KC + P1 Tomcat ~3 GB, the 9 P1 agents ~5 GB, token-handler
+  Elasticsearch 1 GB, KC + P1 Tomcat ~3 GB, the 10 P1 agents ~6 GB, token-handler
   + BFFs + web + redis + postgres + memcached ~2 GB. Push `MINIKUBE_MEM_MIB`
   higher if pods stay `Pending` with `Insufficient memory`.
 - **e2e suite** → needs MFA disabled for `tim1`: in K8s
@@ -466,3 +572,50 @@ What this means in practice:
   onto token-handler is what closes the loop. (A plain Service with
   `targetPort: 8080` does NOT work — token-handler talks TLS, Keycloak speaks
   HTTP, and the handshake fails with `wrong version number`.)
+
+## Moving the project to a new Linux host (checklist)
+
+A condensed version of the full runbook above, for when you've already done
+this once on a different machine and just need the deltas:
+
+1. Pick a distro section (1 for Ubuntu/Debian, 1a for Fedora/Arch/SUSE) and
+   install Docker, kubectl, minikube, mkcert.
+2. Add your user to the `docker` group; log out + back in (or `newgrp docker`).
+3. Clone `keycloak-demo` and `geowealth` as siblings under `$HOME`, check out
+   the matching branches (`petarnenov/full-stack-k8s` and
+   `team/petarnenov/k8s-full-stack`).
+4. Copy two non-repo files from the source machine:
+   - `keycloak-demo/db/local/R__local_login_hash.sql` (login won't work
+     without it; `up.sh` only warns).
+   - `/tmp/p1-idp-dev.p12` (P1 SAML signing keystore; its public half is
+     baked into `keycloak/realm-export.json` and they must match).
+5. Trust the dev CA in your browser store (Section 4) so HTTPS is clean.
+6. Size the cluster for your RAM and run:
+   ```bash
+   MINIKUBE_MEM_MIB=49152 MINIKUBE_CPUS=12 ./k8s/up.sh
+   ```
+   First bring-up: ~20–30 min. Re-runs are idempotent and quick.
+7. Add the `/etc/hosts` entries + start the port-forwards (Section 6).
+8. Verify (Section 7); log in (Section 8).
+9. If the source machine pointed at an external Oracle / ES, port the
+   `k8s/env/data-tier.dev.env` from there too. `ORACLE_PASSWORD` is a
+   credential — re-supply it on the shell: `ORACLE_PASSWORD='real-pw' ./k8s/up.sh`.
+
+The single most common reason a fresh-host bring-up looks broken: skipping
+step 4 (login fails / SAML hangs) or running `kubectl apply -k` instead of
+`./k8s/up.sh` (the bare apply re-stamps `p1-saml-keystore` to the 27-byte
+placeholder — Section 10 has the recovery commands). When in doubt, always
+prefer `./k8s/up.sh` over raw `kubectl` — it's idempotent.
+
+## Related docs
+
+- [README-pods.md](README-pods.md) — per-pod inventory: what every container
+  in the namespace does and why it can't be removed.
+- [README-scale.md](README-scale.md) — horizontal-scale audit and the
+  sequenced plan that walks from "manifest tweaks today" through MSM-backed
+  P1 tomcat sessions to Akka Cluster Sharding.
+- [README-multitenant-k8s-plan.md](README-multitenant-k8s-plan.md) — how
+  the single multi-tenant `token-handler` fronts every domain.
+- Root [CLAUDE.md](../CLAUDE.md) — env-driven URL and data-tier
+  configuration (sections "Environment URL configuration (K8s)" and
+  "Data-tier endpoint config (K8s)") that this runbook leans on.
