@@ -393,18 +393,21 @@ spec:
             # in-memory cache at boot. 1.5G fits the tiny baked PDB; against a populated
             # external Oracle (e.g. 192.168.1.42/ORCL12VM) the load OOMs and the agent
             # CrashLoopBackOffs, killing AuthorizationManager and stalling p1-tomcat
-            # requests (IdentifyFirmByUrlMsg dead-letters).
-            - { name: JAVA_OPTS_EXTRA, value: "-Xmx4G" }
+            # requests (IdentifyFirmByUrlMsg dead-letters). External mode also hits
+            # JVM SIGSEGV in native frames at boot (ojdbc8 23.2 + huge result sets),
+            # even with -Xint; 10G + G1GC is the best workaround tried, but boots
+            # are still flaky. In-cluster baked Oracle is the stable path.
+            - { name: JAVA_OPTS_EXTRA, value: "-Xmx10G -XX:+UseG1GC" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
             - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
-            # Sized for the 4G JVM heap above; container limit must be > heap or
+            # Sized for the 10G JVM heap above; container limit must be > heap or
             # kubelet OOMKills before the JVM can throw OutOfMemoryError.
             requests: { cpu: 200m, memory: 2Gi }
-            limits:   { cpu: "1",  memory: 5Gi }
+            limits:   { cpu: "1",  memory: 12Gi }
 ---
 # CRM agent bundle — hosts CrmManagerTrait (alias=CRM), DocumentVaultManagerTrait,
 # CrmPortletManagerTrait, WhitelabelResourceManagerTrait (see etc/crm.xml).
