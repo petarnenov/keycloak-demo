@@ -1,0 +1,34 @@
+/* GeoWealth Identity theme — minimal, branded.
+   The Vite/React bundle (theme/login/resources/js/auth-spa.js, built from
+   auth-spa/src/) hydrates into #root and may replace the form chrome with
+   richer interactions; the base CSS below also styles the plain-FTL fallback
+   so the page is presentable even without JS or before the bundle loads. */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #1a202c; }
+body.auth-spa { background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+
+.auth-spa__shell { width: 100%; max-width: 420px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); overflow: hidden; }
+.auth-spa__brand { background: #0f172a; color: #f8fafc; padding: 24px; display: flex; align-items: center; gap: 12px; }
+.auth-spa__logo { display: inline-block; width: 36px; height: 36px; border-radius: 8px; background: #38bdf8; color: #0f172a; font-weight: 700; line-height: 36px; text-align: center; font-size: 14px; letter-spacing: -0.5px; }
+.auth-spa__name { font-size: 16px; font-weight: 600; letter-spacing: 0.2px; }
+.auth-spa__main { padding: 32px 24px 16px; }
+.auth-spa__title { font-size: 22px; margin: 0 0 16px; }
+.auth-spa__hint { font-size: 14px; color: #475569; margin: 0 0 16px; }
+.auth-spa__card { display: flex; flex-direction: column; gap: 14px; }
+.auth-spa__form { display: flex; flex-direction: column; gap: 14px; margin: 0; }
+.auth-spa__field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.auth-spa__field input { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+.auth-spa__field input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2); }
+.auth-spa__check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
+.auth-spa__btn { padding: 10px 16px; border: 0; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.auth-spa__btn--primary { background: #0ea5e9; color: white; }
+.auth-spa__btn--primary:hover { background: #0284c7; }
+.auth-spa__link { color: #0ea5e9; font-size: 14px; text-decoration: none; align-self: flex-start; }
+.auth-spa__link:hover { text-decoration: underline; }
+.auth-spa__alert { padding: 10px 12px; border-radius: 6px; font-size: 13px; }
+.auth-spa__alert--error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.auth-spa__alert--warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.auth-spa__alert--success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.auth-spa__alert--info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+.auth-spa__foot { padding: 16px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; }

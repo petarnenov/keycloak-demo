@@ -1,0 +1,6 @@
+node_modules/
+dist/
+theme/login/resources/js/auth-spa.js
+theme/login/resources/js/*.iife.js
+*.tsbuildinfo
+.vite/

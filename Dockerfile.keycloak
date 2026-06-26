@@ -1,39 +1,35 @@
-# Custom Keycloak image — stock KC 26.0.7 + bundled providers.
-# First custom KC image in the demo. Bakes:
-#   - user-storage-spi.jar  (User Storage SPI → user-service)
-#   - email-otp-authenticator.jar  (custom Authenticator SPI for email OTP)
-#   - geowealth-theme.jar  (login theme served at auth.geowealth.int)
+# Custom Keycloak image — stock KC 26.0.7 + bundled providers + theme.
 #
-# Build context: repo root (so we can COPY each provider's Gradle source).
-# Two-stage: build all provider JARs in a Gradle stage, then COPY them into
-# /opt/keycloak/providers/ in the runtime image and run `kc.sh build` so KC
-# picks them up at boot.
-FROM gradle:8.5-jdk17 AS builder
+# Build context: repo root.
+# Stages:
+#   1. spa-builder   — node, builds auth-spa/ (vite → theme/login/resources/js/auth-spa.js)
+#   2. java-builder  — gradle, builds keycloak-providers/{user-storage-spi,email-otp-authenticator} jars
+#   3. kc-builder    — stock KC 26.0.7, COPYs provider jars + theme dir, runs `kc.sh build`
+#   4. runtime       — stock KC 26.0.7, COPYs the built /opt/keycloak from kc-builder
+
+FROM node:20-alpine AS spa-builder
 WORKDIR /build
+COPY auth-spa/package.json auth-spa/package-lock.json* auth-spa/
+RUN cd auth-spa && npm install --no-audit --no-fund
+COPY auth-spa/ auth-spa/
+RUN cd auth-spa && npm run build
 
-# user-storage-spi
-COPY keycloak-providers/user-storage-spi/ keycloak-providers/user-storage-spi/
-WORKDIR /build/keycloak-providers/user-storage-spi
-RUN gradle --no-daemon jar -x test
-
-# email-otp-authenticator (built when Phase 4 lands; copy-empty-OK pattern
-# means an absent module dir is non-fatal because the COPY below has || true
-# semantics via Dockerfile multi-COPY).
+FROM gradle:8.5-jdk17 AS java-builder
 WORKDIR /build
 COPY keycloak-providers/ keycloak-providers/
-
-# geowealth-theme (Phase 4)
-# auth-spa/ produces theme/resources/dist/* via `npm run build`; here we
-# repackage them into a Keycloak theme JAR.
-
-WORKDIR /build/keycloak-providers/user-storage-spi
-RUN ls -la build/libs/
+RUN cd keycloak-providers/user-storage-spi      && gradle --no-daemon jar -x test
+RUN cd keycloak-providers/email-otp-authenticator && gradle --no-daemon jar -x test
 
 FROM quay.io/keycloak/keycloak:26.0.7 AS kc-builder
-COPY --from=builder /build/keycloak-providers/user-storage-spi/build/libs/*.jar /opt/keycloak/providers/
-# Future provider JARs land here:
-#   COPY --from=builder /build/keycloak-providers/email-otp-authenticator/build/libs/*.jar /opt/keycloak/providers/
-#   COPY --from=builder /build/auth-spa/dist/geowealth-theme.jar /opt/keycloak/providers/
+USER root
+# Provider JARs land in /opt/keycloak/providers/ — KC discovers them via the
+# Java ServiceLoader entries in META-INF/services/*Factory.
+COPY --from=java-builder /build/keycloak-providers/user-storage-spi/build/libs/*.jar      /opt/keycloak/providers/
+COPY --from=java-builder /build/keycloak-providers/email-otp-authenticator/build/libs/*.jar /opt/keycloak/providers/
+# Theme tree under /opt/keycloak/themes/<name>/ — KC discovers themes by dir.
+# The auth-spa/theme/ root contains the login/ subfolder + META-INF/keycloak-themes.json
+# (the latter doesn't matter for loose-dir themes but ships for parity with JAR themes).
+COPY --from=spa-builder /build/auth-spa/theme/login/ /opt/keycloak/themes/geowealth/login/
 RUN /opt/keycloak/bin/kc.sh build
 
 FROM quay.io/keycloak/keycloak:26.0.7
