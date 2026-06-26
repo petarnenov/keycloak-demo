@@ -1,34 +1,286 @@
-/* GeoWealth Identity theme — minimal, branded.
-   The Vite/React bundle (theme/login/resources/js/auth-spa.js, built from
-   auth-spa/src/) hydrates into #root and may replace the form chrome with
-   richer interactions; the base CSS below also styles the plain-FTL fallback
-   so the page is presentable even without JS or before the bundle loads. */
+/* GeoWealth Identity theme — visual parity with P1 LoginTemplate1
+   (nodejs/geowealth Login → Template1: pale-blue body, centered white card
+   with subtle inset shadow, GeoWealth login logo on top, "Sign in" heading,
+   floating-legend inputs, teal Login button). Variables come straight from
+   the P1 _css_variables.scss palette so the two screens read as one product. */
+
+@font-face {
+  font-family: 'Lato Regular';
+  src: url('../fonts/Lato-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lato Bold';
+  src: url('../fonts/Lato-Bold.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --theme-body-background: #dfeaf2;
+  --theme-color-white: #ffffff;
+  --theme-color: #717171;
+  --theme-color-charcoal: #3c3c3c;
+  --theme-color-stone: #acacac;
+  --theme-box-border: #dbdada;
+  --theme-box-shadow: rgba(60, 60, 60, 0.12);
+  --theme-input-color: #3c3c3c;
+  --theme-input-placeholder: #717171;
+  --theme-link-color: #0e8a91;
+  --theme-error: #c0392b;
+  --theme-button-bg: #0e8a91;
+  --theme-button-bg-hover: #0a6b71;
+}
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; height: 100%; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #1a202c; }
-body.auth-spa { background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
 
-.auth-spa__shell { width: 100%; max-width: 420px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); overflow: hidden; }
-.auth-spa__brand { background: #0f172a; color: #f8fafc; padding: 24px; display: flex; align-items: center; gap: 12px; }
-.auth-spa__logo { display: inline-block; width: 36px; height: 36px; border-radius: 8px; background: #38bdf8; color: #0f172a; font-weight: 700; line-height: 36px; text-align: center; font-size: 14px; letter-spacing: -0.5px; }
-.auth-spa__name { font-size: 16px; font-weight: 600; letter-spacing: 0.2px; }
-.auth-spa__main { padding: 32px 24px 16px; }
-.auth-spa__title { font-size: 22px; margin: 0 0 16px; }
-.auth-spa__hint { font-size: 14px; color: #475569; margin: 0 0 16px; }
-.auth-spa__card { display: flex; flex-direction: column; gap: 14px; }
-.auth-spa__form { display: flex; flex-direction: column; gap: 14px; margin: 0; }
-.auth-spa__field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-.auth-spa__field input { padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
-.auth-spa__field input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2); }
-.auth-spa__check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
-.auth-spa__btn { padding: 10px 16px; border: 0; border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer; }
-.auth-spa__btn--primary { background: #0ea5e9; color: white; }
-.auth-spa__btn--primary:hover { background: #0284c7; }
-.auth-spa__link { color: #0ea5e9; font-size: 14px; text-decoration: none; align-self: flex-start; }
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Lato Regular', Lato, system-ui, -apple-system, sans-serif;
+  color: var(--theme-color);
+}
+
+body.auth-spa {
+  background-color: var(--theme-body-background);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+/* ---- Outer container, logo on top -------------------------------------- */
+
+.auth-spa__shell {
+  width: 100%;
+  max-width: 397px;
+  text-align: center;
+}
+
+.auth-spa__brand {
+  margin: 0 auto 36px;
+}
+
+.auth-spa__brand img {
+  max-height: 80px;
+  max-width: 320px;
+  width: auto;
+  height: auto;
+}
+
+/* Word-mark is a fallback for environments without the image; CSS hides it
+   when the logo loads. */
+.auth-spa__name { display: none; }
+
+/* ---- White card -------------------------------------------------------- */
+
+.auth-spa__main { padding: 0; }
+
+.auth-spa__card {
+  background-color: var(--theme-color-white);
+  border: 1px solid var(--theme-box-border);
+  box-shadow: inset 1px 1px 2px 0 var(--theme-box-shadow);
+  padding: 44px 55px;
+  width: 397px;
+  margin: 0 auto;
+  text-align: left;
+  position: relative;
+}
+
+.auth-spa__title {
+  font-family: 'Lato Regular', sans-serif;
+  font-size: 24px;
+  line-height: 29px;
+  color: var(--theme-color);
+  margin: 0 0 24px;
+  text-align: left;
+}
+
+/* ---- Form -------------------------------------------------------------- */
+
+.auth-spa__form {
+  display: flex;
+  flex-direction: column;
+  width: 288px;
+  margin: 0 auto;
+}
+
+/* Animated floating-legend input — P1's `.withLegendAnimation` pattern.
+   <fieldset class="auth-spa__field"> wraps <input> + <legend>. Legend is
+   absolutely positioned, transparent by default, and floats up + paints
+   on top of the border once the input has content. */
+.auth-spa__field {
+  background-color: var(--theme-color-white);
+  border: 1px solid #d0d0d0;
+  border-radius: 2px;
+  height: 32px;
+  margin-bottom: 16px;
+  padding: 0 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.auth-spa__field > legend {
+  font-family: 'Lato Regular', sans-serif;
+  font-size: 10px;
+  line-height: 12px;
+  background-color: var(--theme-color-white);
+  color: transparent;
+  display: block;
+  height: 12px;
+  float: left;
+  margin-top: 10px;
+  margin-left: 0;
+  padding: 0 4px;
+  position: absolute;
+  z-index: 0;
+}
+
+.auth-spa__field input {
+  font-family: 'Lato Regular', sans-serif;
+  font-size: 12px;
+  background-color: transparent;
+  border: 0;
+  color: var(--theme-input-color);
+  height: 32px;
+  left: 0;
+  margin: 0 8px;
+  outline: none;
+  padding: 0;
+  position: absolute;
+  width: calc(100% - 16px);
+  z-index: 1;
+}
+
+.auth-spa__field input::placeholder {
+  font-family: 'Lato Regular', sans-serif;
+  font-size: 12px;
+  line-height: 32px;
+  color: var(--theme-input-placeholder);
+}
+
+.auth-spa__field input:-webkit-autofill,
+.auth-spa__field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--theme-input-color);
+  -webkit-box-shadow: inset 0 0 0 9999px var(--theme-color-white);
+}
+
+.auth-spa__field input:not(:placeholder-shown) + legend,
+.auth-spa__field input:-webkit-autofill + legend,
+.auth-spa__field.withData legend {
+  color: var(--theme-input-placeholder);
+  margin-left: -4px;
+  margin-top: -6px !important;
+  transition: margin-top 150ms ease-out, margin-left 150ms ease-out;
+}
+
+/* ---- Buttons + links --------------------------------------------------- */
+
+.auth-spa__btn {
+  font-family: 'Lato Regular', sans-serif;
+  font-size: 12px;
+  margin: 30px auto 0;
+  width: 200px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.auth-spa__btn--primary {
+  background-color: var(--theme-button-bg);
+  color: var(--theme-color-white);
+}
+
+.auth-spa__btn--primary:hover {
+  background-color: var(--theme-button-bg-hover);
+}
+
+.auth-spa__link {
+  font-family: 'Lato Regular', sans-serif;
+  font-size: 12px;
+  color: var(--theme-link-color);
+  text-decoration: none;
+  display: block;
+  margin: 11px auto 0;
+  text-align: center;
+  width: 288px;
+}
+
 .auth-spa__link:hover { text-decoration: underline; }
-.auth-spa__alert { padding: 10px 12px; border-radius: 6px; font-size: 13px; }
-.auth-spa__alert--error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-.auth-spa__alert--warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-.auth-spa__alert--success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-.auth-spa__alert--info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
-.auth-spa__foot { padding: 16px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; }
+
+/* ---- Error / message banner ------------------------------------------- */
+
+.auth-spa__alert {
+  font-family: 'Lato Bold', sans-serif;
+  font-size: 12px;
+  padding: 8px 12px;
+  margin: 0 auto 16px;
+  width: 288px;
+  border-radius: 2px;
+}
+
+.auth-spa__alert--error {
+  background: #fdecea;
+  color: var(--theme-error);
+  border: 1px solid #f5c6c2;
+}
+.auth-spa__alert--warning {
+  background: #fff7e6;
+  color: #8a6d3b;
+  border: 1px solid #f8e3a3;
+}
+.auth-spa__alert--success {
+  background: #ebf7ee;
+  color: #2e7d32;
+  border: 1px solid #b6dbb6;
+}
+.auth-spa__alert--info {
+  background: #e8f4f7;
+  color: var(--theme-link-color);
+  border: 1px solid #b8dde2;
+}
+
+/* ---- Footer + tip ----------------------------------------------------- */
+
+.auth-spa__foot {
+  margin-top: 24px;
+  font-size: 11px;
+  color: var(--theme-color-stone);
+  text-align: center;
+}
+
+.auth-spa__tip {
+  font-size: 11px;
+  color: var(--theme-color-stone);
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* ---- Federated identity providers ("Or sign in with") block ------------
+   KC's default renders the social/IdP links inside #kc-social-providers
+   when configured. Keep the typography consistent with P1's quiet UI. */
+
+#kc-social-providers {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--theme-color);
+}
+#kc-social-providers ul { list-style: none; padding: 0; margin: 8px 0 0; }
+#kc-social-providers li { margin-top: 8px; }
+#kc-social-providers a {
+  display: inline-block;
+  padding: 8px 16px;
+  border: 1px solid var(--theme-box-border);
+  border-radius: 3px;
+  color: var(--theme-link-color);
+  text-decoration: none;
+  font-family: 'Lato Regular', sans-serif;
+}
+#kc-social-providers a:hover { background: #f5fafa; }

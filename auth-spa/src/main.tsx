@@ -11,8 +11,11 @@ import { createRoot } from 'react-dom/client';
  * As the SPA grows it can take over the form rendering entirely (Phase 4+).
  */
 const App: React.FC = () => {
+  // No inline style — visual properties come from `.auth-spa__tip` in the
+  // theme stylesheet so React/FTL stays presentation-consistent with the
+  // P1 LoginTemplate1 palette.
   return (
-    <div className="auth-spa__tip" style={{ fontSize: 12, color: '#64748b', marginTop: 12 }}>
+    <div className="auth-spa__tip">
       Secure sign-in powered by GeoWealth Identity.
     </div>
   );

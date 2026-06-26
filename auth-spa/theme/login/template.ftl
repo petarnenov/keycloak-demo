@@ -14,13 +14,16 @@
 </head>
 <body class="auth-spa">
 <div class="auth-spa__shell">
+    <#-- Brand: logo image only, matching P1's FirmLoginLogo. The word-mark
+         beside it is a CSS-hidden fallback for environments without the
+         asset (kept in DOM so screen readers still announce the app). -->
     <header class="auth-spa__brand">
-        <span class="auth-spa__logo">GW</span>
+        <img src="${url.resourcesPath}/img/logo_login.png" alt="GeoWealth" />
         <span class="auth-spa__name">GeoWealth Identity</span>
     </header>
     <main id="root" class="auth-spa__main">
-        <#-- Plain-FTL form renders below; the React bundle (when built) hydrates
-             into #root and replaces the static markup with the interactive SPA. -->
+        <#-- Plain-FTL form renders below; the React bundle (when built) mounts
+             a sibling tip node inside #root without touching the form. -->
         <section class="auth-spa__card">
             <#if message?has_content && (messagesPerField.exists('global') || message.type != 'warning' || !isAppInitiatedAction??)>
                 <div class="auth-spa__alert auth-spa__alert--${message.type}">${kcSanitize(message.summary)?no_esc}</div>
@@ -28,7 +31,7 @@
             <#nested "form">
         </section>
     </main>
-    <footer class="auth-spa__foot">© GeoWealth</footer>
+    <footer class="auth-spa__foot">© GeoWealth Management, LLC.</footer>
 </div>
 <#if properties.scripts?has_content>
     <#list properties.scripts?split(' ') as script>
