@@ -462,13 +462,21 @@ spec:
     - { name: http, port: 8080, targetPort: 8080 }
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: p1-tomcat
   labels: { app.kubernetes.io/name: p1-tomcat, app.kubernetes.io/component: legacy }
 spec:
-  serviceName: p1-tomcat
-  replicas: 1                       # in-memory HttpSession; sticky at ingress (demo)
+  # Phase 7: horizontal scale enabled. Tomcat HttpSession is externalized to
+  # Redis (Phase 6 Redisson session manager), so any replica serves any
+  # session — sticky-session affinity is no longer required at the ingress.
+  # HPA at the bottom of this file scales 2..5 replicas on cpu=70%.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector: { matchLabels: { app.kubernetes.io/name: p1-tomcat } }
   template:
     metadata:
@@ -514,4 +522,29 @@ spec:
             - { name: keystore, mountPath: /etc/p1, readOnly: true }
       volumes:
         - name: keystore
-          secret: { secretName: p1-saml-keystore }
+          # Phase 5 retired the SAML keystore; Secret may be a placeholder or
+          # absent. `optional: true` keeps the Pod schedulable either way.
+          secret: { secretName: p1-saml-keystore, optional: true }
+---
+# Phase 7: HorizontalPodAutoscaler — scale p1-tomcat on CPU.
+# Min 2 (chaos-test: deleting one pod doesn't drop capacity to zero),
+# max 5 (demo cluster headroom).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: p1-tomcat
+  labels: { app.kubernetes.io/name: p1-tomcat }
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: p1-tomcat
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
