@@ -164,6 +164,8 @@ log "Building images into the minikube docker daemon"
 docker build -t keycloak-demo-db:seeded -f db/Dockerfile db
 # Domain images (compose builds them; here we build directly).
 docker build -t keycloak-demo-token-handler:latest -f token-handler/Dockerfile .
+docker build -t keycloak-demo-user-service:latest  -f user-service/Dockerfile .
+docker build -t keycloak-demo-keycloak:latest      -f Dockerfile.keycloak .
 docker build -t keycloak-demo-billing-bff:latest   -f domains/billing/bff/Dockerfile .
 docker build -t keycloak-demo-trading-bff:latest   -f domains/trading/bff/Dockerfile .
 docker build -t keycloak-demo-billing-web:latest   domains/billing/web

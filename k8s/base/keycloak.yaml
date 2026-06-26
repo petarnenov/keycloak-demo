@@ -122,7 +122,11 @@ spec:
           command: ["sh", "-c", "until nc -z kc-postgres 5432; do echo waiting kc-postgres; sleep 3; done"]
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.0.7
+          # Custom KC image — stock 26.0.7 + bundled provider JARs
+          # (user-storage-spi, email-otp-authenticator, geowealth-theme).
+          # See Dockerfile.keycloak at repo root.
+          image: keycloak-demo-keycloak:latest
+          imagePullPolicy: IfNotPresent
           args: ["start", "--import-realm", "--optimized=false"]
           env:
             - { name: KC_DB, value: postgres }

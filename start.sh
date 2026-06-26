@@ -138,7 +138,7 @@ else
   "${COMPOSE[@]}" "${FILES[@]}" down --remove-orphans || true
 fi
 
-echo "==> Rebuilding all images (domain bff/web). Keycloak uses the stock image."
+echo "==> Rebuilding all images (domain bff/web/user-service + custom Keycloak)."
 "${COMPOSE[@]}" "${FILES[@]}" build
 
 if [ "$ENGINE" = podman ]; then

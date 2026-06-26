@@ -56,7 +56,12 @@ services:
       retries: 10
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.7
+    # Custom image — stock KC 26.0.7 + bundled providers (user-storage-spi,
+    # later email-otp-authenticator + geowealth-theme). See Dockerfile.keycloak.
+    build:
+      context: .
+      dockerfile: Dockerfile.keycloak
+    image: keycloak-demo-keycloak:latest
     command: ["start-dev", "--import-realm", "--verbose"]
     mem_limit: 1g
     environment:
