@@ -151,8 +151,12 @@ public class UserController {
                 u.entityActiveFlag(), u.loginInactivatedFlag(), u.loginInactivedReasonCd(),
                 u.gwAdminFlag(), u.linkedGwUser(), u.mfaRequiredFlag(),
                 // email/first/last not in ENTITY_TBL in demo schema — placeholder.
+                // lastName mirrors ldapUid so KC's declarative user profile
+                // (which marks lastName required by default) accepts the
+                // federated user without forcing an Update Account form on
+                // first login.
                 "redacted-" + u.entityId().substring(0, 6) + "@geowealth.local",
-                u.ldapUid(), "",
+                u.ldapUid(), u.ldapUid(),
                 personRoot,
                 mems,
                 u.extras() == null ? new HashMap<>() : u.extras()

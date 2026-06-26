@@ -51,12 +51,7 @@ public class UserServiceClient {
     }
 
     public List<String> roles(String entityId) {
-        String url = baseUrl + "/users/" + encode(entityId) + "/roles";
-        return getJson(url)
-                .map(m -> m.get("_array"))
-                .map(o -> (List<?>) o)
-                .map(l -> l.stream().map(Object::toString).toList())
-                .orElseGet(() -> parseArray(url));
+        return parseArray(baseUrl + "/users/" + encode(entityId) + "/roles");
     }
 
     public boolean verifyCredentials(String entityId, String password) {

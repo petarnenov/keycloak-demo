@@ -112,14 +112,24 @@ public class UserStorageProviderImpl implements
 
     @Override
     public boolean isConfiguredFor(RealmModel realm, UserModel user, String credentialType) {
-        return supportsCredentialType(credentialType) && user instanceof UserServiceUser;
+        return supportsCredentialType(credentialType) && isOurFederatedUser(user);
     }
 
     @Override
     public boolean isValid(RealmModel realm, UserModel user, CredentialInput input) {
         if (!supportsCredentialType(input.getType())) return false;
-        if (!(user instanceof UserServiceUser usu)) return false;
-        return client.verifyCredentials(usu.getEntityId(), input.getChallengeResponse());
+        if (!isOurFederatedUser(user)) return false;
+        return client.verifyCredentials(entityIdOf(user), input.getChallengeResponse());
+    }
+
+    private boolean isOurFederatedUser(UserModel user) {
+        if (user == null || user.getId() == null) return false;
+        StorageId sid = new StorageId(user.getId());
+        return model.getId().equals(sid.getProviderId());
+    }
+
+    private static String entityIdOf(UserModel user) {
+        return new StorageId(user.getId()).getExternalId();
     }
 
     // ---- internals ---------------------------------------------------------

@@ -15,6 +15,7 @@ dependencies {
     annotationProcessor("io.micronaut:micronaut-http-validation")
 
     implementation("io.micronaut:micronaut-http-client")
+    implementation("io.micronaut:micronaut-management")
     implementation("io.micronaut:micronaut-runtime")
     implementation("io.micronaut.validation:micronaut-validation")
     implementation("io.micronaut.serde:micronaut-serde-jackson")

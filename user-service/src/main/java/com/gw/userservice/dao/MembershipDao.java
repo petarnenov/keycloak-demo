@@ -47,7 +47,9 @@ public class MembershipDao {
             ps.setString(1, entityId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Integer firm = (Integer) rs.getObject(1);
+                    Object raw = rs.getObject(1);
+                    Integer firm = raw == null ? null
+                            : (raw instanceof Number n ? n.intValue() : Integer.valueOf(raw.toString()));
                     String uid = rs.getString(2);
                     if (firm != null && uid != null) out.add(new Membership(firm, uid));
                 }

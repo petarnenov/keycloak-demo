@@ -106,6 +106,34 @@ public class UserServiceUser extends AbstractUserAdapter {
         return entityId;
     }
 
+    // user-service is the source of truth. KC's Update Account / required-action
+    // flows would otherwise hit AbstractUserAdapter.setFirstName/Last/Email,
+    // which throws ReadOnlyException → HTTP 500. Swallow writes so the form
+    // round-trips cleanly; persistence stays in Oracle via user-service.
+    @Override
+    public void setFirstName(String firstName) {
+    }
+
+    @Override
+    public void setLastName(String lastName) {
+    }
+
+    @Override
+    public void setEmail(String email) {
+    }
+
+    @Override
+    public void setSingleAttribute(String name, String value) {
+    }
+
+    @Override
+    public void setAttribute(String name, List<String> values) {
+    }
+
+    @Override
+    public void removeAttribute(String name) {
+    }
+
     @Override
     public SubjectCredentialManager credentialManager() {
         // Federated users must provide their own credential manager. The stock
