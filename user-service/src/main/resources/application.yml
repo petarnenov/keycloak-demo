@@ -1,0 +1,23 @@
+micronaut:
+  application:
+    name: user-service
+  server:
+    port: 8080
+datasources:
+  default:
+    url: ${JDBC_URL:`jdbc:oracle:thin:@//oracle:1521/FREEPDB1`}
+    username: ${ORACLE_USER:gp}
+    password: ${ORACLE_PASSWORD:gp123}
+    driver-class-name: oracle.jdbc.OracleDriver
+    maximum-pool-size: 10
+    connection-timeout: 2000
+    minimum-idle: 1
+    pool-name: user-service-oracle
+endpoints:
+  health:
+    enabled: true
+    sensitive: false
+  all:
+    sensitive: false
+mfa:
+  token-ttl-seconds: 300

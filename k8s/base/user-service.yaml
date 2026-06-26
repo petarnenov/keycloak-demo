@@ -1,0 +1,114 @@
+# user-service — read-only Oracle DAO behind Keycloak's User Storage SPI.
+# Stateless; KC reaches it as user-service:8080 on the in-cluster network.
+# Oracle JDBC URL points at the cluster's oracle Service (in-cluster) OR an
+# ExternalName (off-cluster); see k8s/env/data-tier.<env>.env for selection.
+# Credentials come from the shared `oracle-creds` Secret (set up by up.sh from
+# ORACLE_PASSWORD env on the bringup host); falls back to the baked default
+# only if the Secret is absent.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  labels:
+    app.kubernetes.io/name: user-service
+    app.kubernetes.io/component: identity
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: user-service
+        app.kubernetes.io/component: identity
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: user-service
+          image: keycloak-demo-user-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: oracle-config
+            - secretRef:
+                name: oracle-creds
+                optional: true
+          env:
+            - name: JDBC_URL
+              value: "jdbc:oracle:thin:@//$(ORACLE_HOST):$(ORACLE_PORT)/$(ORACLE_PDB)"
+            - name: MFA_TOKEN_TTL_SECONDS
+              value: "300"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  labels:
+    app.kubernetes.io/name: user-service
+spec:
+  selector:
+    app.kubernetes.io/name: user-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# HPA: identity tier scales independently of auth login traffic spikes.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-service
+  labels:
+    app.kubernetes.io/name: user-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

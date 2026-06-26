@@ -190,6 +190,28 @@ services:
       # trusts Keycloak's mkcert cert for the server-side OIDC code exchange.
       - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
 
+  # ---- user-service ----------------------------------------------------------
+  # Read-only Oracle DAO behind Keycloak's User Storage SPI. Owns the lookup +
+  # credential-verify + role + membership + MFA-token routes the SPI provider
+  # in the custom KC image calls over HTTP. Stateless; horizontal-scale via
+  # replicas. No host port — KC reaches it as user-service:8080 on the docker
+  # network. See docs/plans/2026-06-26-auth-extraction.md §4.1.
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    image: keycloak-demo-user-service:latest
+    networks:
+      - keycloak-network
+    environment:
+      MICRONAUT_APPLICATION_NAME: user-service
+      JDBC_URL: "${USER_SERVICE_JDBC_URL:-jdbc:oracle:thin:@//host.docker.internal:1521/ORCL12VM}"
+      ORACLE_USER: "${ORACLE_USER:-gp}"
+      ORACLE_PASSWORD: "${ORACLE_PASSWORD:-gp123}"
+      MFA_TOKEN_TTL_SECONDS: "${MFA_TOKEN_TTL_SECONDS:-300}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # ---- Token Handler (MULTI-TENANT) -----------------------------------------
   # ONE instance fronts EVERY domain (billing, trading, ...). Pure bff-core, no
   # domain controller. nginx in BOTH web containers routes /(oauth|auth)/ +

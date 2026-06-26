@@ -13,6 +13,7 @@ labels:
 resources:
   - namespace.yaml
   - redis.yaml
+  - user-service.yaml
   - token-handler-config.yaml
   - token-handler.yaml
   - data-bff-config.yaml
