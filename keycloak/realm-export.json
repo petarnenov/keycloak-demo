@@ -10,197 +10,13 @@
   "duplicateEmailsAllowed": false,
   "bruteForceProtected": true,
   "eventsEnabled": true,
-  "eventsListeners": ["jboss-logging"],
+  "eventsListeners": [
+    "jboss-logging"
+  ],
   "adminEventsEnabled": true,
   "adminEventsDetailsEnabled": true,
   "resetPasswordAllowed": false,
-  "authenticationFlows": [
-    {
-      "alias": "p1-first-broker-login",
-      "description": "Actions taken after first broker login with identity provider account, which is not yet linked to any Keycloak account",
-      "providerId": "basic-flow",
-      "topLevel": true,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticatorConfig": "p1-first-broker-login review profile config",
-          "authenticator": "idp-review-profile",
-          "authenticatorFlow": false,
-          "requirement": "DISABLED",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticatorFlow": true,
-          "requirement": "REQUIRED",
-          "priority": 20,
-          "autheticatorFlow": true,
-          "flowAlias": "p1-first-broker-login User creation or linking",
-          "userSetupAllowed": false
-        },
-        {
-          "authenticatorFlow": true,
-          "requirement": "CONDITIONAL",
-          "priority": 50,
-          "autheticatorFlow": true,
-          "flowAlias": "p1-first-broker-login First Broker Login - Conditional Organization",
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "p1-first-broker-login Account verification options",
-      "description": "Method with which to verity the existing account",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "idp-email-verification",
-          "authenticatorFlow": false,
-          "requirement": "ALTERNATIVE",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticatorFlow": true,
-          "requirement": "ALTERNATIVE",
-          "priority": 20,
-          "autheticatorFlow": true,
-          "flowAlias": "p1-first-broker-login Verify Existing Account by Re-authentication",
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "p1-first-broker-login First Broker Login - Conditional Organization",
-      "description": "Flow to determine if the authenticator that adds organization members is to be used",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "conditional-user-configured",
-          "authenticatorFlow": false,
-          "requirement": "REQUIRED",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticator": "idp-add-organization-member",
-          "authenticatorFlow": false,
-          "requirement": "REQUIRED",
-          "priority": 20,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "p1-first-broker-login First broker login - Conditional OTP",
-      "description": "Flow to determine if the OTP is required for the authentication",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "conditional-user-configured",
-          "authenticatorFlow": false,
-          "requirement": "REQUIRED",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticator": "auth-otp-form",
-          "authenticatorFlow": false,
-          "requirement": "REQUIRED",
-          "priority": 20,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "p1-first-broker-login Handle Existing Account",
-      "description": "Handle what to do if there is existing account with same email/username like authenticated identity provider",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "idp-confirm-link",
-          "authenticatorFlow": false,
-          "requirement": "DISABLED",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticatorFlow": true,
-          "requirement": "DISABLED",
-          "priority": 20,
-          "autheticatorFlow": true,
-          "flowAlias": "p1-first-broker-login Account verification options",
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "p1-first-broker-login User creation or linking",
-      "description": "Flow for the existing/non-existing user alternatives",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticatorConfig": "p1-first-broker-login create unique user config",
-          "authenticator": "idp-create-user-if-unique",
-          "authenticatorFlow": false,
-          "requirement": "ALTERNATIVE",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticatorFlow": true,
-          "requirement": "ALTERNATIVE",
-          "priority": 20,
-          "autheticatorFlow": true,
-          "flowAlias": "p1-first-broker-login Handle Existing Account",
-          "userSetupAllowed": false
-        }
-      ]
-    },
-    {
-      "alias": "p1-first-broker-login Verify Existing Account by Re-authentication",
-      "description": "Reauthentication of existing account",
-      "providerId": "basic-flow",
-      "topLevel": false,
-      "builtIn": false,
-      "authenticationExecutions": [
-        {
-          "authenticator": "idp-username-password-form",
-          "authenticatorFlow": false,
-          "requirement": "REQUIRED",
-          "priority": 10,
-          "autheticatorFlow": false,
-          "userSetupAllowed": false
-        },
-        {
-          "authenticatorFlow": true,
-          "requirement": "CONDITIONAL",
-          "priority": 20,
-          "autheticatorFlow": true,
-          "flowAlias": "p1-first-broker-login First broker login - Conditional OTP",
-          "userSetupAllowed": false
-        }
-      ]
-    }
-  ],
+  "authenticationFlows": [],
   "users": [],
   "clients": [
     {
@@ -413,24 +229,26 @@
       "secret": "Sh4r3dMultiTenantDemoSecret012345",
       "bearerOnly": false,
       "webOrigins": [
-        "https://billing.geowealth.int:5184",
-        "https://trading.geowealth.int:5185",
+        "http://127.0.0.1:5184",
+        "http://127.0.0.1:5185",
         "http://localhost:5184",
         "http://localhost:5185",
-        "http://127.0.0.1:5184",
-        "http://127.0.0.1:5185"
+        "https://billing.geowealth.int:5184",
+        "https://p1.geowealth.int",
+        "https://trading.geowealth.int:5185"
       ],
       "redirectUris": [
+        "http://127.0.0.1:5184/*",
+        "http://127.0.0.1:5185/*",
+        "http://localhost:5184/*",
+        "http://localhost:5185/*",
         "https://billing.geowealth.int:5184",
         "https://billing.geowealth.int:5184/",
         "https://billing.geowealth.int:5184/*",
+        "https://p1.geowealth.int/*",
         "https://trading.geowealth.int:5185",
         "https://trading.geowealth.int:5185/",
-        "https://trading.geowealth.int:5185/*",
-        "http://localhost:5184/*",
-        "http://localhost:5185/*",
-        "http://127.0.0.1:5184/*",
-        "http://127.0.0.1:5185/*"
+        "https://trading.geowealth.int:5185/*"
       ],
       "protocol": "openid-connect",
       "standardFlowEnabled": true,
@@ -440,7 +258,7 @@
       "frontchannelLogout": false,
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##https://trading.geowealth.int:5185/*##http://localhost:5184/*##http://localhost:5185/*##http://localhost:8888/*",
+        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##https://trading.geowealth.int:5185/*##http://localhost:5184/*##http://localhost:5185/*##http://localhost:8888/*##https://p1.geowealth.int/*",
         "backchannel.logout.url": "http://token-handler:8080/backchannel-logout",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false"
@@ -505,37 +323,83 @@
       ]
     },
     {
-      "clientId": "p1-self-client",
+      "clientId": "p1-client",
+      "name": "P1 OIDC RP",
       "enabled": true,
-      "name": "P1 Self OIDC Client",
-      "description": "OIDC client used by P1 for silent re-auth when its HttpSession expired but the KC session is alive. Back-channel logout URL lets KC notify P1 when its SSO session ends (idle timeout / admin revoke). See CLAUDE.md (Phase 15-17) for the full rationale.",
-      "publicClient": true,
-      "bearerOnly": false,
-      "webOrigins": [
-        "+"
-      ],
-      "redirectUris": [
-        "http://localhost:8888/saml/idp/oidc-callback.do",
-        "http://c1wealth.localhost:8888/saml/idp/oidc-callback.do",
-        "http://john.localhost:8888/saml/idp/oidc-callback.do",
-        "http://green.localhost:8888/saml/idp/oidc-callback.do",
-        "http://localhost:8080/saml/idp/oidc-callback.do",
-        "http://c1wealth.localhost:8080/saml/idp/oidc-callback.do",
-        "http://john.localhost:8080/saml/idp/oidc-callback.do",
-        "http://green.localhost:8080/saml/idp/oidc-callback.do"
-      ],
       "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "p1-dev-secret",
       "standardFlowEnabled": true,
-      "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "frontchannelLogout": false,
+      "redirectUris": [
+        "https://p1.geowealth.int/oidc/callback"
+      ],
+      "webOrigins": [
+        "https://p1.geowealth.int"
+      ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:8888/*##http://localhost:8080/*",
-        "backchannel.logout.url": "http://host.docker.internal:8888/saml/idp/back-channel-logout.do",
+        "backchannel.logout.url": "http://p1-tomcat.geowealth-demo.svc.cluster.local:8080/oidc/back-channel-logout",
         "backchannel.logout.session.required": "true",
-        "backchannel.logout.revoke.offline.tokens": "false"
-      }
+        "post.logout.redirect.uris": "https://p1.geowealth.int/*",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "firmCd-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "firmCd",
+            "claim.name": "firmCd",
+            "jsonType.label": "int",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "memberships-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "memberships",
+            "claim.name": "memberships",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "personId-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "personId",
+            "claim.name": "personId",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "ldapUid-claim",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "ldapUid",
+            "claim.name": "ldapUid",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "defaultRole": {
@@ -593,211 +457,8 @@
       }
     ]
   },
-  "identityProviders": [
-    {
-      "alias": "p1",
-      "displayName": "P1",
-      "providerId": "saml",
-      "enabled": true,
-      "updateProfileFirstLoginMode": "off",
-      "trustEmail": true,
-      "storeToken": false,
-      "addReadTokenRoleOnCreate": false,
-      "authenticateByDefault": true,
-      "linkOnly": false,
-      "firstBrokerLoginFlowAlias": "p1-first-broker-login",
-      "config": {
-        "singleSignOnServiceUrl": "http://localhost:8080/saml/idp/sso.do",
-        "singleLogoutServiceUrl": "http://localhost:8080/saml/idp/slo.do",
-        "nameIDPolicyFormat": "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
-        "principalType": "SUBJECT",
-        "postBindingResponse": "true",
-        "postBindingAuthnRequest": "false",
-        "postBindingLogout": "false",
-        "wantAssertionsSigned": "true",
-        "wantAuthnRequestsSigned": "true",
-        "validateSignature": "true",
-        "signingCertificate": "MIIDTTCCAjWgAwIBAgIIOa8M+519W4UwDQYJKoZIhvcNAQEMBQAwVTELMAkGA1UEBhMCVVMxCzAJBgNVBAgTAkdBMRAwDgYDVQQHEwdBdGxhbnRhMRIwEAYDVQQKEwlHZW9XZWFsdGgxEzARBgNVBAMTCnAxLWlkcC1kZXYwHhcNMjYwNTIzMDUxNzQ3WhcNMjcwNTIzMDUxNzQ3WjBVMQswCQYDVQQGEwJVUzELMAkGA1UECBMCR0ExEDAOBgNVBAcTB0F0bGFudGExEjAQBgNVBAoTCUdlb1dlYWx0aDETMBEGA1UEAxMKcDEtaWRwLWRldjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKFRJC4ScIlymF3igAV1Acl6tPu5qfAtdPysajkKOfAkx2SfS5JdUn0PLH7DZTkym1vRffiD8OQST6IUXzCBOhXc6pJPcLFTikshRBnOJohExGym4AP4VL8AeEF0H6Xx86v+ml9OoaFIz3TGv11ieWmQne0RhNgrhqDp/KoFpt5lk8gk4oXZNUs5CKta3ZkRaNu2h9SihzPIpDP9TxfYI6xBtMTiD2nJ90732mvRCSruaSUIXpx6eVSvhWCzSzzzmZe/YlpfZ1JFxWwN+j7+I72gcQCR/RU8EdTsxZdetOr3Q8jzic572nPrbU6aXSRX8HhIZ0Jub1e+t+owA8pMSQECAwEAAaMhMB8wHQYDVR0OBBYEFCl1I5T2eUxWFOIYKMJF+VP+tIylMA0GCSqGSIb3DQEBDAUAA4IBAQBmikIuTB+dnv3tPbHWb6kB8OPc0TGVhIJDfDz6H9ubrGH42dw2n3+/K2ZiBBHV28qoKPhOgy3idESKdCo7zJOvFoJYh9qnDp9nVHszGcB12W2UnRAG7Q8BRVJVGLlEQ9Y5LtIB7oVlNPe6ZYR1j+8r3Mn+72iS8Ev3eUgAA3aOXcf/ud0flGIMGw+X3IUgqlyHsiXhpEBCBGEV9REKTusgaFzxbEKOSbZ8knMgZ0N7flVt8LqJhwNbF+zjrJMndFWdLpttaeqqLvO1TCkFgns/2yhSws19cm4IUQjJJJGRTXaBleB/Auoj8olI0yLXNLynAvKqXr9Y6otMjf6RZrkt",
-        "signatureAlgorithm": "RSA_SHA256",
-        "xmlSigKeyInfoKeyNameTransformer": "NONE",
-        "guiOrder": "10",
-        "syncMode": "FORCE",
-        "hideOnLoginPage": "false",
-        "signSpMetadata": "true"
-      }
-    }
-  ],
-  "identityProviderMappers": [
-    {
-      "name": "email-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "email",
-        "user.attribute": "email"
-      }
-    },
-    {
-      "name": "first-name-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "firstName",
-        "user.attribute": "firstName"
-      }
-    },
-    {
-      "name": "last-name-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "lastName",
-        "user.attribute": "lastName"
-      }
-    },
-    {
-      "name": "firm-cd-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "firmCd",
-        "user.attribute": "firmCd"
-      }
-    },
-    {
-      "name": "person-id-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "personId",
-        "user.attribute": "personId"
-      }
-    },
-    {
-      "name": "roles-client-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "client",
-        "role": "client"
-      }
-    },
-    {
-      "name": "roles-advisor-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "advisor",
-        "role": "advisor"
-      }
-    },
-    {
-      "name": "roles-admin-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "admin",
-        "role": "admin"
-      }
-    },
-    {
-      "name": "roles-billing-admin-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "billing-admin",
-        "role": "billing-admin"
-      }
-    },
-    {
-      "name": "roles-billing-viewer-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "billing-viewer",
-        "role": "billing-viewer"
-      }
-    },
-    {
-      "name": "roles-trading-trader-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "trading-trader",
-        "role": "trading-trader"
-      }
-    },
-    {
-      "name": "roles-trading-viewer-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "trading-viewer",
-        "role": "trading-viewer"
-      }
-    },
-    {
-      "name": "roles-legacy-user-to-advisor-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "user",
-        "role": "advisor"
-      }
-    },
-    {
-      "name": "roles-gwadmin-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-role-idp-mapper",
-      "config": {
-        "syncMode": "FORCE",
-        "attribute.name": "roles",
-        "attribute.value": "gwAdmin",
-        "role": "gwAdmin"
-      }
-    },
-    {
-      "name": "memberships-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "memberships",
-        "user.attribute": "memberships"
-      }
-    },
-    {
-      "name": "login-roles-from-saml",
-      "identityProviderAlias": "p1",
-      "identityProviderMapper": "saml-user-attribute-idp-mapper",
-      "config": {
-        "syncMode": "INHERIT",
-        "attribute.name": "roles",
-        "user.attribute": "loginRoles"
-      }
-    }
-  ],
+  "identityProviders": [],
+  "identityProviderMappers": [],
   "authenticatorConfig": [
     {
       "alias": "p1-first-broker-login create unique user config",
@@ -811,5 +472,28 @@
         "update.profile.on.first.login": "missing"
       }
     }
-  ]
+  ],
+  "components": {
+    "org.keycloak.storage.UserStorageProvider": [
+      {
+        "name": "user-service",
+        "providerId": "user-service-spi",
+        "subComponents": {},
+        "config": {
+          "userServiceUrl": [
+            "http://user-service:8080"
+          ],
+          "cachePolicy": [
+            "EVICT_DAILY"
+          ],
+          "enabled": [
+            "true"
+          ],
+          "priority": [
+            "0"
+          ]
+        }
+      }
+    ]
+  }
 }
