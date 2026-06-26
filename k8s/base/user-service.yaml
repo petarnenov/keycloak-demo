@@ -23,6 +23,12 @@ spec:
         app.kubernetes.io/name: user-service
         app.kubernetes.io/component: identity
     spec:
+      # Disable K8s Service link env injection. K8s otherwise sets
+      # ORACLE_PORT=tcp://<ip>:1521 for every ClusterIP Service, which
+      # collides with the JDBC_URL substitution ($(ORACLE_PORT) → tcp://...
+      # → "ORA-17866: Invalid number format for port number"). Same trap
+      # the legacy P1 workloads hit; see overlays/full-stack/kustomization.yaml.
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -41,8 +47,17 @@ spec:
                 name: oracle-creds
                 optional: true
           env:
+            # Oracle host + port hardcoded to the in-cluster Service DNS;
+            # ORACLE_PDB / ORACLE_USER come from the oracle-config ConfigMap
+            # via envFrom above (those vary per env, host:port doesn't —
+            # external Oracle is wired via an ExternalName Service called
+            # "oracle" by k8s/up.sh's data-tier toggle).
+            - name: ORACLE_HOST
+              value: oracle
+            - name: ORACLE_PORT
+              value: "1521"
             - name: JDBC_URL
-              value: "jdbc:oracle:thin:@//$(ORACLE_HOST):$(ORACLE_PORT)/$(ORACLE_PDB)"
+              value: "jdbc:oracle:thin:@//oracle:1521/$(ORACLE_PDB)"
             - name: MFA_TOKEN_TTL_SECONDS
               value: "300"
           resources:

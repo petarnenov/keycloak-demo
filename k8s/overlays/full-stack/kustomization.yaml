@@ -18,6 +18,7 @@ resources:
   - ../../base/redis.yaml
   # identity tier
   - ../../base/keycloak.yaml
+  - ../../base/user-service.yaml
   - ../../base/token-handler-config.yaml
   - ../../base/token-handler.yaml
   - ../../base/data-bff-config.yaml
@@ -60,6 +61,8 @@ generatorOptions:
 
 images:
   - { name: keycloak-demo-token-handler, newTag: latest }
+  - { name: keycloak-demo-user-service, newTag: latest }
+  - { name: keycloak-demo-keycloak, newTag: latest }
   - { name: keycloak-demo-billing-bff, newTag: latest }
   - { name: keycloak-demo-trading-bff, newTag: latest }
   - { name: keycloak-demo-billing-web, newTag: latest }
