@@ -32,24 +32,12 @@
             </#if>
         </form>
 
-        <#-- Federated IdPs ("Or sign in with → P1" in this realm). KC's
-             default builds the same block in login.ftl; we replicate it
-             here because our template overrides the whole form. -->
-        <#if realm.password && social.providers??>
-            <div id="kc-social-providers">
-                <p>Or sign in with</p>
-                <ul>
-                    <#list social.providers as p>
-                        <li>
-                            <a id="social-${p.alias}" class="auth-spa__social-link"
-                               href="${p.loginUrl}">
-                                <#if p.iconClasses?has_content><i class="${properties.kcCommonLogoIdP!} ${p.iconClasses!}" aria-hidden="true"></i></#if>
-                                <span>${p.displayName!}</span>
-                            </a>
-                        </li>
-                    </#list>
-                </ul>
-            </div>
-        </#if>
+        <#-- Federated IdP block ("Or sign in with → P1") intentionally NOT
+             rendered. The realm's `p1` SAML IdP was retired in Phase 5
+             (struts-saml-idp.xml maps only Tier 2/3 authz endpoints now);
+             leaving the brokered-login button in the UI dead-ends users on
+             a /saml/idp/sso.do that 302s back to /react/indexReact.do. KC
+             authenticates against the user-storage SPI directly — no
+             broker, no SAML, single primary action. -->
     </#if>
 </@layout.registrationLayout>
