@@ -330,7 +330,7 @@ Concretely:
   LogoutRequests.
 - NetworkPolicy objects are added per the four-policy plan.
 - Redis becomes a managed cluster.
-- Oracle / ES / Memcached are external (via `data-tier.prod.env`).
+- Oracle / ES are external (via `data-tier.prod.env`).
 - A real CSI driver replaces `storage-provisioner`.
 - An audit pipeline subscribes to KC events and the Token Handler's
   access log (or a future structured-audit emitter).

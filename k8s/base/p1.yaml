@@ -5,9 +5,10 @@
 #   p1-coordinator   StatefulSet  Akka SEED node (stable DNS :4007)
 #   p1-samlmanager   Deployment   samlintegrationmanager — REQUIRED for SAML login
 #   p1-reportengine | p1-proposalagents | p1-emailagent  — whitelabel Save flow
-#   p1-tomcat        StatefulSet  the webapp (sticky session; prod = MSM/memcached)
+#   p1-tomcat        Deployment   the webapp; HttpSession in Redis (Redisson
+#                                 Tomcat session manager) → non-sticky LB OK
 #
-# Common backing services via Service DNS: oracle, elasticsearch, redis, memcached.
+# Common backing services via Service DNS: oracle, elasticsearch, redis.
 # BLUEPRINT — depends on the geowealth image build (see geowealth/k8s/README.md).
 apiVersion: v1
 kind: Secret
@@ -61,7 +62,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
             # The seed node's self-address MUST equal the seed-nodes literal.
             - { name: AKKA_CANONICAL, value: "p1-coordinator-0.p1-coordinator" }
@@ -102,7 +102,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -140,7 +139,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -173,7 +171,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -206,7 +203,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -242,7 +238,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -276,7 +271,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -317,7 +311,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             # Sized for the 4G JVM heap above; container limit must exceed heap.
@@ -352,7 +345,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -401,7 +393,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             # Sized for the 10G JVM heap above; container limit must be > heap or
@@ -445,7 +436,6 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -510,7 +500,6 @@ spec:
             # Phase 6: Redisson Tomcat session manager points at the same Redis.
             # The yaml template renders REDIS_HOST:REDIS_PORT into the config.
             - { name: REDIS_URI, value: "redis://redis:6379" }
-            - { name: MEMCACHED_HOST, value: memcached }
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
             # Phase 5: P1 OIDC RP configuration. Browser issuer is the public KC
             # URL the SPA reaches; server issuer is the in-cluster Service DNS
@@ -521,9 +510,9 @@ spec:
             - { name: P1_OIDC_SERVER_ISSUER, value: "http://keycloak:8080/realms/demo-realm" }
             - { name: P1_OIDC_CLIENT_ID, value: "p1-client" }
             - { name: P1_OIDC_CLIENT_SECRET, value: "p1-dev-secret" }
-            - { name: P1_OIDC_REDIRECT_URI, value: "https://p1.geowealth.int/oidc/callback" }
-            - { name: P1_OIDC_POST_LOGIN_URL, value: "https://p1.geowealth.int/" }
-            - { name: P1_OIDC_POST_LOGOUT_URL, value: "https://p1.geowealth.int/" }
+            - { name: P1_OIDC_REDIRECT_URI, value: "http://localhost:8080/oidc/callback.do" }
+            - { name: P1_OIDC_POST_LOGIN_URL, value: "http://localhost:8080/" }
+            - { name: P1_OIDC_POST_LOGOUT_URL, value: "http://localhost:8080/" }
             - { name: P1_OIDC_JWKS_URL, value: "http://keycloak:8080/realms/demo-realm/protocol/openid-connect/certs" }
             - { name: P1_OIDC_EXPECTED_ISSUER, value: "https://auth.geowealth.int:5180/realms/demo-realm" }
           ports:

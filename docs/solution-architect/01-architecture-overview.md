@@ -35,7 +35,6 @@ flowchart LR
         agents["9 × p1-agent pods<br/>(Akka cluster)"]
         oracle[(Oracle PDB)]
         es[(Elasticsearch)]
-        mc[(Memcached)]
     end
 
     spaB --> ingress
@@ -66,7 +65,6 @@ flowchart LR
     p1co --- agents
     p1tc --- oracle
     p1tc --- es
-    p1tc --- mc
 ```
 
 The diagram above is intentionally lossy. The full pod-by-pod inventory is in
@@ -92,7 +90,7 @@ flowchart TB
         T4[Redis]
         T5[KC Postgres]
         T6[P1 tomcat + agents]
-        T7[Oracle / ES / Memcached]
+        T7[Oracle / ES]
     end
 
     S1 -- "TLS via ingress" --> T1

@@ -9,7 +9,7 @@
 Stand up the **whole** system on Kubernetes — legacy P1 (geowealth Tomcat + Akka
 agents), Keycloak, the demo domains (billing/trading web + BFFs + the multi-tenant
 Token Handler), and **the database in-container** (Oracle, seeded from `db/` +
-Flyway migrations) — plus Elasticsearch, memcached and Redis — and bring it all up
+Flyway migrations) — plus Elasticsearch and Redis — and bring it all up
 with **one command**.
 
 Done when:
@@ -30,7 +30,7 @@ Done when:
 This extends the Goal-5 work (`k8s/README-multitenant-k8s-plan.md`, branch
 `petarnenov/token-handler-multitenant-k8s`): the auth tier + data BFFs + Redis +
 Ingress already exist; this goal adds **Keycloak+Postgres, the web SPAs, the Oracle
-DB + seed pipeline, Elasticsearch, memcached, and the entire P1 legacy tier**, then
+DB + seed pipeline, Elasticsearch, and the entire P1 legacy tier**, then
 the one-command orchestration over all of it.
 
 ## 1. Target architecture (every workload)
@@ -43,7 +43,6 @@ Namespace `geowealth`. **Nothing external** — the DB is in-cluster (the prior
 | data | `oracle` | StatefulSet | `gvenzl/oracle-free:23-slim` | PVC |
 | data | `oracle-seed` | Job | `db-seed` (new, built here) | — |
 | data | `elasticsearch` | StatefulSet | `elasticsearch:7.17.28` | PVC |
-| data | `memcached` | Deployment | `memcached:1.6-alpine` | — |
 | data | `redis` | StatefulSet (have) | `redis:7-alpine` | PVC |
 | data | `kc-postgres` | StatefulSet | `postgres:16` | PVC |
 | identity | `keycloak` | StatefulSet | `quay.io/keycloak/keycloak:26.0.7` | realm import |
@@ -97,10 +96,11 @@ via securityContext/initContainer (`vm.max_map_count`), readiness on
 need the index). ECK operator is the more "prod" option — note it as an alternative;
 the self-contained one-command path uses the plain StatefulSet.
 
-**memcached** (`k8s/base/memcached.yaml`): Deployment + Service `memcached:11211`
-(hibernate L2 target). **Redis** (have) — also serves P1's Redisson
-(`redis://…:6379`); one Redis can back both (note the dual use). **kc-postgres**:
-StatefulSet `postgres:16` + Service + Secret for KC's DB.
+**Redis** (have) — serves the token-handler sessions (Micronaut session-redis),
+P1's Tomcat HttpSession (Redisson Tomcat session manager), and the OIDC
+`kc_sub → sessionId` cross-pod index used by back-channel logout. One backend,
+all distributed-cache + session needs. **kc-postgres**: StatefulSet
+`postgres:16` + Service + Secret for KC's DB.
 
 ### 2.2 Identity tier
 
@@ -141,7 +141,6 @@ DNS-driven (don't commit the existing `etc/*` dev edits — see §4):
 - `etc/dev-petar-akka.conf`: ES `dev-elastic.geowealth.com:9200` → `elasticsearch:9200`;
   Akka seed `akka://DevPetar@127.0.0.1:4007` → `akka://DevPetar@p1-coordinator-0.p1-coordinator:4007`.
 - `etc/redisson.yaml`: `redis://127.0.0.1:6379` → `redis://redis:6379`.
-- memcached host → `memcached:11211`.
 Deliver these as a ConfigMap/Secret-mounted overlay (templated at deploy, values
 from the in-cluster Service names).
 
@@ -163,10 +162,12 @@ limits (OOMs at 1 GB; spec uses `-Xmx8G`).
 `P1_IDP_KC_SP_CERT` must be KC's broker SP cert) — seed both consistently. The
 `scripts/sso-dev-keystore.sh` rotation story becomes a Secret update + realm patch.
 
-**HttpSession** (P1 holds `LoggedUser`/`firmInfo` in-memory): single replica +
-ingress **sticky sessions** (`JSESSIONID` affinity) for the demo; the prod path is
-**memcached-session-manager (MSM)** to externalize sessions (memcached is already in
-the stack) — document MSM as the scale step.
+**HttpSession** (P1 holds `LoggedUser`/`firmInfo` in session): externalised to
+Redis via the **Redisson Tomcat session manager** (`org.redisson.tomcat.
+RedissonSessionManager`, `keyPrefix=p1-tomcat`, `broadcastSessionEvents=true`).
+The cross-pod `kc_sub → sessionId` index for OIDC back-channel logout is also
+Redis-backed (`P1RedisKcSubIndex`). p1-tomcat is stateless behind a non-sticky
+LB — scale with `kubectl scale deploy/p1-tomcat --replicas=N`.
 
 **P1 → host SAML**: P1 is now in-cluster, but the **browser** drives the SAML
 redirect to P1 — so P1 must be reachable by the browser at its ingress host, and KC
@@ -183,7 +184,7 @@ Ingress and keep the realm `p1` IdP endpoints consistent with it.
    `db-seed`, `geowealth`).
 3. Apply in waves with gates:
    `oracle` → wait healthy → `oracle-seed` Job → wait Complete →
-   `elasticsearch`+`memcached`+`redis`+`kc-postgres` → wait Ready →
+   `elasticsearch`+`redis`+`kc-postgres` → wait Ready →
    `keycloak` (realm import) → wait `/health` →
    `p1-coordinator` → wait Akka seed up → `p1-samlmanager`(+whitelabel agents) →
    `p1-tomcat` → wait Ready → `es-reindex` Job →
@@ -201,7 +202,7 @@ ES password — **note: `prod-config/etc/elasticsearch_prod.properties` has a
 committed ES password; do NOT reuse it; this stack uses its own**, the login hash,
 the SAML keystore). For real prod: External Secrets Operator / Vault — note it; the
 one-command demo uses in-repo Secrets (placeholder) with a clear "rotate in prod"
-banner. All host-specific dev config (Oracle/ES/Redis/memcached/Akka) becomes
+banner. All host-specific dev config (Oracle/ES/Redis/Akka) becomes
 Service-DNS values supplied via ConfigMap overlay — nothing hardcoded in the image.
 
 ## 4. Sub-branches & commit hygiene
@@ -248,7 +249,7 @@ every tier reaches Ready and the e2e is green — proving the single-command goa
    arch matches the cluster nodes (Apple-silicon minikube needs an arm64 image).
 3. **Akka cluster bootstrap on K8s** — stable-DNS seed node (minimal) vs
    `akka-discovery-kubernetes-api` (prod). The real risk; budget time here.
-4. **P1 HttpSession clustering** — sticky single-replica (demo) vs MSM/memcached (scale).
+4. **P1 HttpSession clustering** — Redisson Tomcat session manager + Redis-backed `kc_sub` index for cross-pod back-channel logout; p1-tomcat stateless behind a non-sticky LB.
 5. **SAML keystore + cert match** between P1 and the KC realm `p1` IdP — seed both
    consistently, or login fails at the SAML signature step.
 6. **ES reindex** required for list/directory views (`RefreshClientSearcherTool`).
@@ -275,7 +276,7 @@ every tier reaches Ready and the e2e is green — proving the single-command goa
 - Data tier: `oracle.yaml` (StatefulSet + server-side init scripts: EXTENDED dance +
   utl32k + DBMS_CRYPTO grant + V1 load, V1 staged via initContainer from the
   `db-seed` image), `oracle-seed.yaml` (flyway baseline+migrate Job + login-hash
-  Secret), `elasticsearch.yaml`, `memcached.yaml`, `kc-postgres.yaml`. `db-seed`
+  Secret), `elasticsearch.yaml`, `kc-postgres.yaml`. `db-seed`
   image (`k8s/images/db-seed/Dockerfile`) — **built**, all 18 migrations baked
   (V1 = 5.9 MB confirmed).
 - Identity tier: `keycloak.yaml` (realm import + KC_HOSTNAME issuer split),
@@ -311,7 +312,7 @@ With Docker Desktop bumped to 32 GB and a 24 GB minikube (`-p geowealth`), the
   (joined as role `web`, HTTP 200) all **Member is Up**, leader elected. The P1
   config templated to in-cluster Service DNS (`oracle:1521`, `elasticsearch:9200`,
   the coordinator seed). One geowealth image, many entrypoints (ROLE/AGENT).
-- **Backing**: ES 7.17, memcached, Redis.
+- **Backing**: ES 7.17, Redis.
 
 Hurdles cleared during the run: local-image `imagePullPolicy: IfNotPresent`;
 minikube docker-daemon DNS flakiness after the Docker restart (node restart);

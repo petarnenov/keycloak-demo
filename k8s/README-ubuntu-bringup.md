@@ -20,7 +20,7 @@ horizontally, see [README-scale.md](README-scale.md).
 ## 0. What you get
 
 One minikube cluster (~12 GB) running: Oracle (+ seed Job), Elasticsearch,
-memcached, kc-postgres, redis, Keycloak (+ `kc-ext` TLS-terminating proxy for
+kc-postgres, redis, Keycloak (+ `kc-ext` TLS-terminating proxy for
 the in-cluster `https://auth.geowealth.int:5180` issuer URL), token-handler,
 two data BFFs, two web front-ends, and the legacy P1 tier: Tomcat
 (`web-petar.conf` profile) + **10 Akka agent Deployments** —
@@ -320,7 +320,7 @@ docker run -d --name oracle -p 1521:1521 -v oradata:/opt/oracle/oradata \
 
 (Built from `db/Dockerfile`; schema + Flyway seeds + the local-login hash
 are already inside.) Same model applies to Elasticsearch (run
-`RefreshClientSearcherTool` once) and Memcached (stateless, no provisioning).
+`RefreshClientSearcherTool` once).
 
 **Switching back to in-cluster** is the same edit in reverse — set
 `ORACLE_HOST=oracle` (and `ORACLE_PDB=FREEPDB1`) and re-run `up.sh`. The
@@ -496,7 +496,7 @@ kubectl -n geowealth-demo port-forward svc/p1-tomcat 8080:8080 --address 127.0.0
   Linux that is host RAM; 64 GB is plenty — check nothing else is hogging it).
   Memory budget per pod is tight at the default 12 GB minikube: Oracle 4 GB,
   Elasticsearch 1 GB, KC + P1 Tomcat ~3 GB, the 10 P1 agents ~6 GB, token-handler
-  + BFFs + web + redis + postgres + memcached ~2 GB. Push `MINIKUBE_MEM_MIB`
+  + BFFs + web + redis + postgres ~2 GB. Push `MINIKUBE_MEM_MIB`
   higher if pods stay `Pending` with `Insufficient memory`.
 - **e2e suite** → needs MFA disabled for `tim1`: in K8s
   `kubectl -n geowealth-demo exec oracle-0 -- bash -c "echo \"UPDATE GP.ENTITY_TBL

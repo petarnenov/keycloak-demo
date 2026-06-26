@@ -74,8 +74,8 @@ fresh: down-wipe provision ## Wipe volumes then provision from scratch
 # ------------------------------------------------------------------------------
 # Building blocks
 # ------------------------------------------------------------------------------
-up: ## Start oracle + elasticsearch + memcached
-	$(DC) up -d oracle elasticsearch memcached
+up: ## Start oracle + elasticsearch
+	$(DC) up -d oracle elasticsearch
 
 down: ## Stop services (keep data volume)
 	$(DC) down

@@ -4,8 +4,13 @@
 #   oracle        - Oracle Database Free 23ai; GP/gp123 app schema in FREEPDB1.
 #                   The Flyway baseline (../migration) is applied into it.
 #   elasticsearch - 7.17.x, matching geowealth's elasticsearch client jars.
-#   memcached     - hibernate L2 cache target (host literal "memcached":11211).
 #   flyway        - one-shot migrator; `docker compose run --rm flyway migrate`.
+#
+# Hibernate L2 cache defaults to EHCACHE (in-JVM) — memcached was retired
+# (curr_items=0 across days of traffic in K8s, same model here). If you
+# ever flip `-Dhibernate.secondLevelCacheType=MEMCACHED`, switch instead
+# to Redisson's region factory pointed at the Redis already in the K8s
+# stack — single distributed-cache backend per stack.
 #
 # Ports are published on 127.0.0.1 only. See README.md for how the geowealth
 # backend is pointed at these (etc/hosts aliases + petar dev config).
@@ -68,13 +73,6 @@ services:
       timeout: 5s
       retries: 30
       start_period: 30s
-
-  memcached:
-    image: memcached:1.6-alpine
-    container_name: gw-memcached
-    ports:
-      - "127.0.0.1:11211:11211"
-    command: ["-m", "256"]
 
 volumes:
   oracle-data:

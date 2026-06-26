@@ -23,7 +23,6 @@ is the dev default.
 |---|---|---|
 | **`oracle-0`** | StatefulSet (1) | Oracle XE PDB baked with the GeoWealth schema + seed (`db/Dockerfile`). Backs all P1 reads and writes: entitlements, accounts, billing nomenclature, instruments. P1 will not boot without it. |
 | **`elasticsearch-0`** | StatefulSet (1) | Search index for `SearchManager` / `ClientSearchManager`. P1 boots without it, but client-search UI returns empty results. |
-| **`memcached`** | Deployment (1) | Distributed cache for `DistributedCacheController` (prices, policy rules). In prod also fronts Tomcat sessions via MSM; in this single-Tomcat demo it is cache-only. |
 | **`kc-postgres-0`** | StatefulSet (1) | Postgres backing Keycloak (realm config, federated identities, sessions). Required for Keycloak to start. |
 | **`redis-0`** | StatefulSet (1) | Session store for the Token Handler (`GWSESSION` → access/refresh tokens) **and** the SID registry for back-channel logout. Without it the Token Handler cannot persist a login. |
 
@@ -132,7 +131,7 @@ legacy `nfstart` + `commandspecs/*.spec` ops layout.
 | **`p1-searchagents`** | Deployment | `SearchManager`, `ClientSearchManager`. Powers client search. |
 | **`p1-cspagents`** | Deployment | `InstrumentPerformanceManager`. |
 | **`p1-devcommonagents`** | Deployment, 5 Gi limit, 4 G heap | `AuthorizationManager`, `AuthenticationManager`, `GeowealthPolicyRuleManager`, `entitypropertymanager`, `policyrules`, `DistributedCacheControllerManager`, `cacheagents`, `custodianagents`, `billingagents`, `portalagents`, `PortalManager`, `PortletManager`, `BillingManager`, `BillingSpecificationManager`. **Heaviest agent** — `CrntCostBasisLoader` pre-loads the entire `COST_BASIS_ACCOUNT_TBL` at boot. If this OOMs, `localhost:8080` renders blank because `AuthorizationManager` lives here and `IdentifyFirmByUrlMsg` from Tomcat dead-letters. |
-| **`p1-tomcat-0`** | StatefulSet (1, sticky session) | The webapp itself — `react/indexReact.do`, every `*.do` action, every `/saml/idp/*` endpoint. Single replica because `HttpSession` is in-memory; prod uses MSM/memcached for session replication. Reads URLs from `p1-urls` ConfigMap (generated from `geowealth/k8s/env/urls.<env>.env`). |
+| **`p1-tomcat`** | Deployment (N replicas, non-sticky LB) | The webapp itself — `react/indexReact.do`, every `*.do` action, `/oidc/*` (login / callback / logout / back-channel-logout). Stateless: `HttpSession` lives in Redis (Redisson Tomcat session manager, `keyPrefix=p1-tomcat`); the `kc_sub → sessionId` index used by OIDC back-channel logout is also Redis-backed (`P1RedisKcSubIndex`, `p1-tomcat:kc_sub:<sub>` → `RSet<sessionId>`). Reads URLs from `p1-urls` ConfigMap (generated from `geowealth/k8s/env/urls.<env>.env`). |
 
 ### Pod-level config rendering (`/home/petar/nodejs/geowealth/k8s/entrypoint.sh`)
 
@@ -144,7 +143,6 @@ substitutions:
 |---|---|---|
 | `ORACLE_HOST` `ORACLE_PORT` `ORACLE_PDB` `ORACLE_USER` `ORACLE_PASSWORD` | `hibernate.properties.tpl` | `oracle:1521/FREEPDB1`, `gp/gp123` |
 | `ES_HOST` `ES_PORT` | `akka.conf.tpl` (Elasticsearch) | `elasticsearch:9200` |
-| `MEMCACHED_HOST` | (memcached client config) | `memcached:11211` |
 | `AKKA_SEED` | `akka.conf.tpl` (cluster join) | `akka://DevPetar@p1-coordinator-0.p1-coordinator:4007` |
 | `AKKA_CANONICAL` | `akka.conf.tpl` (artery.canonical.hostname) | `${POD_IP}` |
 

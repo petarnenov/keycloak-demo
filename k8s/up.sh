@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # k8s/up.sh — ONE command to stand up the ENTIRE system on Kubernetes:
-# data (Oracle seeded from db/ + ES + memcached + kc-postgres + redis) + identity
+# data (Oracle seeded from db/ + ES + kc-postgres + redis) + identity
 # (Keycloak + token-handler + BFFs + web) + legacy P1 (Tomcat + Akka agents).
 #
 #   ./k8s/up.sh            # build images, ensure cluster, deploy in ordered waves
@@ -27,7 +27,7 @@ MINIKUBE_CPUS="${MINIKUBE_CPUS:-4}"
 kc() { kubectl -n "$NS" "$@"; }
 log() { printf '\n\033[1;36m>>> %s\033[0m\n' "$*"; }
 
-# Data-tier endpoint config (Oracle / Elasticsearch / Memcached). Read from
+# Data-tier endpoint config (Oracle / Elasticsearch). Read from
 # k8s/env/data-tier.<env>.env; each *_HOST is either the in-cluster Service
 # name (default) or an external DNS hostname. data_tier_pre_align (run BEFORE
 # kustomize apply) deletes a stale ExternalName Service so apply can re-create
@@ -43,7 +43,6 @@ _sh_ORACLE_PDB="${ORACLE_PDB:-}"
 _sh_ORACLE_USER="${ORACLE_USER:-}"
 _sh_ELASTICSEARCH_HOST="${ELASTICSEARCH_HOST:-}"
 _sh_ELASTICSEARCH_SCHEME="${ELASTICSEARCH_SCHEME:-}"
-_sh_MEMCACHED_HOST="${MEMCACHED_HOST:-}"
 if [ -f "$DATA_TIER_ENV" ]; then
   set -a; . "$DATA_TIER_ENV"; set +a
 fi
@@ -54,13 +53,12 @@ ELASTICSEARCH_HOST="${_sh_ELASTICSEARCH_HOST:-${ELASTICSEARCH_HOST:-elasticsearc
 # ES scheme is parameterised because external ES (dev-elastic.geowealth.com)
 # is HTTPS-only — geowealth/k8s/config/akka.conf.tpl reads ${ES_SCHEME}.
 ELASTICSEARCH_SCHEME="${_sh_ELASTICSEARCH_SCHEME:-${ELASTICSEARCH_SCHEME:-http}}"
-MEMCACHED_HOST="${_sh_MEMCACHED_HOST:-${MEMCACHED_HOST:-memcached}}"
 
 data_tier_pre_align() {
   # If env says in-cluster but live Service is ExternalName, delete it now —
   # otherwise kustomize apply will choke (Service .spec.type is immutable).
   local svc host
-  for entry in "oracle:$ORACLE_HOST" "elasticsearch:$ELASTICSEARCH_HOST" "memcached:$MEMCACHED_HOST"; do
+  for entry in "oracle:$ORACLE_HOST" "elasticsearch:$ELASTICSEARCH_HOST"; do
     svc=${entry%%:*}; host=${entry#*:}
     if [ "$host" = "$svc" ] && \
        [ "$(kc get svc "$svc" -o jsonpath='{.spec.type}' 2>/dev/null)" = "ExternalName" ]; then
@@ -120,7 +118,6 @@ EOF
 data_tier_redirect() {
   data_tier_redirect_one oracle        "$ORACLE_HOST"        statefulset/oracle        "${ORACLE_PORT:-1521}"
   data_tier_redirect_one elasticsearch "$ELASTICSEARCH_HOST" statefulset/elasticsearch "${ELASTICSEARCH_PORT:-9200}"
-  data_tier_redirect_one memcached     "$MEMCACHED_HOST"     deployment/memcached      "${MEMCACHED_PORT:-11211}"
 }
 
 if [ "${1:-}" = "--down" ]; then
@@ -208,7 +205,7 @@ if [ -f /tmp/p1-idp-dev.p12 ]; then
     --dry-run=client -o yaml | kc apply -f -
 fi
 
-# --- 3c. data-tier redirects (Oracle / Elasticsearch / Memcached) -----------
+# --- 3c. data-tier redirects (Oracle / Elasticsearch) -----------------------
 # Driven by k8s/env/data-tier.<env>.env (override via DATA_TIER_ENV). For each
 # service: in-cluster mode → no-op (the apply above set up the default); external
 # mode → swap the Service to ExternalName and scale the in-cluster workload to
@@ -303,7 +300,6 @@ wait_job() { kc wait --for=condition=complete "job/$1" --timeout="$2" || kc logs
 wait_ready statefulset/oracle 300s
 wait_ready statefulset/elasticsearch 300s
 wait_ready statefulset/kc-postgres 120s
-wait_ready deployment/memcached 120s
 wait_ready statefulset/redis 120s
 # Wave 2: Keycloak (realm import)
 wait_ready statefulset/keycloak 300s

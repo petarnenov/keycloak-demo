@@ -22,7 +22,6 @@ k8s/
 │   ├── redis.yaml              # StatefulSet (1) + PVC + Service
 │   ├── oracle.yaml             # StatefulSet (1) + PVC + Service (data tier)
 │   ├── elasticsearch.yaml      # StatefulSet (1) + PVC + Service
-│   ├── memcached.yaml          # Deployment + Service
 │   ├── keycloak.yaml           # StatefulSet (1) + Service (in-cluster :8080)
 │   ├── token-handler.yaml      # Deployment + Service + HPA (2-12)
 │   ├── token-handler-config.yaml  # ConfigMap (tenants) + Secret (OIDC client secret)
@@ -42,7 +41,7 @@ k8s/
 │   ├── urls.dev.env            # browser-facing and in-cluster URLs (one per env)
 │   ├── urls.qa.env
 │   ├── urls.prod.env
-│   ├── data-tier.dev.env       # ORACLE / ES / MEMCACHED host overrides
+│   ├── data-tier.dev.env       # ORACLE / ES host overrides
 │   ├── data-tier.qa.env
 │   └── data-tier.prod.env
 ├── images/                     # local image build helpers
@@ -121,17 +120,17 @@ talks to the in-cluster Service directly.
 
 ## 3. Data-tier endpoints — `k8s/env/data-tier.<env>.env`
 
-A separate env file controls **where each in-cluster consumer reaches
-Oracle, Elasticsearch, and Memcached**. Three modes per data-tier service:
+A separate env file controls **where each in-cluster consumer reaches Oracle
+and Elasticsearch**. Three modes per data-tier service:
 
 | Mode | `*_HOST` setting | What `up.sh` does |
 |---|---|---|
-| In-cluster default | Equals the Service name (`oracle`, `elasticsearch`, `memcached`) | Leaves the kustomize-applied ClusterIP Service + StatefulSet/Deployment alone |
+| In-cluster default | Equals the Service name (`oracle`, `elasticsearch`) | Leaves the kustomize-applied ClusterIP Service + StatefulSet/Deployment alone |
 | External | Resolves elsewhere (`192.168.1.42`, `dev-elastic.geowealth.com`) | Scales the in-cluster workload to 0, deletes the freshly applied ClusterIP Service, re-applies it as `type: ExternalName, externalName: <HOST>` |
 
 Consumers always use the bare Service name (`oracle:1521`,
-`elasticsearch:9200`, `memcached:11211`). Only what that name resolves to in
-cluster DNS changes between modes.
+`elasticsearch:9200`). Only what that name resolves to in cluster DNS
+changes between modes.
 
 ### Important constraints
 
@@ -345,7 +344,7 @@ decision.
 | `keycloak-0` | Stateful (sessions stored in cluster cache); horizontal scale is supported in production but requires Infinispan tuning |
 | `kc-postgres-0` | Single-writer; production uses a managed Postgres |
 | `redis-0` | Single-writer; production uses Redis Cluster or AWS Elasticache |
-| `p1-tomcat-0` | In-memory `HttpSession`; production uses MSM/memcached for session replication |
+| `p1-tomcat` | Already horizontally scaled — Redisson Tomcat session manager + Redis-backed `kc_sub` index — listed here only for historical context |
 | `p1-coordinator-0` | Akka seed must have a stable address |
 | `p1-agent-*` | Akka cluster — adding members rebalances the cluster on its own; each agent owns a fixed Manager set |
 | Data BFFs | Stateless; nothing prevents horizontal scale, just not configured today |

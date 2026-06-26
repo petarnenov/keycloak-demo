@@ -17,9 +17,8 @@ in-cluster is just the dev default.
 |---|---|---|
 | **`oracle-0`** | StatefulSet (1 replica) | Oracle XE PDB baked with the GeoWealth schema + seed (`db/Dockerfile`, image `keycloak-demo-db:seeded`). Backs **all** P1 reads/writes — entitlements, accounts, billing nomenclature (V22 seed), instruments. Without it P1 won't boot. |
 | **`elasticsearch-0`** | StatefulSet (1 replica) | Search index P1 hits via `SearchManager` / `ClientSearchManager`. Needed for client search UI and watchdog status; P1 boot won't fail without it, but client-facing search returns empty. |
-| **`memcached`** | Deployment (1 replica) | Distributed cache for P1's `DistributedCacheController` (instrument prices, policy rules). In prod also fronts Tomcat HttpSession via MSM; here single-Tomcat keeps sessions in-memory so memcached is cache-only. |
 | **`kc-postgres-0`** | StatefulSet (1 replica) | Postgres backing **Keycloak** (realm config, federated identities, sessions). Required for KC to start. |
-| **`redis-0`** | StatefulSet (1 replica) | Session store for the **token-handler** (`GWSESSION` → access/refresh tokens) AND the SID registry for back-channel logout. Without it the token-handler can't persist a login. |
+| **`redis-0`** | StatefulSet (1 replica) | Session store for the **token-handler** (`GWSESSION` → access/refresh tokens) AND the SID registry for back-channel logout. Also backs P1's Tomcat HttpSession (Redisson session manager) + the cross-pod kc_sub → sessionId index (`p1-tomcat:kc_sub:<sub>` RSet) so OIDC back-channel logout invalidates P1 across replicas. Without it the token-handler can't persist a login and P1 falls back to in-JVM sessions (single-pod only). |
 
 ---
 
@@ -62,8 +61,8 @@ resource shape are completely different.
 `k8s/env/data-tier.<env>.env` points `ORACLE_HOST` at an external IP (e.g.
 `192.168.1.42`). In that case `up.sh` scales the StatefulSet to 0 replicas and
 re-applies the `oracle` Service as `type: ExternalName`. The Service name still
-exists in cluster DNS — only the pod is gone. Same idea for `elasticsearch-0` /
-`memcached` when their `_HOST` is redirected.
+exists in cluster DNS — only the pod is gone. Same idea for `elasticsearch-0`
+when `ELASTICSEARCH_HOST` is redirected.
 
 ---
 
@@ -88,7 +87,7 @@ and the SPA blanks out.**
 | **`p1-searchagents`** | Deployment | `SearchManager`, `ClientSearchManager`. Powers client search. |
 | **`p1-cspagents`** | Deployment | `InstrumentPerformanceManager`. |
 | **`p1-devcommonagents`** | Deployment, **5 Gi limit, 4 G heap** | `AuthorizationManager`, `AuthenticationManager`, `GeowealthPolicyRuleManager`, `entitypropertymanager`, `policyrules`, `DistributedCacheControllerManager`, `cacheagents`, `custodianagents`, `billingagents`, `portalagents`, `PortalManager`, `PortletManager`, `BillingManager`, `BillingSpecificationManager`. **Heaviest agent** — `CrntCostBasisLoader` pre-loads the whole `CostBasisAccount` table at boot, so heap is sized for a real PDB. If this OOMs, **`localhost:8080` renders blank** because `AuthorizationManager` lives here and `IdentifyFirmByUrlMsg` from Tomcat dead-letters. |
-| **`p1-tomcat-0`** | StatefulSet (1 replica, sticky session) | The webapp itself — `react/indexReact.do`, all `*.do` actions, `/saml/idp/*`. Single replica because HttpSession is in-memory; prod uses MSM/memcached for session replication. Reads all URLs from `p1-urls` ConfigMap (generated from `geowealth/k8s/env/urls.<env>.env`). |
+| **`p1-tomcat`** | Deployment (N replicas, non-sticky LB) | The webapp itself — `react/indexReact.do`, all `*.do` actions, `/oidc/*`. Stateless: HttpSession is in Redis (Redisson Tomcat session manager) + the `kc_sub → sessionId` index is in Redis too, so OIDC back-channel logout from any sibling RP invalidates the user across all replicas. Reads URLs from `p1-urls` ConfigMap (generated from `geowealth/k8s/env/urls.<env>.env`). |
 
 The split into nine agent pods isn't K8s ceremony — it mirrors `nfstart` +
 `commandspecs/*.spec` from the legacy ops layout. Each agent is a separate JVM

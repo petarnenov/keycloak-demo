@@ -82,7 +82,6 @@ flowchart TB
         p1ag["p1-* agent pods (9)"]
         ora[("oracle-0")]
         es[("elasticsearch-0")]
-        mc[("memcached")]
     end
 
     user --HTTPS--> ing

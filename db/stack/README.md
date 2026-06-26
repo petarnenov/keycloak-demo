@@ -7,7 +7,6 @@ the [schema baseline](../migration/V1__baseline_schema.sql) into a throwaway Ora
 |---------|-------|-----------|---------|
 | `gw-oracle` | `gvenzl/oracle-free:23-slim` | `127.0.0.1:1521` (PDB `FREEPDB1`, user `GP`/`gp123`) | DB — baseline target |
 | `gw-elasticsearch` | `elasticsearch:7.17.28` | `127.0.0.1:9200` | search (matches geowealth's 7.17 client) |
-| `gw-memcached` | `memcached:1.6-alpine` | `127.0.0.1:11211` | hibernate L2 cache |
 | `gw-flyway` | `flyway/flyway:10-alpine` | one-shot | applies the baseline |
 
 ## One command (recommended)
@@ -42,7 +41,7 @@ Override the engine with `make CE=podman DC="podman compose" provision`.
 
 ```bash
 cd db/stack
-docker compose up -d oracle elasticsearch memcached   # Oracle takes ~1-2 min to init
+docker compose up -d oracle elasticsearch   # Oracle takes ~1-2 min to init
 ```
 
 Then apply the baseline into the Oracle container. Flyway OSS's parser cannot
@@ -94,7 +93,6 @@ The backend reads hostnames, not localhost, from `etc/dev-petar-akka.conf` and
 1. `/etc/hosts` (sudo):
 
    ```text
-   127.0.0.1 memcached
    127.0.0.1 dev-elastic.geowealth.com
    # 127.0.0.1 qa4db   # ONLY if you want the BE on the empty baseline DB instead of qa4
    ```
@@ -103,9 +101,10 @@ The backend reads hostnames, not localhost, from `etc/dev-petar-akka.conf` and
    plain `http` and no auth. In `etc/dev-petar-akka.conf` set
    `elasticsearch.scheme=http` (a `.bak` is kept).
 
-3. Memcached L2 cache is only active when the backend runs with
-   `-Dhibernate.secondLevelCacheType=MEMCACHED` (default is EHCACHE). Add that
-   JVM flag to the petar server profile to actually use `gw-memcached`.
+3. Hibernate L2 cache: leave the default EHCACHE (in-JVM). Memcached was
+   retired; a future distributed L2 cache should use Redisson against the
+   Redis already in the K8s stack (`RedissonRegionFactory` stub already
+   sits commented in `HibernateSessionFactory.loadSecondaryCacheParameters`).
 
 > Oracle: the baseline DB is **schema-only (no business data)**. Repoint `qa4db`
 > to it only for schema/DDL work — leave it pointed at real qa4 for normal use.

@@ -1,11 +1,18 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# THE WHOLE SYSTEM in-cluster: data (Oracle+seed, ES, memcached, kc-postgres,
-# redis) + identity (Keycloak, token-handler, BFFs, web) + legacy P1 (Tomcat +
-# Akka agents). Build with --load-restrictor LoadRestrictionsNone (cherry-picks
+# THE WHOLE SYSTEM in-cluster: data (Oracle+seed, ES, kc-postgres, redis) +
+# identity (Keycloak, token-handler, BFFs, web) + legacy P1 (Tomcat + Akka
+# agents). Build with --load-restrictor LoadRestrictionsNone (cherry-picks
 # base files + reads keycloak/realm-export.json). k8s/up.sh drives the ordered
 # bring-up; this is the declarative whole.
+#
+# Memcached retired: P1's Hibernate L2 cache defaults to EHCACHE, never
+# wires to memcached at runtime (curr_items=0 across days of traffic).
+# Redis already backs HttpSession + kc_sub index + token-handler sessions;
+# any future distributed-cache need lands on Redisson (region factory
+# stub already in HibernateSessionFactory.java). Two cache backends for
+# zero hits was dead weight.
 namespace: geowealth-demo
 
 resources:
@@ -13,7 +20,6 @@ resources:
   # data tier — oracle.yaml is the BAKED seeded image (no separate seed Job)
   - ../../base/oracle.yaml
   - ../../base/elasticsearch.yaml
-  - ../../base/memcached.yaml
   - ../../base/kc-postgres.yaml
   - ../../base/redis.yaml
   # identity tier

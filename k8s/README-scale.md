@@ -16,9 +16,10 @@ bring the stack up).
 - **Edge tier (web + bff)** is stateless — already scalable, only HPAs missing.
 - **token-handler** is already scaled (replicas=2, HPA 1-3, Redis sessions, PDB).
   Just needs `resources.requests` so the HPA can compute % targets.
-- **p1-tomcat** can't scale beyond one replica because `HttpSession` is in
-  JVM heap. Externalise via memcached-session-manager (MSM) or Redis session
-  manager, then bump replicas.
+- **p1-tomcat** is stateless: `HttpSession` lives in Redis (Redisson Tomcat
+  session manager) and the `kc_sub → sessionId` index used by OIDC
+  back-channel logout is also in Redis. Scale to N replicas behind a
+  non-sticky LB — `kubectl scale deploy p1-tomcat --replicas=N` is enough.
 - **P1 Akka agents** are role-singleton by trait design — every one is
   `replicas: 1`. Scaling needs either Akka Cluster Singleton + standby
   (HA only) or Cluster Sharding refactor of selected traits (real scale).
@@ -42,14 +43,13 @@ but it's ready the moment the tomcat goes multi-replica.
 | Identity | `keycloak` | Deployment | 1 | — | Infinispan caches in JVM + Postgres | conditional |
 | Data BFF | `bff-billing` | Deployment | 2 | — | stateless forward-auth (`X-Auth-*`) | **already** (HPA missing) |
 | Data BFF | `bff-trading` | Deployment | 2 | — | same | **already** (HPA missing) |
-| App | `p1-tomcat` | StatefulSet | 1 | — | **in-memory `HttpSession`** | **no** |
+| App | `p1-tomcat` | Deployment | 2 | HPA 2-5 | Redis-backed `HttpSession` + `kc_sub` index | **yes** |
 | App | `p1-coordinator` | StatefulSet | 1 | — | Akka seed (singleton actor system) | **no** |
 | App | `p1-{cspagents,devcommonagents,emailagent,mostagents,proposalagents,reportengine,samlmanager,searchagents,useragents,crm}` | Deployment | 1 each | — | Akka role-singleton, in-process trait | **no** |
 | Data | `oracle` | StatefulSet | 1 | — | RWO PVC, JDBC | **no** (engine-level — RAC) |
 | Data | `elasticsearch` | StatefulSet | 1 | — | RWO PVC | conditional (native ES cluster) |
 | Data | `redis` | StatefulSet | 1 | — | RWO PVC | conditional (Sentinel/Cluster) |
 | Data | `kc-postgres` | StatefulSet | 1 | — | RWO PVC | conditional (Patroni / read-replica) |
-| Data | `memcached` | Deployment | 1 | — | RAM only | **yes**, trivially |
 
 PDBs: only `token-handler` has one (`k8s/base/token-handler.yaml:141`). Every
 multi-replica workload should pick one up before going live, so a node drain
@@ -68,11 +68,7 @@ Zero refactor risk, ~3× edge throughput uplift.
      `token-handler`'s `/auth/verify` decision, so any replica can serve any
      request.
 
-3. **`memcached` → replicas: 2-3**.
-   - The clients in this stack use it as opaque cache; consistent-hashing
-     pool fronted by the same Service is fine.
-
-4. **`kc-ext` → replicas: 2 + PDB**.
+3. **`kc-ext` → replicas: 2 + PDB**.
    - Stateless nginx forwarding to Keycloak inside the cluster.
 
 5. **PDBs everywhere**.
@@ -85,46 +81,26 @@ Zero refactor risk, ~3× edge throughput uplift.
 
 ## Tier 2 — medium effort (days)
 
-### 7. Externalise p1-tomcat HttpSession
+### 7. p1-tomcat horizontal scaling — done
 
-**Why it can't scale today:** `HttpSession` lives in the Tomcat JVM heap. A
-second replica means a user who lands on the wrong pod sees a fresh session,
-the `LoggedUserJTO` graph is gone, and the SAML round-trip starts over.
-Ingress affinity narrows the blast radius but doesn't eliminate it
-(re-deploys, pod restarts, sticky-cookie loss all break continuity).
+**State today:** `HttpSession` is externalised to Redis via the Redisson
+Tomcat 9 session manager (`org.redisson.tomcat.RedissonSessionManager`,
+see `WebContent/META-INF/context.xml`, `keyPrefix=p1-tomcat`,
+`broadcastSessionEvents=true`). The OIDC `kc_sub → sessionId` index used
+by back-channel logout is also Redis-backed (`P1RedisKcSubIndex`,
+key `p1-tomcat:kc_sub:<sub>` → `RSet<sessionId>`), so KC fanning the
+logout POST to any p1-tomcat replica still invalidates the user's
+session across all of them. Net effect: p1-tomcat is stateless behind a
+non-sticky LB.
 
-**Options:**
+**Verify:** `HttpSession`-stored objects (`LoggedUserJTO`, `User`,
+`PermissionsMap`, etc.) must remain `Serializable` — Redisson serialises
+them via the configured codec, and a missing-serialisation regression
+shows up as "login, then immediately logged out".
 
-- **A) memcached-session-manager (MSM)** — recommended.
-  - Add the MSM jars to the Tomcat image (or extracted webapp lib).
-  - `WEB-INF/META-INF/context.xml` (or `conf/context.xml`):
-    ```xml
-    <Manager className="de.javakaffee.web.msm.MemcachedBackupSessionManager"
-             memcachedNodes="n1:memcached:11211"
-             sticky="true"
-             sessionBackupAsync="false"
-             requestUriIgnorePattern=".*\.(png|gif|jpg|css|js|ico)$"
-             transcoderFactoryClass="de.javakaffee.web.msm.serializer.kryo.KryoTranscoderFactory"/>
-    ```
-  - Sticky `P1AFFINITY` cookie at the ingress (already configured) routes the
-    user back to the same pod; MSM backs the session up so a pod loss is
-    recoverable.
-  - **Verify**: `HttpSession`-stored objects (`LoggedUserJTO`, `User`,
-    `PermissionsMap`, every Spring-managed bean kept in session attributes)
-    are all `Serializable`. Audit the object graph — anything missing
-    serialisation will cause silent serialisation failures and a "login,
-    then immediately logged out" symptom.
-
-- **B) Redis session manager** (`redisson-tomcat-9` or equivalent).
-  - Redis is already in cluster for `token-handler` and gives you stronger
-    ordering + persistence than memcached. Slightly less battle-tested with
-    Tomcat 9 than MSM.
-
-- **C) Spring Session + Redis** — N/A, P1 is not a Spring webapp.
-
-Once externalised: keep the StatefulSet kind (sticky `-0`/`-1` DNS still has
-value for the Akka cluster membership view), but bump `replicas: 1 → 3` and
-let the HPA grow on cpu/req-rate.
+Scale with `kubectl -n geowealth-demo scale deploy/p1-tomcat
+--replicas=N` (HPA already 2-5 on cpu 70%). Migrating away from
+StatefulSet preserves zero of the previous sticky-cookie ceremony.
 
 ### 8. Keycloak Infinispan distributed cache
 
@@ -146,7 +122,7 @@ logged in" race.
 ### 9. PDBs for everything scaled
 
 Add `minAvailable: 1` per workload (web, bff, token-handler, keycloak,
-memcached, kc-ext, ingress-controller if you run one in-cluster).
+kc-ext, ingress-controller if you run one in-cluster).
 
 ## Tier 3 — deep refactors (weeks)
 
@@ -273,12 +249,13 @@ scale events fire on the wrong dimension.
 
 ## Recommended sequence
 
-1. **week 1** — Tier 1: web/bff/memcached/kc-ext replicas + HPA + PDB. Fix
+1. **week 1** — Tier 1: web/bff/kc-ext replicas + HPA + PDB. Fix
    `token-handler` `resources.requests`. Zero risk, immediate edge uplift.
 2. **week 1-2** — Tier 4 #13 + #16: metrics-server-only baseline; record
    single-pod p95/p99 per route.
-3. **week 2-3** — Tier 2 #7: MSM (or Redis session manager) on `p1-tomcat`;
-   bump to replicas=3 once session externalisation is verified.
+3. **week 2-3** — Tier 2 #7: p1-tomcat already on Redisson session manager
+   + Redis-backed `kc_sub` index (done) — just bump replicas/HPA as load
+   demands.
 4. **week 3-4** — Tier 2 #8: Keycloak Infinispan distributed-cache.
 5. **week 4** — Tier 3 #11: multi-seed coordinator + explicit
    `ROLE=agent` on the coordinator pod (also closes the dual-boot Tomcat bug).
@@ -297,7 +274,6 @@ Pure manifest changes, no code:
 
 - `web-billing` / `web-trading` → replicas 3 + HPA.
 - `bff-billing` / `bff-trading` → HPA min=2 max=10.
-- `memcached` → replicas 2-3.
 - `kc-ext` → replicas 2 + PDB.
 - `token-handler` → add `resources.requests` so the existing HPA works.
 - PDB on every scaled workload.
