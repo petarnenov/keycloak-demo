@@ -15,7 +15,7 @@
   ],
   "adminEventsEnabled": true,
   "adminEventsDetailsEnabled": true,
-  "resetPasswordAllowed": false,
+  "resetPasswordAllowed": true,
   "authenticationFlows": [],
   "users": [],
   "clients": [

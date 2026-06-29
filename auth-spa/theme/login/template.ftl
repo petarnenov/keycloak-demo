@@ -31,7 +31,6 @@
             <#nested "form">
         </section>
     </main>
-    <footer class="auth-spa__foot">© GeoWealth Management, LLC.</footer>
 </div>
 <#if properties.scripts?has_content>
     <#list properties.scripts?split(' ') as script>

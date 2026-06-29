@@ -7,6 +7,14 @@ import { OrdersPage } from './pages/OrdersPage';
 export function App() {
   const auth = useAuth();
 
+  // Logout in progress (set by postLogout, cleared once /auth/me succeeds
+  // again). The browser is mid-navigation through /auth/logout → KC → P1 SLO
+  // → re-login; rendering a splash here just flashes "Redirecting…" between
+  // hops. Stay blank until we're authenticated again.
+  if (auth.loggingOut && !auth.authenticated) {
+    return null;
+  }
+
   // BFF /auth/me in flight: nothing to route yet.
   if (!auth.ready) {
     return (
