@@ -247,14 +247,7 @@ body.auth-spa {
   border: 1px solid #b8dde2;
 }
 
-/* ---- Footer + tip ----------------------------------------------------- */
-
-.auth-spa__foot {
-  margin-top: 24px;
-  font-size: 11px;
-  color: var(--theme-color-stone);
-  text-align: center;
-}
+/* ---- Tip ---------------------------------------------------------------- */
 
 .auth-spa__tip {
   font-size: 11px;

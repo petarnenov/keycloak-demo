@@ -5,10 +5,6 @@ interface AuthContextValue {
   ready: boolean;
   authenticated: boolean;
   authError: boolean;
-  // True while the browser is between submitting the logout POST and landing
-  // back here with a fresh session. App.tsx uses this to suppress the pre-auth
-  // splash (we don't want a "Redirecting to sign in…" flash on the way out).
-  loggingOut: boolean;
   username: string | null;
   email: string | null;
   firmCd: string | null;
@@ -22,8 +18,6 @@ interface AuthContextValue {
   roles: string[];
   logout: () => void;
 }
-
-const LOGGING_OUT_KEY = 'gw_loggingOut';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -41,10 +35,6 @@ const LOGOUT_URL = '/auth/logout';              // BFF RP-initiated logout → K
 // fetch) so the browser follows the BFF's 303 to P1's SLO as a same-origin
 // navigation, carrying P1's JSESSIONID.
 function postLogout(): void {
-  // Tab-scoped flag the next App.tsx render reads to skip the splash on the
-  // return leg of the logout flow. Cleared by AuthProvider once /auth/me
-  // succeeds again (post re-login).
-  try { sessionStorage.setItem(LOGGING_OUT_KEY, '1'); } catch { /* private mode */ }
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = LOGOUT_URL;
@@ -82,15 +72,10 @@ async function fetchMe(): Promise<MeResult> {
   }
 }
 
-function readLoggingOut(): boolean {
-  try { return sessionStorage.getItem(LOGGING_OUT_KEY) === '1'; } catch { return false; }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
   const [authError, setAuthError] = useState(false);
-  const [loggingOut, setLoggingOut] = useState<boolean>(readLoggingOut);
   // Strict Mode double-mounts effects in dev; startLogin()'s sessionStorage loop
   // guard treats the second call as a failed round-trip and surfaces authError
   // before the browser leaves for /oauth/login/silent.
@@ -109,10 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       if (r.status === 'ok') {
         // Authenticated: reset the loop guard so a future genuine logout can
-        // start login again. Also clear the logout-in-progress flag.
+        // start login again.
         clearLoginGuard();
-        try { sessionStorage.removeItem(LOGGING_OUT_KEY); } catch { /* private mode */ }
-        setLoggingOut(false);
         setMe(r.me);
         setReady(true);
       } else {
@@ -131,8 +114,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!redirecting) {
           setAuthError(true);
         }
-        // Mark ready even when redirecting — App renders "Redirecting to sign in…"
-        // instead of an endless Loading splash while the browser navigates away.
         setReady(true);
       }
     })();
@@ -146,7 +127,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ready,
     authenticated: me !== null,
     authError,
-    loggingOut,
     username: me?.username ?? null,
     email: me?.email ?? null,
     firmCd: me?.firmCd ?? null,

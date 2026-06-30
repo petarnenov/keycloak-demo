@@ -28,7 +28,7 @@
             </#if>
             <button tabindex="3" type="submit" class="auth-spa__btn auth-spa__btn--primary">Login</button>
             <#if realm.resetPasswordAllowed>
-                <a tabindex="4" href="${url.loginResetCredentialsUrl}" class="auth-spa__link">Forgot Password?</a>
+                <a tabindex="4" href="${url.loginResetCredentialsUrl}" class="auth-spa__link">Forgot Password</a>
             </#if>
         </form>
 

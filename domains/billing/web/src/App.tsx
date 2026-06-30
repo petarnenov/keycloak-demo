@@ -7,25 +7,7 @@ import { InvoicesPage } from './pages/InvoicesPage';
 export function App() {
   const auth = useAuth();
 
-  // Logout in progress (set by postLogout, cleared once /auth/me succeeds
-  // again). The browser is mid-navigation through /auth/logout → KC → P1 SLO
-  // → re-login; rendering a splash here just flashes "Redirecting…" between
-  // hops. Stay blank until we're authenticated again.
-  if (auth.loggingOut && !auth.authenticated) {
-    return null;
-  }
-
-  // BFF /auth/me in flight: nothing to route yet.
-  if (!auth.ready) {
-    return (
-      <div className="splash">
-        <p className="muted">Loading&hellip;</p>
-      </div>
-    );
-  }
-
-  // Login was attempted but we still have no session (loop guard tripped) —
-  // stop bouncing to the IdP and tell the user, instead of an endless spinner.
+  // Login loop guard tripped — stop bouncing to the IdP and tell the user.
   if (auth.authError) {
     return (
       <div className="splash">
@@ -35,14 +17,10 @@ export function App() {
     );
   }
 
-  // AuthProvider drives the redirect to P1 when there is no session; this
-  // is the brief window before the browser leaves for the IdP.
+  // AuthProvider drives redirect to login when there is no session; stay blank
+  // until authenticated so we never flash a splash on the way to the IdP.
   if (!auth.authenticated) {
-    return (
-      <div className="splash">
-        <p className="muted">Redirecting to sign in&hellip;</p>
-      </div>
-    );
+    return null;
   }
 
   return (

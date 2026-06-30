@@ -80,9 +80,7 @@ test.describe('no re-login loop — 401 vs 403 differentiation', () => {
 
     await page.goto(URLS.domains.billing);
 
-    // App's loop-guard branch. "sign you in" is unique to the error panel —
-    // the transient "Redirecting to sign in…" splash says "sign in", not
-    // "sign you in".
+    // App's loop-guard branch. "sign you in" is unique to the error panel.
     await expect(page.locator('text=sign you in')).toBeVisible({ timeout: 20_000 });
     expect(silentHits, 'login redirect must fire at most once (loop guard)').toBe(1);
   });

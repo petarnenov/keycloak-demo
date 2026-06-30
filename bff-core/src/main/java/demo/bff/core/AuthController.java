@@ -41,52 +41,44 @@ import java.util.concurrent.ExecutorService;
  * <ul>
  *   <li>{@code GET /auth/me} — who am I (401 when signed out); also records the
  *       OIDC {@code sid} → BFF-session mapping for back-channel logout.</li>
- *   <li>{@code GET /auth/logout} — sign the user out everywhere. The flow has
- *       two halves that run in sequence on every call:
- *       <ol>
- *         <li><b>Server-side OIDC end-session to Keycloak</b> (POST to
- *             {@code /protocol/openid-connect/logout} with our stored
- *             {@code refresh_token}). This is the only Keycloak code path that
- *             reliably fans out {@code backchannel.logout.url} POSTs to every
- *             OIDC client in the SSO session — i.e. the sibling BFFs (trading,
- *             users) plus this one. The browser is not involved in this hop
- *             so there is no "Do you want to log out?" interstitial.</li>
- *         <li><b>Browser redirect to P1's IdP-initiated SLO</b>. P1 invalidates
- *             its {@code HttpSession} (same-origin, so {@code JSESSIONID}
- *             reaches it), emits a signed SAML LogoutRequest to Keycloak via
- *             browser auto-submit POST, Keycloak responds (its session is
- *             already gone from step 1, which is fine — P1 still gets a valid
- *             LogoutResponse), and P1 lands the user on its own login form.
- *             End state: P1 + KC + every demo BFF session is gone.</li>
- *       </ol>
+ *   <li>{@code GET /auth/logout} — sign the user out everywhere by driving
+ *       Keycloak's RP-initiated logout in the BROWSER: a {@code 303 See Other}
+ *       to {@code /protocol/openid-connect/logout?id_token_hint=…&post_logout_redirect_uri=…},
+ *       where the redirect target is the SPA origin the request came in on.
+ *       <ul>
+ *         <li>A valid {@code id_token_hint} makes KC end the SSO session
+ *             <i>without</i> the "Do you want to log out?" confirm interstitial
+ *             (the logout splash), so there is no manual click and no P1
+ *             app-shell hop — the user lands straight back on the SPA, which
+ *             immediately bounces to the login screen.</li>
+ *         <li>KC's GET RP-initiated logout still POSTs {@code logout_token} to
+ *             every client's {@code backchannel.logout.url} — so the sibling
+ *             BFFs (trading, users) plus this one all tear their sessions down
+ *             and the next {@code /auth/me} from a still-open tab returns 401.</li>
+ *       </ul>
  *
- *       Why both halves? Step 2 alone (the original flow) was insufficient:
- *       when Keycloak receives a SAML LogoutRequest from a brokered IdP it
- *       terminates the SSO session but does <i>not</i> trigger the back-channel
- *       POST fan-out to OIDC clients — see Keycloak issues
- *       <a href="https://github.com/keycloak/keycloak/issues/17318">#17318</a>
- *       and <a href="https://github.com/keycloak/keycloak/issues/21770">#21770</a>.
- *       KC logs "Some clients have not been logged out: …" and proceeds. Step 1
- *       runs through KC's standard RP-initiated logout code path
- *       ({@code LogoutEndpoint}), which <i>does</i> POST {@code logout_token}
- *       to every client's configured {@code backchannel.logout.url} — so the
- *       sibling BFFs destroy their sessions and the next {@code /auth/me} from
- *       a still-open trading / users tab returns 401.
- *
- *       The "sid drift" caveat that motivated the previous redirect-only flow
- *       (KC rejecting {@code id_token_hint} as {@code session_expired} and
- *       rendering a confirm page) doesn't apply to the POST variant: it
- *       authenticates by {@code refresh_token}, not by {@code id_token_hint},
- *       and renders nothing — KC returns 204 No Content and we move on.
+ *       We therefore do NOT also run a server-side {@code refresh_token}
+ *       end-session POST on the preferred path. Running both raced: the "sid
+ *       drift" failure mode is exactly that if the background POST kills the KC
+ *       session first, the browser's {@code id_token_hint} is then rejected as
+ *       {@code session_expired} and KC falls back to the confirm page — the
+ *       very splash we are removing. The background POST survives only as the
+ *       fallback when no {@code id_token} is held (anonymous double-click,
+ *       already-expired session); that path 303s to {@code p1InitiateSloUrl} as
+ *       before. (KC issues
+ *       <a href="https://github.com/keycloak/keycloak/issues/17318">#17318</a> /
+ *       <a href="https://github.com/keycloak/keycloak/issues/21770">#21770</a>
+ *       — about SAML-brokered logout NOT fanning out to OIDC clients — don't
+ *       apply here: this is OIDC RP-initiated logout, which does fan out.)
  *
  *       Idempotency: {@code /auth/logout} is {@link SecurityRule#IS_ANONYMOUS}
  *       and accepts a {@code @Nullable Authentication}. A double-click, a
  *       session that already expired on the BFF, or a back-channel race where
  *       another tab killed the session first no longer surface as
  *       {@code 401 Unauthorized}; the controller does best-effort cleanup
- *       (KC end-session if we still hold a refresh token, session delete,
- *       SID invalidate — all null-safe) and unconditionally returns
- *       {@code 303 See Other} to the P1 SLO redirect. Without this, the SPA's
+ *       (session delete, SID invalidate, and on the fallback path a best-effort
+ *       refresh_token end-session — all null-safe) and unconditionally returns
+ *       {@code 303 See Other} to the logout redirect. Without this, the SPA's
  *       sign-out button intermittently 401'd in normal use because a KC
  *       back-channel logout token from a sibling tab could land between
  *       {@code /auth/me} and the user's click.</li>
@@ -300,8 +292,8 @@ public class AuthController {
     //
     // Idempotent — accepts both authenticated and anonymous callers so a double
     // click, an already-expired session, or a back-channel race never surfaces
-    // as a 401 to the SPA. If nothing is left to sign out, we still send the
-    // browser through the P1 SLO redirect so the user lands somewhere sensible.
+    // as a 401 to the SPA. If no id_token is held (nothing to hint KC with), we
+    // fall back to the P1 SLO redirect so the user still lands somewhere sensible.
     @Post("/logout")
     // The SPA signs out via an HTML form POST, which sends
     // Content-Type: application/x-www-form-urlencoded. Without this the method
@@ -316,24 +308,38 @@ public class AuthController {
     // returning 504 Gateway Time-out for /auth/logout while the logout
     // eventually completes server-side seconds later.
     @ExecuteOn(TaskExecutors.BLOCKING)
-    public HttpResponse<?> logout(@Nullable Authentication authentication, @Nullable Session session) {
+    public HttpResponse<?> logout(@Nullable Authentication authentication, @Nullable Session session,
+                                  HttpRequest<?> request) {
         Object sid = authentication != null ? authentication.getAttributes().get("sid") : null;
         Object refreshToken = authentication != null ? authentication.getAttributes().get("refreshToken") : null;
+        Object idToken = authentication != null ? authentication.getAttributes().get("idToken") : null;
 
-        // Fire-and-forget the KC end-session on a background thread instead of
-        // blocking the request on it. Keycloak's RP-initiated logout fans
-        // back-channel-logout POSTs out to every client in the SSO session — one
-        // leg of which targets THIS token-handler (demo-shared-client's
-        // backchannel.logout.url). Done inline on a single replica it deadlocked:
-        // the request thread blocked waiting for KC while KC waited for the
-        // self-directed back-channel POST, which needed a free thread — starving
-        // /health until the liveness probe killed the pod (502). Detaching frees
-        // the request thread at once; the local session is torn down below and the
-        // 303 returns immediately, while the SSO end-session + sibling fan-out run
-        // in the background (well within the seconds a client polls /auth/me after
-        // logout). Still best-effort: failures are logged, never surfaced.
-        final Object rt = refreshToken;
-        blockingExecutor.submit(() -> endSessionAtKeycloak(rt));
+        // Preferred path: drive Keycloak's RP-initiated logout in the BROWSER with
+        // a valid id_token_hint and a post_logout_redirect_uri back at the SPA
+        // origin. With id_token_hint KC ends the SSO session WITHOUT the "Do you
+        // want to log out?" confirm page (the logout splash) and skips the P1
+        // app-shell hop entirely, landing the user straight back on the SPA →
+        // which immediately bounces to the login screen. KC's GET RP-initiated
+        // logout ALSO fans out the backchannel.logout.url POSTs to every client
+        // in the session, so the sibling BFFs still get torn down — we therefore
+        // do NOT also run the background end-session here. Running both raced: if
+        // the refresh_token POST killed the KC session first, the browser's
+        // id_token_hint became session_expired and KC fell back to the confirm
+        // page (the very splash we are removing — see class javadoc, "sid drift").
+        boolean directLogout = idToken != null;
+        if (!directLogout) {
+            // Fallback (anonymous double-click, expired session, missing id_token):
+            // fire-and-forget the KC end-session on a background thread instead of
+            // blocking the request on it. Done inline on a single replica it
+            // deadlocked: the request thread blocked waiting for KC while KC waited
+            // for the self-directed back-channel POST, which needed a free thread —
+            // starving /health until the liveness probe killed the pod (502).
+            // Detaching frees the request thread at once; the local session is torn
+            // down below and the 303 returns immediately. Best-effort: failures are
+            // logged, never surfaced.
+            final Object rt = refreshToken;
+            blockingExecutor.submit(() -> endSessionAtKeycloak(rt));
+        }
 
         if (session != null) {
             // Clear the session FIRST: this drops the stored Authentication, so the
@@ -354,12 +360,35 @@ public class AuthController {
             registry.invalidateBySid(sid.toString());
         }
         // Use a literal Location header rather than HttpResponse.redirect(URI)
-        // — passing an http://localhost:8888/… URI through URI.create makes
-        // Micronaut/Netty re-emit it as a relative path (the scheme + host
-        // get dropped on the way out), and the browser then resolves it
-        // against billing.geowealth.int instead of localhost:8888.
+        // — passing an absolute URI through URI.create makes Micronaut/Netty
+        // re-emit it as a relative path (the scheme + host get dropped on the
+        // way out), and the browser then resolves it against the SPA host.
+        String location = directLogout
+                ? kcRpInitiatedLogoutUrl(idToken.toString(), spaOrigin(request) + "/")
+                : p1InitiateSloUrl;
         return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)
-                .header(HttpHeaders.LOCATION, p1InitiateSloUrl);
+                .header(HttpHeaders.LOCATION, location);
+    }
+
+    /**
+     * Browser-facing Keycloak RP-initiated logout URL. With {@code id_token_hint}
+     * KC ends the session and redirects to {@code post_logout_redirect_uri}
+     * without the confirm interstitial; the target must be a registered
+     * post-logout URI on the OIDC client (the SPA origins are).
+     */
+    private String kcRpInitiatedLogoutUrl(String idToken, String postLogoutRedirectUri) {
+        return logoutEndpoint
+                + "?id_token_hint=" + URLEncoder.encode(idToken, StandardCharsets.UTF_8)
+                + "&post_logout_redirect_uri=" + URLEncoder.encode(postLogoutRedirectUri, StandardCharsets.UTF_8);
+    }
+
+    /** The SPA origin (scheme + host[:port]) the request came in on, from the nginx forward headers. */
+    private static String spaOrigin(HttpRequest<?> request) {
+        String proto = request.getHeaders().get("X-Forwarded-Proto");
+        if (proto == null || proto.isBlank()) {
+            proto = "https";
+        }
+        return proto + "://" + forwardedHost(request);
     }
 
     /**
