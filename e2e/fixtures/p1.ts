@@ -85,7 +85,10 @@ export async function sessionFirm(reqCtx: APIRequestContext, host: string): Prom
  * THIS host, proving the cross-host redirect_uri kept the round-trip on-host.
  */
 export async function silentSsoP1(page: Page, host: string): Promise<void> {
-  await page.goto(`${host}/saml/idp/silent-sso.do?return_to=%2F`, { waitUntil: 'domcontentloaded' });
+  // OIDC RP era: silent SSO is the same /oidc/login.do flow — KC answers
+  // immediately when an SSO session already exists, and the callback
+  // resolves the whitelabel firm switch.
+  await page.goto(`${host}/oidc/login.do`, { waitUntil: 'domcontentloaded' });
   await expectLoggedIn(page, host);
 }
 

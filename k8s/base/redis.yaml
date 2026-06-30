@@ -1,7 +1,106 @@
-# Shared session + SID store (B2). Every Token Handler replica reads/writes the
-# same sessions here, so any replica serves any request. In real prod this is a
-# managed/HA Redis (ElastiCache / MemoryStore / Redis Enterprise); the StatefulSet
-# below is the in-cluster demo equivalent (single replica, persistent volume).
+# Shared session + SID store. Token-handler reads/writes sessions here; any
+# replica serves any request. Sized and configured as a production session
+# store, not a cache:
+#
+#   - maxmemory 1500mb + policy=noeviction. Sessions are auth state, not
+#     cacheable values — silent eviction means random logouts. We'd rather
+#     fail writes and alert than drop user sessions.
+#   - AOF appendfsync=everysec (industry default). On a crash we lose at
+#     most ~1s of writes, which for an OIDC session store means a handful
+#     of users re-do silent SSO. AOF is the source of truth; RDB snapshots
+#     are kept as a belt-and-braces backup.
+#   - requirepass via Secret (TLS off — in-cluster, NetworkPolicy gates it).
+#   - lazyfree-* enabled so big DEL / FLUSH don't block the event loop.
+#   - container limits.memory > maxmemory * 1.3 to cover RSS overhead +
+#     fragmentation + COW spike during BGSAVE / AOF rewrite.
+#
+# In real prod this is a managed/HA Redis (ElastiCache / MemoryStore /
+# Redis Enterprise) with replication, automatic failover, snapshots to
+# object storage, and rotating TLS certs. The single-replica StatefulSet
+# below is the in-cluster demo-grade equivalent and is intentionally not
+# wrapped in a PodDisruptionBudget — there is no quorum to preserve.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  labels:
+    app.kubernetes.io/name: redis
+data:
+  redis.conf: |
+    # ---- Network ----
+    bind 0.0.0.0 -::1
+    protected-mode no
+    port 6379
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+
+    # ---- General ----
+    daemonize no
+    loglevel notice
+    databases 16
+    always-show-logo no
+
+    # ---- Memory (session store, not cache) ----
+    maxmemory 1500mb
+    maxmemory-policy noeviction
+    maxmemory-samples 10
+    maxclients 10000
+
+    # ---- Persistence: RDB snapshots ----
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+
+    # ---- Persistence: AOF (durable session writes) ----
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+
+    # ---- Lazy free: non-blocking deletes ----
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    lazyfree-lazy-server-del yes
+    lazyfree-lazy-user-del yes
+    replica-lazy-flush yes
+
+    # ---- Observability ----
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    latency-monitor-threshold 100
+
+    # ---- Misc ----
+    activerehashing yes
+    hz 10
+    dynamic-hz yes
+---
+# Password is the only credential. Anyone in the cluster who can reach the
+# Service AND read this Secret can talk to Redis — NetworkPolicy below
+# narrows reachability to known consumers.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-auth
+  labels:
+    app.kubernetes.io/name: redis
+type: Opaque
+stringData:
+  # Demo-grade fixed password. ROTATE in real prod (Secret + rolling
+  # restart of all consumers). For prod, generate via External Secrets /
+  # Sealed Secrets / Vault Agent injector — never commit cleartext.
+  password: "dev-redis-pw-change-me"
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -20,43 +119,111 @@ spec:
       labels:
         app.kubernetes.io/name: redis
         app.kubernetes.io/component: session-store
+      annotations:
+        # Force a rolling restart when redis.conf changes — kustomize
+        # ConfigMap edits otherwise update the CM but not the pod env.
+        checksum/config: "v1"
     spec:
+      terminationGracePeriodSeconds: 60
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
+        runAsGroup: 999
         fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: redis
           image: redis:7-alpine
-          args: ["--appendonly", "yes"]
+          imagePullPolicy: IfNotPresent
+          # `--requirepass` from env, not from redis.conf, so the password
+          # never lands in a world-readable ConfigMap. It is visible only
+          # in `ps` *inside* the container (no host PID share).
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              exec redis-server /etc/redis/redis.conf \
+                --requirepass "$REDIS_PASSWORD"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
           ports:
             - name: redis
               containerPort: 6379
           resources:
+            # maxmemory 1500mb + ~30% overhead (RSS, fragmentation,
+            # COW spike during BGSAVE / AOF rewrite) = 2Gi container limit.
+            # Anything tighter risks OOMKilled during AOF rewrite.
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 100m
+              memory: 512Mi
             limits:
-              cpu: 250m
-              memory: 256Mi
+              cpu: "1"
+              memory: 2Gi
+          startupProbe:
+            # AOF replay on a large file can take minutes after a crash —
+            # give the boot path generous slack before liveness kicks in.
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+            failureThreshold: 30
+            periodSeconds: 10
           readinessProbe:
-            tcpSocket:
-              port: redis
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
             initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 3
           livenessProbe:
-            tcpSocket:
-              port: redis
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          lifecycle:
+            preStop:
+              # Trigger a final RDB snapshot + clean shutdown so AOF and
+              # RDB are flushed before SIGKILL.
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - redis-cli -a "$REDIS_PASSWORD" --no-auth-warning shutdown save || true
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: config
+              mountPath: /etc/redis
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: redis-config
+            items:
+              - key: redis.conf
+                path: redis.conf
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -64,7 +231,9 @@ spec:
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            storage: 1Gi
+            # AOF + RDB + room for AOF rewrite spike (rewrite peaks at
+            # ~2x AOF size).
+            storage: 5Gi
 ---
 apiVersion: v1
 kind: Service
@@ -80,3 +249,45 @@ spec:
     - name: redis
       port: 6379
       targetPort: redis
+---
+# Gate inbound traffic to Redis at L3/L4. Only the known consumers
+# (token-handler, the data BFFs, and the monitoring exporter) can hit
+# 6379. Without this, any compromised pod in the namespace can read /
+# write session data with the password from any Secret it can mount.
+# NOTE: enforcement requires a CNI that implements NetworkPolicy
+# (Calico / Cilium / kube-router). On minikube enable with
+# `minikube start --network-plugin=cni --cni=calico`; otherwise the
+# policy is accepted but not enforced — still useful as documented
+# intent.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-allow-consumers
+  labels:
+    app.kubernetes.io/name: redis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: token-handler
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: bff-billing
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: bff-trading
+        # Prometheus redis_exporter lives in `monitoring` ns.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app: prometheus-redis-exporter
+      ports:
+        - protocol: TCP
+          port: 6379

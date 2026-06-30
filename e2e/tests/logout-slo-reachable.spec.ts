@@ -27,7 +27,7 @@ import { URLS } from '../fixtures/config.js';
  * authenticated-logout fan-out timing (which the SPA tolerates via best-effort).
  */
 test.describe('logout SLO redirect targets a browser-reachable P1', () => {
-  test('signing out of billing redirects to a reachable initiate-slo.do', async ({ request }) => {
+  test('signing out of billing redirects to a reachable oidc/logout.do', async ({ request }) => {
     // POST the Token Handler's POST-only /auth/logout WITHOUT following the
     // redirect, so we can inspect the Location the browser would navigate to.
     const resp = await request.post(`${URLS.domains.billing}/auth/logout`, {
@@ -37,7 +37,7 @@ test.describe('logout SLO redirect targets a browser-reachable P1', () => {
 
     const location = resp.headers()['location'];
     expect(location, 'logout response carries a Location header').toBeTruthy();
-    expect(location, 'Location is P1 IdP-initiated SLO').toContain('/saml/idp/initiate-slo.do');
+    expect(location, 'Location is P1 RP-initiated logout').toContain('/oidc/logout.do');
 
     // An absolute, browser-style URL (scheme + host) — not a bare path that a
     // prior bug let Netty re-emit relative to the billing origin, and not an

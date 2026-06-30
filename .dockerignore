@@ -1,14 +1,14 @@
-# Applies to builds whose context is the repo root — i.e. the bff-* services
-# (see docker-compose.yml). They only need bff-core/ and their own
-# domains/<name>/bff/ tree; everything else is excluded to keep the context lean.
-# (The web builds use their own ./domains/<name>/web context and are unaffected.)
+# Applies to builds whose context is the repo root — bff-*, token-handler, web SPA
+# images, etc. Excludes heavy artifacts (node_modules, dist) everywhere; web source
+# trees are included only as needed by each Dockerfile's COPY lines.
 .git
 .idea
 **/.gradle
 **/build
 **/node_modules
 **/dist
-domains/*/web
+domains/*/web/node_modules
+domains/*/web/dist
 keycloak
 proxy
 *.md

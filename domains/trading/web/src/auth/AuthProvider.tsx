@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { startLogin, clearLoginGuard } from '../api';
 
 interface AuthContextValue {
@@ -91,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [authError, setAuthError] = useState(false);
   const [loggingOut, setLoggingOut] = useState<boolean>(readLoggingOut);
+  const loginRedirectStarted = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,11 +118,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // lands back here. startLogin() is loop-guarded: if we just came back
         // from login and still have no session, it returns false — stop instead
         // of bouncing to the IdP forever, and show an error.
+        if (loginRedirectStarted.current) {
+          setReady(true);
+          return;
+        }
+        loginRedirectStarted.current = true;
         const redirecting = startLogin();
         if (!redirecting) {
           setAuthError(true);
-          setReady(true);
         }
+        setReady(true);
       }
     })();
 

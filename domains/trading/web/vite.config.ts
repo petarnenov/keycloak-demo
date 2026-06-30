@@ -1,8 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
+import {
+  forwardAuthPlugin,
+  tokenHandlerProxyPlugin
+} from '../../../scripts/vite-forward-auth-plugin.mjs';
 
-const BFF_URL = process.env.BFF_TRADING_URL ?? 'http://localhost:8085';
+const TOKEN_HANDLER_URL = process.env.TOKEN_HANDLER_URL ?? 'http://127.0.0.1:9080';
+const BFF_URL = process.env.BFF_TRADING_URL ?? 'http://127.0.0.1:8085';
+const DEV_FORWARD_AUTH = process.env.DEV_FORWARD_AUTH === '1';
 
 // Vite preview must serve HTTPS for trading.geowealth.int. See
 // domains/billing/web/vite.config.ts for the full rationale — same story
@@ -18,7 +24,21 @@ const httpsConfig = (HTTPS_CERT && HTTPS_KEY)
   : undefined;
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(DEV_FORWARD_AUTH
+      ? [
+          tokenHandlerProxyPlugin(TOKEN_HANDLER_URL),
+          forwardAuthPlugin({
+            apiPrefix: '/api/trading',
+            bffRewritePrefix: '/api',
+            verifyBaseUrl: TOKEN_HANDLER_URL,
+            bffBaseUrl: BFF_URL,
+            forwardedHost: 'trading.geowealth.int:5185'
+          })
+        ]
+      : [])
+  ],
   build: {
     target: 'esnext',
     minify: false
@@ -29,7 +49,7 @@ export default defineConfig({
     strictPort: true,
     https: httpsConfig,
     allowedHosts: ['localhost', '127.0.0.1', 'trading.geowealth.int'],
-    proxy: {
+    proxy: DEV_FORWARD_AUTH ? {} : {
       '/api/trading': {
         target: BFF_URL,
         changeOrigin: true,

@@ -43,3 +43,18 @@ metadata:
 type: Opaque
 stringData:
   client-secret: "Sh4r3dMultiTenantDemoSecret012345"
+---
+# Bearer token gating P1's BrandingApiServlet (BrandingApiAuthFilter:92).
+# The same value lands on both sides: p1-tomcat reads it as
+# POC_BRANDING_API_TOKEN, the token-handler reads it as POC_BRANDING_API_TOKEN
+# and presents `Authorization: Bearer <token>` on every /branding-api/* call.
+# PLACEHOLDER for the demo — prod injects via ExternalSecrets / Vault.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: token-handler-branding
+  labels:
+    app.kubernetes.io/name: token-handler
+type: Opaque
+stringData:
+  token: "Br4nd1ngP0CDemoSh4r3dT0k3n0123456789"

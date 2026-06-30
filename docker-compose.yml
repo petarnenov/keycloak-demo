@@ -125,7 +125,8 @@ services:
 
   demo-billing:
     build:
-      context: ./domains/billing/web
+      context: .
+      dockerfile: domains/billing/web/Dockerfile
     image: keycloak-demo-billing-web:latest
     networks:
       - keycloak-network
@@ -266,7 +267,8 @@ services:
 
   demo-trading:
     build:
-      context: ./domains/trading/web
+      context: .
+      dockerfile: domains/trading/web/Dockerfile
     image: keycloak-demo-trading-web:latest
     networks:
       - keycloak-network

@@ -10,7 +10,7 @@ import { URLS } from './config.js';
 
 // The multi-tenant Token Handler fronts every domain via ONE shared OIDC client,
 // so billing + trading SSO sessions both live under demo-shared-client now.
-const CLIENTS = ['p1-self-client', 'demo-shared-client'] as const;
+const CLIENTS = ['p1-client', 'demo-shared-client'] as const;
 export type DemoClient = (typeof CLIENTS)[number];
 
 export async function adminToken(): Promise<string> {

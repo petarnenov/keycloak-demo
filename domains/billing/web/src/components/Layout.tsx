@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
+import { useBrand } from '../brand/BrandProvider';
 import { AiAssistant } from './AiAssistant';
 
 // Dashboard shell: a fixed sidebar with the two top-level destinations and
@@ -12,13 +13,22 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function Layout({ children }: { children: ReactNode }) {
   const auth = useAuth();
+  const { brand } = useBrand();
+  // The sidebar app name reads "<Brand> · Billing" so the firm brand leads
+  // and the domain (Billing / Trading) follows — matches P1's pattern where
+  // the whitelabel name is dominant and the page section is a subtitle.
+  const brandName = brand?.displayName ?? 'Demo';
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-wlcode={brand?.wlcode ?? ''}>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">▦</span>
-          <span>Demo Billing</span>
+          {brand?.logoUrl ? (
+            <img className="brand-logo" src={brand.logoUrl} alt={brandName} />
+          ) : (
+            <span className="brand-mark" aria-hidden="true">▦</span>
+          )}
+          <span>{brandName} · Billing</span>
         </div>
 
         <nav className="nav">

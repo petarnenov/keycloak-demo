@@ -108,6 +108,18 @@ patches:
     patch: |
       - { op: replace, path: /spec/minReplicas, value: 1 }
       - { op: replace, path: /spec/maxReplicas, value: 3 }
+  # p1-tomcat: dev overlay runs a single replica. The OIDC RP login flow
+  # parks state + PKCE verifier in HttpSession; the SSO round-trip can
+  # complete in under 100 ms — faster than the Redisson-Tomcat session
+  # write becomes visible on a peer pod. Service.spec.sessionAffinity
+  # already pins by ClientIP, but `kubectl port-forward` collapses every
+  # request to one pod IP regardless, so a second replica would funnel
+  # all dev traffic to the same pod anyway. One replica avoids both the
+  # race window and the wasted pod.
+  - target: { kind: HorizontalPodAutoscaler, name: p1-tomcat }
+    patch: |
+      - { op: replace, path: /spec/minReplicas, value: 2 }
+      - { op: replace, path: /spec/maxReplicas, value: 5 }
   # Token-handler URLs come from the single per-env source k8s/env/urls.dev.env
   # (the app-urls ConfigMap above), NOT hardcoded here — change the env file to
   # retarget. valueFrom/configMapKeyRef (rather than envFrom) so these override

@@ -3,6 +3,7 @@ package demo.bff.core;
 import io.micronaut.http.HttpHeaders;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
+import io.micronaut.http.MediaType;
 import io.micronaut.http.MutableHttpResponse;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
@@ -60,7 +61,9 @@ public class SilentLoginController {
 
     private static final Logger LOG = LoggerFactory.getLogger(SilentLoginController.class);
 
-    @Get
+    // Browser navigation (Accept: text/html) — same produces=ALL requirement as
+    // AuthController#loginFailed; default JSON-only route match yields 406.
+    @Get(produces = MediaType.ALL)
     @Secured(SecurityRule.IS_ANONYMOUS)
     public HttpResponse<?> startSilent() {
         LOG.debug("starting silent login attempt (prompt=none) — setting silent-attempt cookie");

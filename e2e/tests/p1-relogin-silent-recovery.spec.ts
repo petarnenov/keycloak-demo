@@ -56,7 +56,7 @@ async function loginAsTim1OnP1(page: Page): Promise<void> {
 async function waitForKcSession(timeoutMs = 90_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if ((await clientSessionCount('p1-self-client')) > 0) return;
+    if ((await clientSessionCount('p1-client')) > 0) return;
     await new Promise((r) => setTimeout(r, 1_000));
   }
   throw new Error('P1 credential login never established a Keycloak SSO session');
@@ -65,7 +65,7 @@ async function waitForKcSession(timeoutMs = 90_000): Promise<void> {
 async function waitForNoKcSession(timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if ((await clientSessionCount('p1-self-client')) === 0) return;
+    if ((await clientSessionCount('p1-client')) === 0) return;
     await new Promise((r) => setTimeout(r, 1_000));
   }
   throw new Error('Logout never tore down the Keycloak SSO session');
@@ -101,7 +101,7 @@ test.describe('P1 re-login restores cross-host silent SSO', () => {
       //      goes away automatically when the SLO invalidates the
       //      HttpSession — no client-side cleanup needed.
       await tab1.evaluate(() => {
-        window.location.href = '/saml/idp/initiate-slo.do';
+        window.location.href = '/oidc/logout.do';
       });
       await waitForNoKcSession();
 

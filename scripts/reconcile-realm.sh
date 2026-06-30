@@ -80,14 +80,18 @@ patch_client p1-client '
 import sys, json, os
 c = json.load(sys.stdin)
 hosts = os.environ["P1_CALLBACK_HOSTS"].split()
-c["redirectUris"] = [h + "/oidc/callback" for h in hosts]
+# Struts `struts.action.extension=do` (see geowealth/src/main/resources/struts.xml)
+# — the canonical OIDC callback path P1 emits in its authorize URL is
+# /oidc/callback.do. Keep these in sync; otherwise KC returns
+# "Invalid parameter: redirect_uri".
+c["redirectUris"] = [h + "/oidc/callback.do" for h in hosts]
 c["webOrigins"] = hosts
 c.setdefault("attributes", {})
 c["attributes"]["post.logout.redirect.uris"] = "##".join(h + "/*" for h in hosts)
 # In-cluster back-channel target: prefer P1_INCLUSTER_BASE if set, else use
 # the in-cluster Service DNS the realm-export carries (p1-tomcat:8080).
 incluster = os.environ.get("P1_INCLUSTER_BASE", "http://p1-tomcat.geowealth-demo.svc.cluster.local:8080")
-c["attributes"]["backchannel.logout.url"] = incluster + "/oidc/back-channel-logout"
+c["attributes"]["backchannel.logout.url"] = incluster + "/oidc/back-channel-logout.do"
 json.dump(c, sys.stdout)'
 
 # Vestigial demo-billing-client / demo-trading-client intentionally not reconciled.

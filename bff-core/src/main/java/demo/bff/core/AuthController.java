@@ -108,6 +108,7 @@ public class AuthController {
     private final String p1InitiateSloUrl;
     private final SubdomainRequirement requirement;
     private final SubdomainRequirements requirements;
+    private final BrandResolver brands;
     private final ExecutorService blockingExecutor;
 
     public AuthController(SidSessionRegistry registry,
@@ -115,6 +116,7 @@ public class AuthController {
                           @Client("kc") HttpClient kc,
                           SubdomainRequirement requirement,
                           SubdomainRequirements requirements,
+                          BrandResolver brands,
                           @Named(TaskExecutors.BLOCKING) ExecutorService blockingExecutor,
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
@@ -125,6 +127,7 @@ public class AuthController {
         this.kc = kc;
         this.requirement = requirement;
         this.requirements = requirements;
+        this.brands = brands;
         this.blockingExecutor = blockingExecutor;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
@@ -184,6 +187,14 @@ public class AuthController {
             out.put("activeTenant", req.type());
         }
         out.put("roles", authentication.getRoles());
+        // Whitelabel slug + display name resolved per-session: SPA reads these to
+        // pick the brand and to wait for /auth/brand without an extra round-trip
+        // when the brand is the default. Mirrors the firmKeyword + whitelabel
+        // fields P1's /react/indexCommonAsJSON.do returns (LoggedUserJTO.wlcode).
+        Integer brandFirm = parseFirm(out.get("firmCd"));
+        BrandConfig brand = brands.resolve(brandFirm, host);
+        out.put("wlcode", brand.getWlcode());
+        out.put("brandDisplayName", brand.getDisplayName());
         return out;
     }
 
@@ -247,7 +258,12 @@ public class AuthController {
         return m;
     }
 
-    @Get("/login-failed")
+    // Browser navigations (Accept: text/html) land here after KC returns
+    // error=login_required on a silent attempt — micronaut-security follows
+    // redirect.login-failure with a top-level redirect, not fetch. Without
+    // produces=ALL the default JSON-only route match yields 406 and the
+    // silent→interactive upgrade never runs.
+    @Get(value = "/login-failed", produces = MediaType.ALL)
     @Secured(SecurityRule.IS_ANONYMOUS)
     public HttpResponse<?> loginFailed(HttpRequest<?> request) {
         boolean wasSilent = request.getCookies()
@@ -294,6 +310,12 @@ public class AuthController {
     // bodyless POST (e.g. a smoke-test curl with no content-type) matching.
     @Consumes({MediaType.APPLICATION_FORM_URLENCODED, MediaType.ALL})
     @Secured(SecurityRule.IS_ANONYMOUS)
+    // session.clear() + sessionStore.deleteSession() are blocking Redis calls.
+    // Without @ExecuteOn(BLOCKING) they run on the Netty event loop and stall
+    // every other in-flight request on the same pod — the symptom is nginx
+    // returning 504 Gateway Time-out for /auth/logout while the logout
+    // eventually completes server-side seconds later.
+    @ExecuteOn(TaskExecutors.BLOCKING)
     public HttpResponse<?> logout(@Nullable Authentication authentication, @Nullable Session session) {
         Object sid = authentication != null ? authentication.getAttributes().get("sid") : null;
         Object refreshToken = authentication != null ? authentication.getAttributes().get("refreshToken") : null;

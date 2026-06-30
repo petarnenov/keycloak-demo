@@ -31,8 +31,13 @@ spec:
             - name: http
               containerPort: 8080
           env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - name: REDIS_URI
-              value: "redis://redis:6379"
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379"
             - name: OAUTH_CLIENT_ID
               value: "demo-billing-client"
             - name: OAUTH_CLIENT_SECRET

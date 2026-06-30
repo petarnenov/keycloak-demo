@@ -1,0 +1,180 @@
+# Industry-standard Redis SRE alerts. Picked up by the kube-prometheus-stack
+# Prometheus (`serviceMonitorSelectorNilUsesHelmValues: false` makes it scrape
+# rules in any namespace as long as the `release` label matches the kps
+# install, which is `kps`). Lives in the same namespace as the cluster so
+# `up.sh` applies it alongside the workload.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: redis-rules
+  labels:
+    app.kubernetes.io/name: redis
+    # Needs to match the kube-prometheus-stack release label so the
+    # Prometheus CR's `ruleSelector` (when set) picks it up. With
+    # `ruleSelectorNilUsesHelmValues: false` this is informational.
+    release: kps
+spec:
+  groups:
+    - name: redis.rules
+      interval: 30s
+      rules:
+
+        # ---- Availability ----
+        - alert: RedisDown
+          expr: redis_up == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: redis
+          annotations:
+            summary: "Redis instance is down ({{ $labels.instance }})"
+            description: |
+              redis_up == 0 for at least 2m. Session writes from
+              token-handler are failing — new logins and silent SSO will
+              break. Check `kubectl -n geowealth-demo get pod -l app.kubernetes.io/name=redis`
+              and the AOF replay progress in logs.
+
+        # ---- Memory pressure (noeviction policy means full = writes fail) ----
+        - alert: RedisMemoryHigh
+          expr: |
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.80
+          for: 10m
+          labels:
+            severity: warning
+            component: redis
+          annotations:
+            summary: "Redis memory >80% of maxmemory ({{ $labels.instance }})"
+            description: |
+              Used {{ $value | humanizePercentage }} of maxmemory.
+              With `noeviction` set, hitting 100% means new SET commands
+              return OOM and the login flow stops accepting sessions.
+              Investigate: (a) session leak (rate of GWSESSION keys
+              creation vs expiry), (b) bump pod limit + maxmemory, or
+              (c) horizontal scale to a Redis cluster.
+
+        - alert: RedisMemoryNearMax
+          expr: |
+            (redis_memory_used_bytes / redis_memory_max_bytes) > 0.95
+          for: 2m
+          labels:
+            severity: critical
+            component: redis
+          annotations:
+            summary: "Redis memory >95% of maxmemory ({{ $labels.instance }})"
+            description: |
+              Used {{ $value | humanizePercentage }} of maxmemory. About
+              to start rejecting writes (noeviction). Login storms /
+              silent-SSO retries will hammer the OOM path. Act now.
+
+        # ---- Eviction (would be a config bug for a session store) ----
+        - alert: RedisEvictedKeys
+          expr: rate(redis_evicted_keys_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: redis
+          annotations:
+            summary: "Redis is evicting keys ({{ $labels.instance }})"
+            description: |
+              Session store is configured `noeviction` but evictions are
+              non-zero. Either (a) policy was changed to allkeys-* (bug),
+              or (b) Redis itself is mis-tuned. Users are being silently
+              logged out. Check `CONFIG GET maxmemory-policy`.
+
+        # ---- Connection saturation ----
+        - alert: RedisRejectedConnections
+          expr: rate(redis_rejected_connections_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: redis
+          annotations:
+            summary: "Redis is rejecting connections ({{ $labels.instance }})"
+            description: |
+              `maxclients` exceeded OR auth failures. token-handler and
+              BFFs will fail with `MaxClientsReached` / `WRONGPASS`.
+              Check Redis log for `ERR max number of clients reached`
+              vs `WRONGPASS invalid username-password pair`.
+
+        - alert: RedisTooManyConnections
+          expr: redis_connected_clients > 0.8 * redis_config_maxclients
+          for: 10m
+          labels:
+            severity: warning
+            component: redis
+          annotations:
+            summary: "Redis at >80% of maxclients ({{ $labels.instance }})"
+            description: |
+              {{ $value }} clients connected. Probable connection-pool
+              leak in a consumer (token-handler / BFF). Find the
+              offender via `CLIENT LIST` (by addr or name).
+
+        # ---- Persistence health ----
+        - alert: RedisLastSaveFailed
+          expr: |
+            time() - redis_rdb_last_save_timestamp_seconds > 86400
+          for: 15m
+          labels:
+            severity: warning
+            component: redis
+          annotations:
+            summary: "Redis RDB hasn't snapshotted in >24h ({{ $labels.instance }})"
+            description: |
+              The save/RDB job hasn't run successfully in over a day.
+              AOF is still the durability source, but losing RDB means
+              losing the warm-restart shortcut and the disaster-recovery
+              backup target. Check disk pressure + `stop-writes-on-bgsave-error`.
+
+        - alert: RedisAOFRewriteStuck
+          expr: redis_aof_last_rewrite_duration_sec > 300
+          for: 5m
+          labels:
+            severity: warning
+            component: redis
+          annotations:
+            summary: "Redis AOF rewrite >5 min ({{ $labels.instance }})"
+            description: |
+              Auto-rewrite is taking longer than expected. On a small
+              session store this is usually disk-bound — check
+              `node_disk_io_time_seconds_total` on the PV's node.
+
+        # ---- Replication (informational for the demo — single replica) ----
+        - alert: RedisReplicationBroken
+          expr: redis_connected_slaves < 1
+          for: 10m
+          labels:
+            severity: info
+            component: redis
+          annotations:
+            summary: "Redis has no connected replicas ({{ $labels.instance }})"
+            description: |
+              Demo runs a single-replica StatefulSet, so this is
+              expected. When you graduate to a real HA topology this
+              should be critical, not info.
+
+        # ---- Latency (event-loop blocking) ----
+        - alert: RedisSlowCommands
+          expr: rate(redis_slowlog_length[5m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+            component: redis
+          annotations:
+            summary: "Redis slowlog entries appearing ({{ $labels.instance }})"
+            description: |
+              Commands exceeding `slowlog-log-slower-than` (10ms).
+              Inspect with `SLOWLOG GET 32`. Common culprits: KEYS,
+              SMEMBERS on large sets, big DELs without lazyfree.
+
+        - alert: RedisHighLatency
+          expr: redis_latency_spike_duration_seconds > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: redis
+          annotations:
+            summary: "Redis event-loop latency spike ({{ $labels.instance }})"
+            description: |
+              `latency-monitor` recorded a >100ms event-loop stall.
+              This is the same metric `LATENCY LATEST` exposes. Usually
+              fsync / fork stall during BGSAVE / AOF rewrite.

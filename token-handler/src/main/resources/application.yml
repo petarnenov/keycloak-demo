@@ -27,6 +27,12 @@ micronaut:
       kc:
         url: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
         read-timeout: 5s
+      branding:
+        # P1's BrandingApiServlet is mounted at /branding-api/keycloak/whitelabel/*.
+        # The BrandingApiClient prepends /branding-api/keycloak/whitelabel paths
+        # at call time, so this value is the bare P1 base URL (no context path).
+        url: ${BRANDING_API_BASE_URL:http://p1-tomcat:8080}
+        read-timeout: 5s
   session:
     http:
       cookie: true
@@ -94,6 +100,9 @@ micronaut:
       - pattern: /auth/me
         access:
           - isAuthenticated()
+      - pattern: /auth/brand
+        access:
+          - isAuthenticated()
       - pattern: /auth/verify
         access:
           - isAuthenticated()
@@ -122,6 +131,42 @@ app:
       type: resource
       object-type: 5          # TRADE
       permission: 5           # EXECUTE
+  # P1's BrandingApiServlet is now the source of truth for whitelabel data
+  # (see BrandingApiClient + BrandResolver). The inline app.brands.* block
+  # below is the offline / unit-test fallback used when token is unset.
+  branding:
+    token: ${POC_BRANDING_API_TOKEN:}
+    base-path: /branding-api/keycloak/whitelabel
+  # Whitelabel brand catalog — fallback when the Branding API is disabled.
+  # Mapping firm-cd → wlcode below mirrors WHITELABEL_TBL.firmCd, but is
+  # superseded by an upstream lookup whenever POC_BRANDING_API_TOKEN is set.
+  # To add an offline-only firm: append to firm-to-wlcode + one block under
+  # brands (or reuse an existing wlcode). For a real firm, just configure it
+  # in P1 — no demo edit needed.
+  default-wlcode: geowealth
+  asset-base: ""             # blank → upstream asset URLs returned verbatim
+  cache-ttl-millis: 60000
+  firm-to-wlcode:
+    "1000009": cca       # CreativeOne PoC user (tim1)
+  brands:
+    geowealth:
+      display-name: GeoWealth
+      logo-url: /brand-assets/geowealth/logo.svg
+      favicon-url: /brand-assets/geowealth/favicon.ico
+      css-vars:
+        "--accent": "#307492"
+        "--theme-link-color": "#1d6f8a"
+        "--theme-gradient-start": "#307492"
+        "--theme-gradient-end": "#1d6f8a"
+    cca:
+      display-name: Creative One Wealth
+      logo-url: /brand-assets/cca/logo.svg
+      favicon-url: /brand-assets/cca/favicon.ico
+      css-vars:
+        "--accent": "#d04a02"
+        "--theme-link-color": "#a83a02"
+        "--theme-gradient-start": "#d04a02"
+        "--theme-gradient-end": "#7d2300"
   # Single-tenant fallback (per-domain build): inert while app.tenants is set, so
   # the bean stays empty here (no type → SubdomainAuthorizer uses the host map).
   p1:

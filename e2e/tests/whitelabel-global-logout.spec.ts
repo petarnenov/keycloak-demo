@@ -31,14 +31,14 @@ test.describe('Global single-logout from a whitelabel host', () => {
     await silentSsoP1(page, P1_HOSTS.canonical);
 
     // Sanity: the shared session is live before logout.
-    expect(await clientSessionCount('p1-self-client'), 'KC p1-self before').toBeGreaterThan(0);
+    expect(await clientSessionCount('p1-client'), 'KC p1-self before').toBeGreaterThan(0);
     expect(await p1LoginState(page.request, P1_HOSTS.canonical)).toBe('loggedUser');
 
     // Sign out from the whitelabel host (what the SPA's logout button hits).
-    await page.goto(`${P1_HOSTS.whitelabel}/saml/idp/initiate-slo.do`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${P1_HOSTS.whitelabel}/oidc/logout.do`, { waitUntil: 'domcontentloaded' });
 
     // The KC SSO session and its client sessions are gone (RP-initiated logout).
-    await expect.poll(() => clientSessionCount('p1-self-client'), { timeout: 20_000 }).toBe(0);
+    await expect.poll(() => clientSessionCount('p1-client'), { timeout: 20_000 }).toBe(0);
     await expect.poll(() => clientSessionCount('demo-shared-client'), { timeout: 20_000 }).toBe(0);
 
     // The resource BFF rejects the now-orphaned session (back-channel fan-out).

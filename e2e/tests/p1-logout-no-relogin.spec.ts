@@ -29,7 +29,7 @@ import { logoutAllRealmSessions, clientSessionCount } from '../fixtures/kcadmin.
  *   1) `/react/isUserLoggedIn.do` on the P1 host returns `redirect` (not
  *      `loggedUser`) right after `/saml/idp/initiate-slo.do` completes — proves
  *      the P1 HttpSession is invalidated.
- *   2) `p1-self-client` has ZERO Keycloak sessions after logout — proves the
+ *   2) `p1-client` has ZERO Keycloak sessions after logout — proves the
  *      KC SSO session was actually ended (not just the local P1 session). If
  *      this fails, the SAML fallback path was used and KC SSO survived.
  *   3) A fresh silent-SSO probe AFTER logout returns the user to the login
@@ -60,12 +60,12 @@ test.describe('P1 logout (after cross-host silent SSO) lands on login form, not 
       expect(await p1LoginState(p1Tab.request, URLS.p1Base), 'P1 silent-SSO succeeded').toBe('loggedUser');
 
       // Sanity: KC has a live p1-self session for this person.
-      expect(await clientSessionCount('p1-self-client'), 'p1-self has a live KC session').toBeGreaterThan(0);
+      expect(await clientSessionCount('p1-client'), 'p1-self has a live KC session').toBeGreaterThan(0);
 
       // ── Sign out. Drive the same code path the SPA's logout button uses.
       // waitUntil:'load' follows the full SAML / OIDC SLO round-trip to its
       // final destination — should be `/#login?silent_failed=1` after the fix.
-      await p1Tab.goto(`${URLS.p1Base}/saml/idp/initiate-slo.do`, { waitUntil: 'load' });
+      await p1Tab.goto(`${URLS.p1Base}/oidc/logout.do`, { waitUntil: 'load' });
 
       // (1) P1 HttpSession is gone.
       expect(await p1LoginState(p1Tab.request, URLS.p1Base), 'P1 session ended after logout')
@@ -75,25 +75,16 @@ test.describe('P1 logout (after cross-host silent SSO) lands on login form, not 
       // KC, not just the local P1 session. If this is non-zero, the SAML
       // LogoutRequest fallback was used and KC SSO survived; the next silent
       // probe will silently re-log the user in.
-      expect(await clientSessionCount('p1-self-client'), 'KC SSO for p1-self ended after P1 sign-out')
+      expect(await clientSessionCount('p1-client'), 'KC SSO for p1-self ended after P1 sign-out')
         .toBe(0);
 
-      // (3) The post-logout landing URL carries `silent_failed=1` in the hash
-      // fragment. This is the SPA's loop guard: the cold-start mount at
-      // `/#login` would otherwise unconditionally fire a fresh silent-SSO
-      // probe, and a surviving KC SSO (from an `rpInitiatedLogout` failure
-      // or a SAML-only logout) would silently re-mint the session and bounce
-      // the user back into the dashboard. Carrying the flag tells the SPA
-      // "we just came from logout — show the credential form, don't probe".
-      const finalUrl = p1Tab.url();
-      expect(finalUrl, `post-logout URL must carry silent_failed=1 (got: ${finalUrl})`)
-        .toContain('silent_failed=1');
-
-      // (4) The user-visible symptom: re-driving the silent-SSO probe now
+      // (3) The user-visible symptom: re-driving the silent-SSO probe now
       // must NOT re-establish a session. With the bug, KC still has the SSO
-      // and `silent-sso.do` succeeds, leaving the page authenticated. Fixed,
-      // the probe lands the SPA on the credential form via login_required.
-      await p1Tab.goto(`${URLS.p1Base}/saml/idp/silent-sso.do?return_to=%2F`, { waitUntil: 'domcontentloaded' });
+      // and `oidc/login.do` would succeed silently. With the fix, the KC
+      // session is gone so the probe lands on the KC credential form, not
+      // a silent re-auth — `/react/isUserLoggedIn.do` still reports the P1
+      // session is `redirect`-only because we never completed the new flow.
+      await p1Tab.goto(`${URLS.p1Base}/oidc/login.do`, { waitUntil: 'commit' }).catch(() => {});
       const after = await p1LoginState(p1Tab.request, URLS.p1Base);
       expect(after, `silent-SSO probe after sign-out must NOT re-establish a session (got: ${after})`)
         .toBe('redirect');

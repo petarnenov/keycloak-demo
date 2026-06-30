@@ -62,6 +62,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
             # The seed node's self-address MUST equal the seed-nodes literal.
             - { name: AKKA_CANONICAL, value: "p1-coordinator-0.p1-coordinator" }
@@ -102,6 +107,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -139,6 +149,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -171,6 +186,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -203,6 +223,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -238,6 +263,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -271,6 +301,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -311,6 +346,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             # Sized for the 4G JVM heap above; container limit must exceed heap.
@@ -345,6 +385,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 100m, memory: 512Mi }
@@ -393,6 +438,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             # Sized for the 10G JVM heap above; container limit must be > heap or
@@ -436,6 +486,11 @@ spec:
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: AKKA_SEED, value: "akka://DevPetar@p1-coordinator-0.p1-coordinator:4007" }
           resources:
             requests: { cpu: 250m, memory: 1Gi }
@@ -450,6 +505,21 @@ spec:
   selector: { app.kubernetes.io/name: p1-tomcat }
   ports:
     - { name: http, port: 8080, targetPort: 8080 }
+  # OIDC RP login flow puts the state + PKCE verifier in HttpSession and
+  # expects the callback to land on the same Tomcat that started the flow.
+  # Sessions are mirrored in Redis (RedissonSessionManager), but the
+  # write-after-set / read-from-Redis path has a sub-100 ms eventual
+  # consistency window — the KC SSO round-trip can return faster than the
+  # state attribute is visible on a peer pod, surfacing as
+  # `OIDC_CALLBACK_STATE_MISMATCH` and a blank 403. Sticky-by-ClientIP
+  # routes the whole flow at one pod so the in-JVM session is always
+  # authoritative. Falls back to even-distribution after the
+  # timeoutSeconds idle window. Note: ingress-nginx already preserves the
+  # client IP; `kubectl port-forward` pins to one pod regardless.
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -492,10 +562,20 @@ spec:
             - { secretRef:    { name: oracle-creds,  optional: true } }
           env:
             - { name: ROLE, value: tomcat }
-            - { name: JAVA_OPTS_EXTRA, value: "-Xms1g -Xmx4g" }
+            # -Xss8m: deep User/LoggedUser object graphs (Hibernate associations
+            # walked by RedissonSessionManager via Kryo) overflow the default
+            # 512K JVM thread stack on OidcCallbackAction.populateSession write
+            # to Redis; bumping the stack lets the serializer recurse through
+            # the existing graph without changing the codec.
+            - { name: JAVA_OPTS_EXTRA, value: "-Xms1g -Xmx4g -Xss8m" }
             - { name: POD_IP, valueFrom: { fieldRef: { fieldPath: status.podIP } } }
             - { name: ORACLE_HOST, value: oracle }
             - { name: REDIS_HOST, value: redis }
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - { name: REDIS_PORT, value: "6379" }
             # Phase 6: Redisson Tomcat session manager points at the same Redis.
             # The yaml template renders REDIS_HOST:REDIS_PORT into the config.
@@ -515,26 +595,42 @@ spec:
             - { name: P1_OIDC_POST_LOGOUT_URL, value: "http://localhost:8080/" }
             - { name: P1_OIDC_JWKS_URL, value: "http://keycloak:8080/realms/demo-realm/protocol/openid-connect/certs" }
             - { name: P1_OIDC_EXPECTED_ISSUER, value: "https://auth.geowealth.int:5180/realms/demo-realm" }
+            # Bearer token gating BrandingApiAuthFilter. The token-handler
+            # carries the same secret (token-handler-branding) and presents
+            # `Authorization: Bearer <token>` on every /branding-api/* request.
+            # Missing/blank → P1 rejects all branding traffic with 401.
+            - name: POC_BRANDING_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: token-handler-branding
+                  key: token
           ports:
             - { name: http, containerPort: 8080 }
           resources:
             requests: { cpu: 500m, memory: 2Gi }
             limits:   { cpu: "2",  memory: 5Gi }
+          # External Oracle (k8s/env/data-tier.dev.env) adds round-trip latency
+          # that pushes Tomcat's `/` response past the default 1s probe timeout,
+          # which kills supposedly-Ready pods in a loop. 5s tolerates the slow
+          # path without masking a real hang.
           startupProbe:
             httpGet: { path: /, port: http }
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 30
+            timeoutSeconds: 5
           readinessProbe:
             httpGet: { path: /, port: http }
             initialDelaySeconds: 60
             periodSeconds: 15
             failureThreshold: 20
+            timeoutSeconds: 5
           livenessProbe:
             httpGet: { path: /, port: http }
             initialDelaySeconds: 120
             periodSeconds: 30
             failureThreshold: 5
+            timeoutSeconds: 5
           volumeMounts:
             - { name: keystore, mountPath: /etc/p1, readOnly: true }
       volumes:

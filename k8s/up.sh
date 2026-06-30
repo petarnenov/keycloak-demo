@@ -165,8 +165,8 @@ docker build -t keycloak-demo-user-service:latest  -f user-service/Dockerfile .
 docker build -t keycloak-demo-keycloak:latest      -f Dockerfile.keycloak .
 docker build -t keycloak-demo-billing-bff:latest   -f domains/billing/bff/Dockerfile .
 docker build -t keycloak-demo-trading-bff:latest   -f domains/trading/bff/Dockerfile .
-docker build -t keycloak-demo-billing-web:latest   domains/billing/web
-docker build -t keycloak-demo-trading-web:latest   domains/trading/web
+docker build -t keycloak-demo-billing-web:latest   -f domains/billing/web/Dockerfile .
+docker build -t keycloak-demo-trading-web:latest   -f domains/trading/web/Dockerfile .
 # P1 image (heavy — gradle devClasses). Skip if the geowealth repo isn't present.
 if [ -d "${GEOWEALTH_DIR:-$HOME/geowealth}" ]; then
   log "Building P1 (geowealth) image — heavy"
@@ -231,7 +231,7 @@ DT_SNAPSHOT_BEFORE=$(data_tier_snapshot)
 # If the consumer workloads don't exist yet (fresh install), they'll start with
 # the new env on their own — no restart needed even though the snapshot diff.
 DT_CONSUMERS_PREEXISTED=0
-kc get statefulset/p1-tomcat >/dev/null 2>&1 && DT_CONSUMERS_PREEXISTED=1
+kc get deployment/p1-tomcat >/dev/null 2>&1 && DT_CONSUMERS_PREEXISTED=1
 
 log "Aligning data-tier endpoints with ${DATA_TIER_ENV}"
 data_tier_redirect
@@ -282,7 +282,7 @@ if [ "$DT_CONSUMERS_PREEXISTED" = "1" ] && [ "$DT_SNAPSHOT_BEFORE" != "$DT_SNAPS
     deploy/p1-crm deploy/p1-cspagents deploy/p1-devcommonagents deploy/p1-emailagent \
     deploy/p1-mostagents deploy/p1-proposalagents deploy/p1-reportengine \
     deploy/p1-samlmanager deploy/p1-searchagents deploy/p1-useragents \
-    statefulset/p1-coordinator statefulset/p1-tomcat || true
+    statefulset/p1-coordinator deployment/p1-tomcat || true
 fi
 
 # --- 4. wave-wait -----------------------------------------------------------
@@ -306,7 +306,7 @@ wait_ready statefulset/keycloak 300s
 # Wave 3: P1 — coordinator (seed) then agents then Tomcat
 wait_ready statefulset/p1-coordinator 300s || true
 wait_ready deployment/p1-samlmanager 300s || true
-wait_ready statefulset/p1-tomcat 600s || true
+wait_ready deployment/p1-tomcat 600s || true
 # Wave 4: auth + data + web
 wait_ready deployment/token-handler 180s
 wait_ready deployment/bff-billing 180s

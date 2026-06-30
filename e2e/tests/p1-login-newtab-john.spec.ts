@@ -41,24 +41,26 @@ async function sessionUserUuid(reqCtx: APIRequestContext, host: string): Promise
   return (body.geoUUID ?? body.id ?? '(none)').toUpperCase();
 }
 
-/** Submit P1's credential form for tim1 on the canonical host. */
+/** Drive the KC login form for tim1. P1 is an OIDC RP now — visiting
+ *  {@code localhost:8080} bounces the browser to KC's login page (on
+ *  {@code auth.geowealth.int:5180}); fill it and KC will issue a code back to
+ *  P1's {@code /oidc/callback.do}. */
 async function loginAsTim1OnP1(page: Page): Promise<void> {
   await page.goto(URLS.p1Base);
-  await page.waitForLoadState('domcontentloaded');
-  // Cold start does a silent-SSO probe first (no KC session yet), then falls
-  // back to the credential form — wait for the form, then submit.
-  await page.locator('text="Sign in"').first().waitFor({ state: 'visible', timeout: 90_000 });
-  await page.getByRole('textbox', { name: 'username' }).fill(P1_CREDENTIALS.username);
-  await page.getByRole('textbox', { name: 'password' }).fill(P1_CREDENTIALS.password);
-  await page.getByRole('button', { name: 'Login' }).click();
+  await page.waitForURL(/auth\.geowealth\.int.*\/protocol\/openid-connect\/auth/, { timeout: 90_000 });
+  await page.locator('input[name="username"]').fill(P1_CREDENTIALS.username);
+  await page.locator('input[name="password"]').fill(P1_CREDENTIALS.password);
+  await page.locator('input[type="submit"], button[type="submit"]').first().click();
+  // Wait for the post-callback redirect back to the P1 React shell.
+  await page.waitForURL(new RegExp(`^${URLS.p1Base.replace(/[/.]/g, '\\$&')}`), { timeout: 90_000 });
 }
 
-/** Poll Keycloak's admin API until the p1-self-client has a live SSO session. */
+/** Poll Keycloak's admin API until the p1-client has a live SSO session. */
 async function waitForKcSession(timeoutMs = 90_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let count = 0;
   while (Date.now() < deadline) {
-    count = await clientSessionCount('p1-self-client');
+    count = await clientSessionCount('p1-client');
     if (count > 0) return;
     await new Promise((r) => setTimeout(r, 1_000));
   }

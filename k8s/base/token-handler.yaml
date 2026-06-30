@@ -40,8 +40,23 @@ spec:
             - name: http
               containerPort: 8080
           env:
+            # `redis://:<password>@host:port` — Lettuce / Redisson URI
+            # form. Password is sourced from a Secret and substituted by
+            # the shell so the literal never lands in the manifest /
+            # ConfigMap. Requires `command: ["/bin/sh", "-c"]` style entry
+            # — Micronaut reads `REDIS_URI` from env on boot. Since the
+            # default container entrypoint is `java -jar ...`, we ALSO
+            # mount the password as `REDIS_PASSWORD` and rely on the BFF
+            # to do `redis://:${REDIS_PASSWORD}@redis:6379` via Micronaut's
+            # placeholder resolution in application.yml. Simpler path:
+            # pre-built URI from the Secret value.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
             - name: REDIS_URI
-              value: "redis://redis:6379"
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379"
             - name: SESSION_COOKIE_NAME
               value: "GWSESSION"
             - name: OAUTH_CLIENT_ID
@@ -61,6 +76,17 @@ spec:
               value: "https://p1.geowealth.int"
             - name: AUTHZ_FINE_ENABLED
               value: "true"
+            # P1's BrandingApiServlet (bearer-token-gated /branding-api/keycloak/
+            # whitelabel/*). BrandResolver uses it as the source of truth for
+            # the SPA brand; falls back to the inline app.brands config when
+            # the token is blank (offline dev path).
+            - name: BRANDING_API_BASE_URL
+              value: "http://p1-tomcat:8080"
+            - name: POC_BRANDING_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: token-handler-branding
+                  key: token
             # Merge the mounted tenant map over the baked application.yml.
             - name: MICRONAUT_CONFIG_FILES
               value: "/config/tenants.yml"
@@ -77,6 +103,7 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 5
             failureThreshold: 6
           livenessProbe:
             httpGet:
@@ -84,6 +111,10 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 15
+            # Default timeoutSeconds=1 is too tight: under DEBUG-log volume the
+            # /health response can exceed 1s, tripping 3 failures (~45s) and
+            # killing the pod mid-request → flaky e2e logins. 5s gives headroom.
+            timeoutSeconds: 5
           volumeMounts:
             - name: tenants
               mountPath: /config
