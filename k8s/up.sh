@@ -3,8 +3,15 @@
 # data (Oracle seeded from db/ + ES + kc-postgres + redis) + identity
 # (Keycloak + token-handler + BFFs + web) + legacy P1 (Tomcat + Akka agents).
 #
-#   ./k8s/up.sh            # build images, ensure cluster, deploy in ordered waves
-#   ./k8s/up.sh --down     # tear the whole namespace down
+#   ./k8s/up.sh                      # build images, ensure cluster, deploy in ordered waves
+#   ./k8s/up.sh --profile login-only # bring up ONLY the workloads in k8s/profiles/login-only.profile
+#   ./k8s/up.sh --down               # tear the whole namespace down
+#
+# A run-profile is a toggle.sh snapshot (k8s/profiles/<name>.profile). With
+# --profile, up.sh applies the full overlay (so every object exists) then scales
+# every workload to the profile's saved replicas — 0 for the ones the profile
+# excludes — and the wave-wait skips anything at replicas=0. Create one with:
+#   ./k8s/toggle.sh save login-only
 #
 # Idempotent: re-running re-applies + re-waits. Secrets (realm, mkcert certs, SAML
 # keystore, DB login hash) are loaded from the local repo files, never baked.
@@ -23,6 +30,25 @@ PROFILE="${MINIKUBE_PROFILE:-geowealth}"
 # existing cluster you must `minikube -p geowealth delete` first, then re-run.
 NEED_MEM_MIB="${MINIKUBE_MEM_MIB:-12288}"   # Oracle+ES+P1+KC+rest need a sizeable cluster
 MINIKUBE_CPUS="${MINIKUBE_CPUS:-4}"
+
+# --- run-profile arg (only bring up the workloads a toggle.sh profile lists) --
+# NOTE: distinct from the minikube PROFILE above. Extract --profile <name> from
+# the args, leave everything else (e.g. --down) in $@ for the checks below.
+RUN_PROFILE="${RUN_PROFILE:-}"
+_UP_ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --profile)   RUN_PROFILE="${2:-}"; shift 2 ;;
+    --profile=*) RUN_PROFILE="${1#*=}"; shift ;;
+    *)           _UP_ARGS+=("$1"); shift ;;
+  esac
+done
+set -- "${_UP_ARGS[@]+"${_UP_ARGS[@]}"}"
+if [ -n "$RUN_PROFILE" ]; then
+  RUN_PROFILE_FILE="k8s/profiles/${RUN_PROFILE}.profile"
+  [ -f "$RUN_PROFILE_FILE" ] || { echo "up.sh: no such profile: $RUN_PROFILE_FILE" >&2
+    echo "  create one with: ./k8s/toggle.sh save ${RUN_PROFILE}" >&2; exit 2; }
+fi
 
 kc() { kubectl -n "$NS" "$@"; }
 log() { printf '\n\033[1;36m>>> %s\033[0m\n' "$*"; }
@@ -285,9 +311,21 @@ if [ "$DT_CONSUMERS_PREEXISTED" = "1" ] && [ "$DT_SNAPSHOT_BEFORE" != "$DT_SNAPS
     statefulset/p1-coordinator deployment/p1-tomcat || true
 fi
 
+# --- 3d. run-profile: scale to only the workloads the profile lists ----------
+# Done AFTER the full overlay apply (so every object exists) and BEFORE the
+# wave-wait (so wait_ready sees the profile's replica counts). toggle.sh apply
+# is HPA-safe (patches minReplicas) and sets 0 for every excluded workload.
+if [ -n "$RUN_PROFILE" ]; then
+  log "Applying run-profile '${RUN_PROFILE}' — only its workloads will run"
+  ./k8s/toggle.sh apply "$RUN_PROFILE"
+fi
+
 # --- 4. wave-wait -----------------------------------------------------------
 
 wait_ready() { # <kind/name> <timeout>
+  # Under --profile, anything scaled to 0 is intentionally absent — don't wait.
+  local want; want="$(kc get "$1" -o jsonpath='{.spec.replicas}' 2>/dev/null || true)"
+  if [ "$want" = "0" ]; then log "Skip $1 (replicas=0 via profile)"; return 0; fi
   log "Waiting for $1 (${2})"
   kc rollout status "$1" --timeout="$2" || kc get pods
 }
