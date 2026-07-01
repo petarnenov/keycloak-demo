@@ -3,6 +3,7 @@
 #
 #   ./scripts/dev-fe.sh billing     # Vite HMR on https://billing.geowealth.int:5184
 #   ./scripts/dev-fe.sh trading     # Vite HMR on https://trading.geowealth.int:5185
+#   ./scripts/dev-fe.sh portfolio   # Vite HMR on https://portfolio.geowealth.int:5186
 #   ./scripts/dev-fe.sh p1          # GeoWealth webpack-dev-server :8888 → P1 Tomcat
 #
 # Prerequisite: ./k8s/up.sh (infra running). Scales the in-cluster web Deployment
@@ -44,6 +45,19 @@ case "$TARGET" in
     cd "$REPO_ROOT/domains/trading/web"
     exec npm run dev
     ;;
+  portfolio)
+    ensure_portfolio_pfs
+    stop_pf web-portfolio
+    free_host_port 5186
+    scale_deployment web-portfolio 0
+    mkcert_paths_for portfolio.geowealth.int
+    export DEV_FORWARD_AUTH=1
+    export TOKEN_HANDLER_URL=http://127.0.0.1:9080
+    export BFF_PORTFOLIO_URL=http://127.0.0.1:8086
+    dev_log "Starting portfolio Vite dev (HMR) — open https://portfolio.geowealth.int:5186"
+    cd "$REPO_ROOT/domains/portfolio/web"
+    exec npm run dev
+    ;;
   p1)
     require_cmd node
     ensure_pf p1-tomcat 8080 svc/p1-tomcat 8080
@@ -58,6 +72,6 @@ case "$TARGET" in
     sed -n '2,12p' "$0"
     ;;
   *)
-    dev_die "Unknown target '$TARGET' (billing|trading|p1)"
+    dev_die "Unknown target '$TARGET' (billing|trading|portfolio|p1)"
     ;;
 esac

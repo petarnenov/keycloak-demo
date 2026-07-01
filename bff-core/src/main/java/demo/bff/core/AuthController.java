@@ -98,6 +98,12 @@ public class AuthController {
     private final String tokenEndpoint;
     private final String logoutEndpoint;
     private final String p1InitiateSloUrl;
+    // Dev-safe fallback: when the logout has no id_token to hint KC with and this
+    // is true, redirect to the request's own SPA origin instead of the P1 SLO URL.
+    // P1 is not part of FE-only dev (scaled to 0), so the P1 SLO target refuses the
+    // connection; landing back on the SPA (which bounces to login) is the sensible
+    // outcome. Default false → prod keeps the cross-app P1 single-logout hop.
+    private final boolean fallbackToSpa;
     private final SubdomainRequirement requirement;
     private final SubdomainRequirements requirements;
     private final BrandResolver brands;
@@ -113,7 +119,8 @@ public class AuthController {
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-secret}") String clientSecret,
-                          @Value("${app.p1.initiate-slo-url}") String p1InitiateSloUrl) {
+                          @Value("${app.p1.initiate-slo-url}") String p1InitiateSloUrl,
+                          @Value("${app.p1.fallback-to-spa:false}") boolean fallbackToSpa) {
         this.registry = registry;
         this.sessionStore = sessionStore;
         this.kc = kc;
@@ -128,8 +135,9 @@ public class AuthController {
         this.tokenEndpoint = issuer + "/protocol/openid-connect/token";
         this.logoutEndpoint = issuer + "/protocol/openid-connect/logout";
         this.p1InitiateSloUrl = p1InitiateSloUrl;
-        LOG.info("Resolved tokenEndpoint='{}', logoutEndpoint='{}', p1InitiateSloUrl='{}'",
-                tokenEndpoint, logoutEndpoint, p1InitiateSloUrl);
+        this.fallbackToSpa = fallbackToSpa;
+        LOG.info("Resolved tokenEndpoint='{}', logoutEndpoint='{}', p1InitiateSloUrl='{}', fallbackToSpa={}",
+                tokenEndpoint, logoutEndpoint, p1InitiateSloUrl, fallbackToSpa);
     }
 
     @Get("/me")
@@ -365,7 +373,7 @@ public class AuthController {
         // way out), and the browser then resolves it against the SPA host.
         String location = directLogout
                 ? kcRpInitiatedLogoutUrl(idToken.toString(), spaOrigin(request) + "/")
-                : p1InitiateSloUrl;
+                : (fallbackToSpa ? spaOrigin(request) + "/" : p1InitiateSloUrl);
         return HttpResponse.<Void>status(HttpStatus.SEE_OTHER)
                 .header(HttpHeaders.LOCATION, location);
     }

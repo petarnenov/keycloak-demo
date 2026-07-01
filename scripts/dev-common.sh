@@ -33,7 +33,7 @@ pf_port_owned_locally() {
     p1-tomcat)
       pgrep -f "org.apache.catalina.startup.Bootstrap" >/dev/null 2>&1
       ;;
-    web-billing|web-trading)
+    web-billing|web-trading|web-portfolio)
       # Vite/webpack dev servers bind 0.0.0.0; kubectl pf binds 127.0.0.1 only.
       ss -lnt 2>/dev/null | grep -q "0.0.0.0:${host_port} "
       ;;
@@ -122,6 +122,10 @@ micronaut_dev_env() {
   export BRANDING_API_BASE_URL="${BRANDING_API_BASE_URL:-http://127.0.0.1:8080}"
   export AUTHZ_FINE_ENABLED="${AUTHZ_FINE_ENABLED:-true}"
   export SESSION_COOKIE_NAME="${SESSION_COOKIE_NAME:-GWSESSION}"
+  # Dev-safe logout fallback (mirrors the full-stack K8s overlay): with no id_token
+  # to hint KC, land on the request's own SPA origin instead of the P1 SLO URL —
+  # P1 is not running in FE/BE-only dev, so its SLO target would refuse.
+  export APP_P1_FALLBACK_TO_SPA="${APP_P1_FALLBACK_TO_SPA:-true}"
 }
 
 ensure_infra_pfs() {
@@ -147,6 +151,11 @@ ensure_trading_pfs() {
   ensure_pf bff-trading 8085 svc/bff-trading 8080
 }
 
+ensure_portfolio_pfs() {
+  ensure_auth_pfs
+  ensure_pf bff-portfolio 8086 svc/bff-portfolio 8080
+}
+
 stop_pf() {
   local name="$1"
   local pidf="$PIDDIR/${name}.pid"
@@ -166,9 +175,11 @@ free_host_port() {
   for row in \
     "web-billing:5184" \
     "web-trading:5185" \
+    "web-portfolio:5186" \
     "token-handler:9080" \
     "bff-billing:8084" \
-    "bff-trading:8085"; do
+    "bff-trading:8085" \
+    "bff-portfolio:8086"; do
     local name="${row%%:*}" p="${row#*:}"
     [ "$p" = "$port" ] && stop_pf "$name"
   done

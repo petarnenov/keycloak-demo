@@ -166,6 +166,12 @@ patches:
                     valueFrom: { configMapKeyRef: { name: app-urls, key: P1_AUTHZ_URL } }
                   - name: APP_P1_INITIATE_SLO_URL
                     valueFrom: { configMapKeyRef: { name: app-urls, key: APP_P1_INITIATE_SLO_URL } }
+                  # Dev-safe logout fallback: with no id_token to hint KC, land the
+                  # user on their own SPA origin instead of the P1 SLO URL — P1 is
+                  # scaled to 0 in FE-only dev so the SLO target refuses. Prod
+                  # overlays omit this (default false) → keep the P1 single-logout.
+                  - name: APP_P1_FALLBACK_TO_SPA
+                    value: "true"
                 # Mount the mkcert dev CA so the entrypoint can import it into the
                 # JVM truststore (see token-handler/Dockerfile). The image runs
                 # non-root with a read-only rootfs (base securityContext), so it
