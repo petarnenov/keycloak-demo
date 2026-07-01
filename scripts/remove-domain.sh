@@ -82,6 +82,34 @@ if grep -q "name: web-$SLUG$" "$I" 2>/dev/null; then
   ok "ingress-app.yaml doc"
 else skip "ingress doc (absent)"; fi
 
+# 4b. portforward.sh FWDS lines (matched by the svc/ ref — no quote escaping)
+P="k8s/portforward.sh"
+if grep -qE "svc/web-$SLUG " "$P" 2>/dev/null; then
+  run "sed -i '\\#svc/web-$SLUG #d; \\#svc/bff-$SLUG #d' '$P'"; ok "portforward.sh FWDS"
+else skip "portforward.sh FWDS (absent)"; fi
+
+# 4c. docker-compose.yml services (drop the demo-<slug> + bff-<slug> block,
+# from its domain comment through the trailing blank before the next section /
+# sentinel; leaves other services and the sentinel intact).
+C="docker-compose.yml"
+if grep -qE "^  demo-$SLUG:$" "$C" 2>/dev/null; then
+  if [ "$DRY" = 1 ]; then echo "   [dry] drop demo-$SLUG + bff-$SLUG services from $C"; else
+    awk -v slug="$SLUG" '
+      function isours(l) { return (l ~ ("^  demo-" slug ":$") || l ~ ("^  bff-" slug ":$")) }
+      !skip && ($0 ~ ("^  # ---- domain: " slug " ") || $0 ~ ("^  demo-" slug ":$")) { skip=1; next }
+      skip {
+        if ($0 ~ /^  # ---- / && $0 !~ ("domain: " slug " ")) skip=0
+        else if ($0 ~ /add-domain\.sh inserts new domain services/) skip=0
+        else if ($0 ~ /^volumes:/) skip=0
+        else if ($0 ~ /^  [a-z][a-z0-9_-]*:[[:space:]]*$/ && !isours($0)) skip=0
+        if (skip) next
+      }
+      { print }
+    ' "$C" > "$C.tmp" && mv "$C.tmp" "$C"
+  fi
+  ok "docker-compose.yml services"
+else skip "docker-compose.yml services (absent)"; fi
+
 # 5. token-handler tenant — both files (compose 4sp name, K8s ConfigMap 8sp name)
 del_tenant() { # <file> <name-indent>
   local file="$1" ni="$2"
