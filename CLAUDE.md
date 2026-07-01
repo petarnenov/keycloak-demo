@@ -6,9 +6,9 @@ Survival notes for working in this repo. The **README.md** is the user-facing do
 
 ## What this is
 
-A Keycloak SSO demo with the smallest possible identity tier in front of a per-domain app stack. Each demo "product" lives under `domains/<name>/` with its own React+Vite frontend and its own Micronaut BFF; the two share only a Keycloak realm (`demo-realm`) and the SAML federation to P1.
+A Keycloak SSO demo with the smallest possible identity tier in front of a per-domain app stack. Each demo "product" lives under `domains/<name>/` with its own React+Vite frontend and its own Micronaut BFF; the two share only a Keycloak realm (`demo-realm`).
 
-There are no native users in this realm. Every login is brokered through `kc_idp_hint=p1` → SAML to P1 → first-broker-login auto-link by email → OIDC code → SPA token. Direct login on Keycloak's login screen and direct-grant against `demo-realm` are both effectively broken — there's nothing in the realm's local user store to authenticate against. That's intentional: the demo is about SAML federation, not local auth.
+Login is **direct authentication against Keycloak** — no SAML federation. Keycloak renders its own login form (the `geowealth` theme) and delegates the credential check to a **User Storage SPI** provider bundled into the custom KC image, which calls the `user-service` (a read-only Oracle DAO). On success KC issues an OIDC code → the `token-handler` exchanges it → SPA session. There are no native users in the realm's local store; users are loaded from `user-service` per login. **P1 is no longer a SAML IdP** (`identityProviders: []`); the whole `kc_idp_hint=p1` / first-broker-login flow was retired in the auth-extraction ("Phase 5"). P1 itself is now just another OIDC Relying Party of this realm. (Detailed current flows: `docs/solution-architect/v2/03-login-flows.md`.)
 
 Current domains:
 
@@ -16,8 +16,11 @@ Current domains:
 |---|---|---|---|---|---|
 | billing | `billing.geowealth.int` | 5184 | `bff-billing` | 8084 | `demo-billing-client`¹ |
 | trading | `trading.geowealth.int` | 5185 | `bff-trading` | 8085 | `demo-trading-client`¹ |
+| portfolio | `portfolio.geowealth.int` | 5186 | `bff-portfolio` | 8086 | (shared)¹ |
 
-¹ The per-domain clients still exist in the realm but are **vestigial** — the actual login/OIDC code flow now runs through the **one shared `demo-shared-client`** used by the multi-tenant `token-handler` (see the `token-handler/` entry under Layout). The per-domain client ids only linger in the (inert, forward-auth) data BFFs' bundled config.
+(Add/remove domains with `./scripts/add-domain.sh <slug>` / `./scripts/remove-domain.sh <slug>` — see "Adding a new domain".)
+
+¹ The per-domain clients still exist in the realm but are **vestigial** — the actual login/OIDC code flow now runs through the **one shared `demo-shared-client`** used by the multi-tenant `token-handler` (see the `token-handler/` entry under Layout). The per-domain client ids only linger in the (inert, forward-auth) data BFFs' bundled config; scaffolded domains (e.g. portfolio) use only the shared client.
 
 Each FE is a small standalone React + Vite + keycloak-js app, packaged into its own image via its own `Dockerfile` (no bind-mount). Each BFF is a standalone Micronaut module with its own `Dockerfile` and its own image.
 
@@ -28,10 +31,10 @@ Design rationale and trade-offs live in **`sso-role-mapping.md`** at the repo ro
 - **Realm role vocabulary** (`keycloak/realm-export.json#/roles/realm`):
   - Global coarse capabilities: `client`, `advisor`, `admin`.
   - Per-domain capabilities: `billing-admin`, `billing-viewer`, `trading-trader`, `trading-viewer`.
-- **`saml-role-idp-mapper` × 8** under `identityProviderMappers` (all `syncMode=FORCE`): one per role name above, value-mapped from the `roles` SAML attribute, plus one legacy transition mapper `user` → `advisor` so the current P1 `derivePocRoles` POC keeps working until P1 ships the data-driven replacement.
-- **`firmCd` is a separate claim, not a role**: `saml-user-attribute-idp-mapper` (existing) writes it as a user attribute; an `oidc-usermodel-attribute-mapper` on each OIDC client (`firm-cd-claim`) emits it as a top-level JWT claim. The BFFs read `authentication.getAttributes().get("firmCd")` for tenant scoping.
+- **Roles come from the database, not SAML.** With no SAML federation, the realm has `identityProviderMappers: []`. Realm roles are served **straight from Oracle** by the User Storage SPI: `UserModel.getRealmRoleMappings()` joins `ENTITY_ROLE_TBL` × `ROLE_TBL` (via `user-service`). The role *names* must exist in `realm-export.json#/roles/realm` so KC recognises them.
+- **`firmCd` is a separate claim, not a role**: the User Storage SPI exposes it as a user attribute (from `user-service`'s `/users/{id}/attributes`), and an `oidc-usermodel-attribute-mapper` on the OIDC client (`firm-cd-claim`) emits it as a top-level JWT claim. The BFFs read `authentication.getAttributes().get("firmCd")` for tenant scoping.
 - **BFF gating uses `@Secured` with the per-domain capability roles** plus the global escape hatches (`advisor`/`admin` for trading, just `admin` for billing) — see `BillingController.java` / `TradingController.java`. `application.yml` keeps `/api/** -> isAuthenticated()` as a defence-in-depth floor.
-- **Adding a new capability role** = add to `realm-export.json#/roles/realm`, add a matching `saml-role-idp-mapper` (value → role, FORCE), and on a running stack POST the role + mapper via admin API (realm import is `IGNORE_EXISTING`).
+- **Adding a new capability role** = add to `realm-export.json#/roles/realm` (so KC knows the name) and grant it in the DB (`ROLE_TBL` / `ENTITY_ROLE_TBL`); on a running stack POST the role via admin API (realm import is `IGNORE_EXISTING`). No IdP mapper needed anymore.
 
 ## Layout
 
@@ -39,11 +42,13 @@ Design rationale and trade-offs live in **`sso-role-mapping.md`** at the repo ro
 - `domains/<name>/bff/` — the **data** BFF. Per-domain Micronaut module (own Gradle build, own fat-jar, separate image). Holds only domain-specific bits: the `<Domain>Controller` + `DemoAuthz` ObjectType codes + `application.yml`. **Auth-unaware (forward-auth):** the controller reads identity from the `X-Auth-*` headers (`HeaderIdentity`) that nginx injects after the token-handler's `/auth/verify` — it has no `@Secured`, resolves no session, runs no token refresh. Its `/api/**` is `isAnonymous` (nginx gates it). The only authz it runs is the Tier-3 list `refine` (filters its own data rows, via the access token forwarded in a header).
 - `bff-core/` — shared BFF library (`io.micronaut.library`, package `demo.bff.core`). The auth/session/logout plumbing: `TokenRefreshFilter`, `AuthController`, `BackchannelLogoutController`, `LogoutTokenValidator`, `KeycloakAuthenticationMapper`, `RotatingSessionLoginHandler`, `SidSessionRegistry`, `P1AuthzClient`, `IdpHintFilter`, the shared `Bff` main, plus `Tier23Gate` / `AuthClaims`. Pulled via a **Gradle composite build** (`includeBuild('../../../bff-core')` for domain BFFs, `../bff-core` for the token-handler) and bundled into each shadow jar. A `bff-core` change is compiled into **every** consumer, so each needs a rebuild — **but** the active auth flow runs in the **token-handler** (see below), so a shared-auth fix is deployed by rebuilding the token-handler image alone; the domain BFFs hold a now-dormant copy. When a domain moves to its own repo, `includeBuild` becomes a registry coordinate (`demo.bff:bff-core:…`).
 - `token-handler/` — the **extracted shared auth service** (industry-standard BFF/Token Handler as a separate runtime). It IS `bff-core` with no domain controller (`mainClass = demo.bff.core.Bff`), built into one **generic, env-driven image**. **Multi-tenant: ONE instance fronts EVERY domain** (compose service `token-handler`). It uses **one shared OIDC client `demo-shared-client`** (redirect_uri derived per-host from the proxied request) and **one session cookie `GWSESSION`** — cookies are host-scoped, so `billing.geowealth.int` and `trading.geowealth.int` get distinct cookies under the same name. Per-domain authorization is resolved by the request `Host` from the `app.tenants.*` map in `token-handler/application.yml` (`SubdomainRequirements` / `SubdomainAuthorizer`). **It owns ALL auth: login, callback, `/auth/me`, `/auth/logout`, `/backchannel-logout`, token refresh, Redis sessions, AND the per-request authorization decision (`GET /auth/verify`).** Forward-auth: nginx (in each web container) routes `/(oauth|auth)/` + `/logout` here, and for `/api/<name>` it runs an `auth_request` against `/auth/verify` (forwarding the original host as `X-Forwarded-Host` so the handler picks the right tenant; it validates + refreshes the session, runs coarse + the per-host Tier-2 gate) → on 200 it copies the returned `X-Auth-*` identity onto the upstream request and **drops the session cookie**, then proxies to `bff-<name>`. So **the domain BFFs are fully auth-unaware**: no session, no token refresh, no security filters — they read identity from the `X-Auth-*` headers (`HeaderIdentity`) and only serve data + the Tier-3 list `refine` (which filters the domain's own rows). Net effect: **every shared-auth fix → redeploy the one token-handler image only**; the domain data apps are untouched and users are not logged out (sessions live in Redis). `demo-shared-client`'s `backchannel.logout.url` points at the single `token-handler`. **Adding a domain = one `app.tenants.<slug>` entry + its host on `demo-shared-client`, not a new instance.** See `token-handler-plan.md` and `k8s/README-multitenant-k8s-plan.md`.
-- `keycloak/realm-export.json` — `demo-realm` seed: the OIDC clients (`demo-shared-client` — the multi-tenant login client — plus the now-vestigial per-domain `demo-billing-client`/`demo-trading-client` and `p1-self-client`), the `p1` SAML IdP (with embedded signing certificate), the SAML attribute mappers (email/firstName/lastName/firmCd/roles), the `p1-first-broker-login` flow.
-- `docker-compose.yml` — services: `postgres`, `redis` (shared BFF/token-handler session + sid store, B2), `keycloak` (stock `quay.io/keycloak/keycloak:26.0.7`), **one** `token-handler` (multi-tenant auth, fronts all domains), and per domain: `demo-<name>` (web) + `bff-<name>` (data).
+- `user-service/` — a small standalone Micronaut service: a **read-only Oracle DAO** behind Keycloak's User Storage SPI (`GET /users/...`, `/users/{id}/attributes`, `/roles`, credential verify). Stateless; horizontally scaled via replicas. This is the identity source that replaced the SAML federation. Its own `Dockerfile` / image.
+- `keycloak-providers/` — the custom KC extensions baked into the Keycloak image: `user-storage-spi` (the provider that calls `user-service` for lookup + credential check + roles + `firmCd`) and `email-otp-authenticator`.
+- `keycloak/realm-export.json` — `demo-realm` seed: the OIDC clients (`demo-shared-client` — the multi-tenant login client — plus the now-vestigial per-domain `demo-billing-client`/`demo-trading-client` and `p1-client`), the OIDC protocol mappers (`firm-cd-claim`, person-id, memberships, roles), and the `org.keycloak.storage.UserStorageProvider` component pointing at `user-service`. **No `identityProviders` and no SAML mappers** — both empty since auth-extraction.
+- `docker-compose.yml` — services: `postgres`, `redis` (shared BFF/token-handler session + sid store, B2), `keycloak` (**custom image `keycloak-demo-keycloak:latest` built from `Dockerfile.keycloak`** = stock KC 26.0.7 + the `keycloak-providers/*` SPIs + `geowealth` theme), `user-service` (User Storage SPI backend), **one** `token-handler` (multi-tenant auth, fronts all domains), and per domain: `demo-<name>` (web) + `bff-<name>` (data).
 - `start.sh` / `stop.sh` — canonical entrypoints. Auto-detect docker vs podman, source `.envrc`, tear down (volumes preserved by default), rebuild, bring everything back up. `./start.sh --reset` and `./stop.sh --wipe` are the only opt-in destructive paths.
 
-The P1 sidebar that links into these domains lives **outside** this repo, in `~/geowealth/WebContent/react/app/src/pages/PlatformOne/sidebar/_hooks/useIntegrationLinks.js`. Each domain gets a `links.push(...)` with the Keycloak authorize URL + `kc_idp_hint=p1` + `redirect_uri` pointing at the domain SPA.
+The P1 sidebar that links into these domains lives **outside** this repo, in `~/geowealth/WebContent/react/app/src/pages/PlatformOne/sidebar/_hooks/useIntegrationLinks.js`. Each domain gets a `links.push(...)` pointing at the domain SPA (which bounces through the `token-handler`'s `/oauth/login/keycloak`). **No `kc_idp_hint`** — there is no IdP to hint at; the flow lands on Keycloak's local login form directly.
 
 ## Adding a new domain
 
@@ -109,16 +114,15 @@ that file:
   (The data BFFs are forward-auth/auth-unaware, so their KC env is inert and left
   hardcoded.)
 - **the realm** — `scripts/reconcile-realm.sh <env-file>` PATCHes the live realm
-  via the admin API: the `p1` SAML IdP `singleSignOn/singleLogoutServiceUrl` and
-  every active client's (`demo-shared-client`, `p1-self-client`) redirectUris /
-  webOrigins / post-logout / back-channel URLs. This exists because realm config
-  is data in Postgres and `--import-realm` is `IGNORE_EXISTING` — env vars alone
-  never re-drive a running realm. Idempotent; `up.sh` runs it after bring-up
-  (via a short-lived in-cluster admin port-forward), so it fixes BOTH a fresh
-  install and any drift. **Single-valued realm fields like the IdP SAML URL can't
-  list both compose `:8888` and K8s `:8080`, which is exactly why hand-patching
-  them used to drift — always change `urls.<env>.env` + reconcile, never the live
-  realm by hand.**
+  via the admin API: every active client's (`demo-shared-client`, `p1-client`)
+  redirectUris / webOrigins / post-logout / back-channel URLs. **It no longer
+  touches any `identityProviders` block — there are none** (SAML retired). This
+  exists because realm config is data in Postgres and `--import-realm` is
+  `IGNORE_EXISTING` — env vars alone never re-drive a running realm. Idempotent;
+  `up.sh` runs it after bring-up (via a short-lived in-cluster admin port-forward),
+  so it fixes BOTH a fresh install and any drift. **Single-valued per-env fields
+  can't list both compose `:8888` and K8s `:8080` — always change `urls.<env>.env`
+  + reconcile, never the live realm by hand.**
 
 `up.sh` also injects a hostAlias mapping the browser-facing `auth.geowealth.int`
 to the in-cluster `kc-ext` Service so the token-handler can do OIDC discovery
@@ -280,39 +284,40 @@ workloads up/down without a redeploy; **run-profiles** freeze a chosen shape so
 
 | Lives in | Persists across | Wiped only by |
 |---|---|---|
-| Keycloak realms, federated identities, sessions, live admin-API edits | `docker compose restart`, `docker compose down` + `up`, `./start.sh`, `./stop.sh` then `./start.sh`, image rebuild + `--force-recreate` | `docker compose down -v`, **`./start.sh --reset`**, or **`./stop.sh --wipe`** |
+| Keycloak realm config, sessions/tokens, live admin-API edits | `docker compose restart`, `docker compose down` + `up`, `./start.sh`, `./stop.sh` then `./start.sh`, image rebuild + `--force-recreate` | `docker compose down -v`, **`./start.sh --reset`**, or **`./stop.sh --wipe`** |
 | Postgres data backing all of the above | same | same |
 | `keycloak/data` (import sources, KeyStore, exported state) | same | same |
 
 Practical consequences:
 
-- **A SAML-brokered login through P1 writes a federated identity to Keycloak's Postgres on first sign-in.** That identity survives every routine `restart` / `down+up` / image rebuild. The next time the same P1 user lands on the broker flow, Keycloak finds the existing record and skips first-broker-login.
+- **Users are NOT stored in Keycloak's Postgres.** With the User Storage SPI, KC holds no native/federated user records — every login re-reads the user from `user-service` (Oracle), caching per the SPI's eviction policy. So "who exists" survives because it lives in Oracle, not KC. What KC's Postgres persists is realm config + live sessions/tokens (which is why `down` without `-v` keeps you logged in).
 - **`./start.sh` and `./stop.sh` are non-destructive.** Both run `down` (without `-v`) so the Postgres volume stays in place.
 
 ## Non-obvious runtime gotchas
 
-- **Realm imports are `IGNORE_EXISTING`.** `--import-realm` only seeds an empty Postgres. To apply a `realm-export.json` edit on a running stack, either `./start.sh --reset` (destructive) or change the live realm via admin API (fast, preserves federated identities).
+- **Realm imports are `IGNORE_EXISTING`.** `--import-realm` only seeds an empty Postgres. To apply a `realm-export.json` edit on a running stack, either `./start.sh --reset` (destructive) or change the live realm via admin API (fast, preserves live sessions).
 - **The `p1` IdP `signingCertificate` is baked into `realm-export.json`.** It must match the certificate P1's Tomcat presents when signing SAML Responses. If the dev keystore is regenerated on the P1 side, paste the new cert (DER, base64) into the realm export and either reset or update via admin API.
 - **P1's SAML signing keystore lives at `/tmp/p1-idp-dev.p12`** (Tomcat env `P1_IDP_KEYSTORE_PATH`). macOS wipes `/tmp` on reboot. Recovery is one script: `./scripts/sso-dev-keystore.sh` regenerates the PKCS#12 at the same path **and** rotates the public cert in the live realm's `p1` IdP via admin API in one go. The previous IdP config is backed up to `/tmp/kc-p1-idp.before-rotation.json` for rollback. **B5 fix:** `AbstractSamlAuthenticationResponseBuilder` now caches the signing `Credential` and reloads only when the keystore file's **mtime changes** (no longer a per-request disk read). So hot rotation still needs no Tomcat restart (rewriting the file → mtime change → reload), and once the credential is loaded a `/tmp` wipe **no longer** breaks signing mid-run — it keeps using the cached key until the next restart. (A wipe before the first signature still 500s; run the recovery script to repopulate the file.)
 - **All BFFs run as baked fat jars.** Each domain BFF is built once into its own image (`<domain>/bff/Dockerfile`) using the `com.gradleup.shadow` plugin → `eclipse-temurin:17-jre` base. PID 1 is `java -jar /app/<svc>.jar`; no source tree, no Gradle cache, no bind mount. A source edit needs a `--build --force-recreate`.
 - **Shadow plugin is declared explicitly in every BFF's `build.gradle.kts`.** Micronaut 4.4's application plugin doesn't register `shadowJar` on its own — each BFF adds `id("com.gradleup.shadow") version "8.3.5"` so `gradle shadowJar` produces `build/libs/*-all.jar` for the Dockerfile to copy.
-- **Keycloak runs the stock image — no custom SPIs.** Compose uses `quay.io/keycloak/keycloak:26.0.7` directly. Any change that wants a SPI would need a fresh `Dockerfile.keycloak` and a `build.context` in compose.
+- **Keycloak runs a CUSTOM image** (`keycloak-demo-keycloak:latest`, built from `Dockerfile.keycloak` = stock KC 26.0.7 + the `keycloak-providers/*` extensions + `geowealth` theme). A change to `user-storage-spi`, `email-otp-authenticator`, or the theme needs a KC image rebuild (`docker compose build keycloak` / `./k8s/up.sh` rebuilds it), not just a realm edit.
 - **Keycloak's admin API is at `https://auth.geowealth.int:5180`.** Get a token at `/realms/master/protocol/openid-connect/token` with `client_id=admin-cli&grant_type=password&username=admin&password=admin`. Admin endpoints live under `/admin/realms/demo-realm/...`. The `auth` nginx terminates TLS and proxies to `keycloak:8080` inside the docker network — Keycloak itself is no longer exposed on the host. `KC_HOSTNAME=https://auth.geowealth.int:5180` makes Keycloak emit consistent issuer / broker URIs.
 - **`keycloak-js` must be ≥ 26.x.** Older versions validate a `nonce` claim that Keycloak 26 no longer emits.
 - **Domain hosts need HTTPS.** keycloak-js v26 uses `crypto.subtle`, which the browser only exposes in secure contexts: HTTPS, or the loopback hostnames `localhost`/`127.0.0.1`. A custom hostname like `billing.geowealth.int` resolves to 127.0.0.1 via `/etc/hosts`, but the browser classifies secure-context by hostname literal, not resolved IP — so plain `http://billing.geowealth.int:5184` is NOT secure and `crypto.subtle` is `undefined` there. Each domain serves HTTPS via Vite preview with mkcert-issued certs at `proxy/certs/<name>.geowealth.int.{crt,key}`. Generate with `mkcert -cert-file proxy/certs/<name>.geowealth.int.crt -key-file proxy/certs/<name>.geowealth.int.key <name>.geowealth.int localhost 127.0.0.1`.
-- **P1 credential login mints a KC session via a post-login "establish round-trip"** (Gap 6). On `loginPassword` success in `appService.js`, React unconditionally redirects to `/saml/idp/silent-sso.do?establish=true&return_to=%2F`; `SilentSsoAction` then drives KC's authorize endpoint with `kc_idp_hint=p1` (and **no** `prompt=none`), so KC SAML-brokers back to the just-authenticated P1 session and creates a KC session for `p1-self-client`. **Loop prevention is server-side only** (`SilentSsoAction.SESSION_KEY_ESTABLISH_DONE` on the P1 `HttpSession`); a previous attempt at a client-side `sessionStorage.kc_sso_established` guard was removed after a stale flag on a long-lived tab silently suppressed the round-trip across re-logins. The server flag is cleared automatically when the HttpSession is invalidated (logout, idle), so a fresh login always gets a fresh attempt. Debug surface: `grep "establish(kc_idp_hint=p1)" catalina.out` should show one line per P1 credential login; if absent, no KC session is being minted.
-- **The `silent_failed=1` loop guard in `appService.checkUserLoggedIn` treats a user reload as a retry signal.** `silentFailed = hash.includes('silent_failed=1') && !isUserReload`, where `isUserReload = performance.getEntriesByType('navigation')[0]?.type === 'reload'`. App-initiated `window.location.replace(...)` produces `navigate`, not `reload`, so the loop guard still fires for app bounces — only a genuine F5 / Cmd-R counts as a retry. End-to-end coverage lives in `e2e/tests/p1-relogin-silent-recovery.spec.ts`.
+- **The SAML "establish round-trip" (Gap 6) is RETIRED.** It used to mint a KC session after P1 credential login by driving `kc_idp_hint=p1`; with no SAML IdP that flow is gone. P1 is now an OIDC RP and gets its KC session by the normal OIDC code flow. Ignore any lingering `/saml/idp/silent-sso.do` / `SilentSsoAction` references — they map only Tier-2/3 authz endpoints now.
 - **BFF `/auth/logout` is idempotent** (`bff-core/AuthController.java`): `@Secured(IS_ANONYMOUS)` with `@Nullable Authentication`. A double-click, an already-expired session, or a back-channel race no longer surfaces as `401 Unauthorized` — the controller does best-effort KC end-session + session delete + SID invalidate + `303 See Other` to the P1 SLO redirect regardless of caller auth state. Both BFFs need a rebuild for the change to land (composite build bundles `bff-core` per image).
 
-## P1 SAML federation flow
+## Login flow (current — no SAML)
 
-1. Entry point (either): user clicks a P1/Integrations sidebar link, OR the SPA's `keycloak.init({ onLoad: 'check-sso' })` finds no session and fires `keycloak.login({ idpHint: 'p1' })`. Both build the same URL: `https://auth.geowealth.int:5180/realms/demo-realm/protocol/openid-connect/auth?client_id=demo-<name>-client&response_type=code&scope=openid&redirect_uri=https://<name>.geowealth.int:518X/&kc_idp_hint=p1&state=…`.
-2. Keycloak sees `kc_idp_hint=p1`, skips its own login screen, emits a SAML AuthnRequest to P1's `/saml/idp/sso.do`.
-3. P1's `IdpSsoAction` parses the AuthnRequest ID, reads the active P1 session, builds a signed Response with `InResponseTo=ID`, posts back to Keycloak's broker endpoint.
-4. Keycloak correlates by `InResponseTo`, runs first-broker-login (auto-link by email, silent), issues an OIDC code, redirects to `redirect_uri` (the domain SPA).
-5. The SPA's `AuthProvider` picks up the code, exchanges it for a token, and renders the dashboard.
+The SAML federation to P1 was retired in the auth-extraction. Current flow:
 
-Pure IdP-init (P1 → Keycloak with unsolicited Response) does **not** work cleanly against an OIDC client target in Keycloak. The `/endpoint` path needs SP-init correlation, and the `/endpoint/clients/{id}` variant requires SAML protocol clients. SP-init via `kc_idp_hint` is the supported flow.
+1. The SPA hits a protected route; nginx forward-auth / `token-handler` finds no `GWSESSION` and redirects to `token-handler` `/oauth/login/keycloak` (a silent `?silent=1` attempt first, then interactive).
+2. `token-handler` starts an OIDC authorization-code + PKCE flow against `demo-shared-client`. **No `kc_idp_hint`** — Keycloak renders its own login form (the `geowealth` theme).
+3. User submits username + password. Keycloak's auth flow calls the **User Storage SPI**, which calls `user-service` for the lookup + credential check (+ roles + `firmCd`). No native realm users, no SAML, no first-broker-login.
+4. On success KC issues an OIDC code; `token-handler` exchanges it (at the callback), mints the `GWSESSION` (Redis-backed), and the SPA renders.
+5. `/api/**` calls go through nginx `auth_request` → `token-handler` `/auth/verify` (coarse + per-host Tier-2 gate) → `X-Auth-*` headers onto the auth-unaware data BFF.
+
+Full detail + logout/back-channel + P1's own OIDC RP flow: `docs/solution-architect/v2/03-login-flows.md` and `04-logout-flows.md`.
 
 ## Applying changes — what needs what
 
@@ -328,7 +333,7 @@ Pure IdP-init (P1 → Keycloak with unsolicited Response) does **not** work clea
 | Bring up only part of the K8s stack | `./k8s/up.sh --profile <name>` — applies the full overlay then scales to the saved profile (`k8s/profiles/<name>.profile`, from `toggle.sh save`); everything the profile excludes is scaled to 0 and the wave-wait skips it. Fails fast on an unknown profile. See "Dev: selective bringup". |
 | Env var on a service | `podman compose up -d --force-recreate <service>` |
 | `docker-compose.yml` structural change | `podman compose up -d` (compose picks up the diff) |
-| `keycloak/realm-export.json` | takes effect on fresh DB only; otherwise patch the live realm via admin API. For env-specific URLs (IdP SAML endpoints, client redirect/web-origin/post-logout/back-channel), edit `k8s/env/urls.<env>.env` and run `./scripts/reconcile-realm.sh k8s/env/urls.<env>.env` (idempotent; `up.sh` runs it automatically). |
+| `keycloak/realm-export.json` | takes effect on fresh DB only; otherwise patch the live realm via admin API. For env-specific URLs (client redirect/web-origin/post-logout/back-channel), edit `k8s/env/urls.<env>.env` and run `./scripts/reconcile-realm.sh k8s/env/urls.<env>.env` (idempotent; `up.sh` runs it automatically). |
 | A URL or port that differs per environment (K8s) | edit `k8s/env/urls.<env>.env` (the single source) — see "Environment URL configuration (K8s)" below. No code / image / realm-export edit. |
 | Pointing K8s at an external Oracle / Elasticsearch (different machine) | edit `k8s/env/data-tier.<env>.env` and re-run `./k8s/up.sh` — see "Data-tier endpoint config (K8s)" below. |
 | New realm role needed for a running demo | POST `/admin/realms/demo-realm/roles` with admin token; also add to `realm-export.json` for future fresh installs |
