@@ -213,6 +213,40 @@ followed by heap exhaustion in the boot path. Boot against a real DB also
 takes longer (~2 min for `devcommonagents` cache pre-load) — wait for
 `Looks like we are UP to the cluster` in its logs before probing the page.
 
+## Dev: selective bringup — `toggle.sh` + run-profiles
+
+On a laptop you rarely need the whole stack. `k8s/toggle.sh` scales groups of
+workloads up/down without a redeploy; **run-profiles** freeze a chosen shape so
+`up.sh` can reproduce it. Full detail in
+[`k8s/README-dev-selective-bringup.md`](k8s/README-dev-selective-bringup.md).
+
+```bash
+./k8s/toggle.sh status              # replicas + HPA per workload
+./k8s/toggle.sh <group> up|down     # scale a group
+./k8s/toggle.sh save <name>         # snapshot current cluster → k8s/profiles/<name>.profile
+./k8s/toggle.sh apply <name>        # scale back to a saved profile
+./k8s/up.sh --profile <name>        # bring up ONLY that profile's workloads (0 for the rest)
+```
+
+- **Groups:** `p1` (coordinator + tomcat + agents), `agents`, `authz-min`
+  (tomcat + coordinator + devcommonagents = the domain `/api` gate), `identity`,
+  `data`, and **live-discovered domains** — bare `<slug>`, `web:<slug>`,
+  `bff:<slug>`, `agent:<name>`. Domains are read from the cluster (`web-*`/`bff-*`
+  Deployments), so a new domain needs no script edit.
+- **Login needs zero P1** (P1 is not in the auth path since Phase 5 — see
+  `README-dev-selective-bringup.md`): scale the whole `legacy` tier to 0 and you
+  can still log into the domains; P1 only re-enters for the domain `/api` Tier-2
+  gate and the legacy P1 UI. Biggest laptop-RAM win.
+- **HPA caveat:** `token-handler` / `user-service` / `p1-tomcat` have HPAs and
+  stock K8s rejects `minReplicas: 0`, so "off" **deletes the HPA** and scales to
+  0; `up.sh` re-creates it. toggle/profiles handle this for you.
+- **Profiles are local state** (`k8s/profiles/*.profile`, gitignored) and are
+  tied to the data-tier mode they were saved under (e.g. a profile saved with
+  external Oracle carries `oracle 0`; don't `apply` it after switching to
+  in-cluster Oracle). `up.sh --profile` applies the full overlay first (every
+  object exists) then scales to the profile, and the wave-wait skips anything at
+  0.
+
 ## Persistence model — what survives a restart
 
 | Lives in | Persists across | Wiped only by |
