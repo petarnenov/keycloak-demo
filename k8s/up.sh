@@ -189,10 +189,14 @@ docker build -t keycloak-demo-db:seeded -f db/Dockerfile db
 docker build -t keycloak-demo-token-handler:latest -f token-handler/Dockerfile .
 docker build -t keycloak-demo-user-service:latest  -f user-service/Dockerfile .
 docker build -t keycloak-demo-keycloak:latest      -f Dockerfile.keycloak .
-docker build -t keycloak-demo-billing-bff:latest   -f domains/billing/bff/Dockerfile .
-docker build -t keycloak-demo-trading-bff:latest   -f domains/trading/bff/Dockerfile .
-docker build -t keycloak-demo-billing-web:latest   -f domains/billing/web/Dockerfile .
-docker build -t keycloak-demo-trading-web:latest   -f domains/trading/web/Dockerfile .
+# Every domain under domains/* with a bff+web Dockerfile pair (billing, trading,
+# and anything scaffolded by scripts/add-domain.sh) — no per-domain edit needed.
+for d in domains/*/; do
+  s="$(basename "$d")"
+  [ -f "${d}bff/Dockerfile" ] && [ -f "${d}web/Dockerfile" ] || continue
+  docker build -t "keycloak-demo-$s-bff:latest" -f "${d}bff/Dockerfile" .
+  docker build -t "keycloak-demo-$s-web:latest" -f "${d}web/Dockerfile" .
+done
 # P1 image (heavy — gradle devClasses). Skip if the geowealth repo isn't present.
 if [ -d "${GEOWEALTH_DIR:-$HOME/geowealth}" ]; then
   log "Building P1 (geowealth) image — heavy"
@@ -221,8 +225,12 @@ load_tls() { # <secret> <crt> <key>
     --dry-run=client -o yaml | kc apply -f - || echo "  (skip $1: certs absent)"
 }
 log "Loading mkcert TLS Secrets"
-load_tls web-billing-tls proxy/certs/billing.geowealth.int.crt proxy/certs/billing.geowealth.int.key
-load_tls web-trading-tls proxy/certs/trading.geowealth.int.crt proxy/certs/trading.geowealth.int.key
+# One web-<slug>-tls Secret per domain, from proxy/certs/<host>.{crt,key}.
+for d in domains/*/; do
+  s="$(basename "$d")"
+  [ -f "${d}bff/Dockerfile" ] || continue
+  load_tls "web-$s-tls" "proxy/certs/$s.geowealth.int.crt" "proxy/certs/$s.geowealth.int.key"
+done
 load_tls auth-tls        proxy/certs/auth.geowealth.int.crt    proxy/certs/auth.geowealth.int.key
 load_tls p1-tls          proxy/certs/billing.geowealth.int.crt proxy/certs/billing.geowealth.int.key
 if [ -f /tmp/p1-idp-dev.p12 ]; then
@@ -347,10 +355,12 @@ wait_ready deployment/p1-samlmanager 300s || true
 wait_ready deployment/p1-tomcat 600s || true
 # Wave 4: auth + data + web
 wait_ready deployment/token-handler 180s
-wait_ready deployment/bff-billing 180s
-wait_ready deployment/bff-trading 180s
-wait_ready deployment/web-billing 120s
-wait_ready deployment/web-trading 120s
+for d in domains/*/; do
+  s="$(basename "$d")"
+  [ -f "${d}bff/Dockerfile" ] || continue
+  wait_ready "deployment/bff-$s" 180s
+  wait_ready "deployment/web-$s" 120s
+done
 
 # --- 4.5 env-driven URL reconcile -------------------------------------------
 # Everything URL/port-specific lives in k8s/env/urls.<env>.env (single source).
