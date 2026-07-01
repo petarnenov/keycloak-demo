@@ -213,6 +213,35 @@ followed by heap exhaustion in the boot path. Boot against a real DB also
 takes longer (~2 min for `devcommonagents` cache pre-load) — wait for
 `Looks like we are UP to the cluster` in its logs before probing the page.
 
+**Switching in-cluster ↔ external — the recipe + the gotchas.** Edit
+`k8s/env/data-tier.dev.env` and re-run `./k8s/up.sh` — that's the whole switch;
+everything else is derived. **The dev default is now in-cluster** (`ORACLE_HOST=oracle`,
+`ORACLE_PDB=FREEPDB1` — the baked seeded image), so a fresh clone is self-contained.
+
+- **In-cluster:** `ORACLE_HOST=oracle`, `ORACLE_PDB=FREEPDB1`. `up.sh` runs the
+  in-cluster seeded StatefulSet; creds fall back to the baked `gp/gp123`.
+- **External:** `ORACLE_HOST=<host-or-ip>`, `ORACLE_PDB=<its PDB, e.g. ORCL12VM>`,
+  and `ORACLE_PASSWORD='…' ./k8s/up.sh`. **The PDB must match the mode** — an
+  in-cluster `ORCL12VM` or an external `FREEPDB1` won't connect.
+- **PDB/host mismatch symptom:** `user-service` (and P1) `CrashLoopBackOff` with
+  `ORA-12170` / `T4CConnection.logon`. After a mode switch, if a consumer keeps
+  crashlooping on the *old* endpoint, `kubectl -n geowealth-demo rollout restart
+  deploy/user-service` (up.sh restarts the P1 consumers automatically but a
+  stuck pod may need a manual nudge). Verify with the pod's `/health` → `{"status":"UP"}`.
+- **External by IP** (not DNS): the `oracle` Service becomes a **ClusterIP with a
+  manual EndpointSlice** pointing at the IP, NOT `ExternalName` — CoreDNS rejects
+  an IP literal in `externalName`. (`up.sh` picks the right form.)
+- **minikube can't reach a LAN host the *host* can't.** An external
+  `192.168.1.42` must be reachable from inside the minikube node, not just from
+  your machine — test `minikube -p geowealth ssh -- nc -z <ip> <port>`. If the
+  box is off/unroutable you'll see `ORA-12170` timeouts even though the wiring is
+  correct; the fix is the DB host, not the cluster.
+- **Run-profiles are tied to the data-tier mode they were saved under.** A
+  profile saved in external mode carries `statefulset/oracle 0`; applying it (or
+  `up.sh --profile <it>`) after switching to in-cluster Oracle keeps oracle at 0
+  → login breaks because `user-service` has no DB. Re-save the profile (or edit
+  the `oracle` line to `1`) after switching modes.
+
 ## Dev: selective bringup — `toggle.sh` + run-profiles
 
 On a laptop you rarely need the whole stack. `k8s/toggle.sh` scales groups of
