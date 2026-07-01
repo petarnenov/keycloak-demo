@@ -19,10 +19,14 @@
 #   --cookie NAME       BFF session cookie name    (default: <FirstLetterUpper>SESSION)
 #   --force             overwrite an existing domains/<slug>
 #   --no-hosts          don't touch /etc/hosts (just print the line)
+#   --no-deploy         scaffold + wire only; skip the image build / live apply
 #
-# After it runs, build + deploy with the commands it prints (image build +
-# ./k8s/up.sh, or docker compose). The realm patch lands in realm-export.json
-# (fresh installs) AND is applied live via reconcile-realm.sh if a cluster is up.
+# Deploy behaviour (unless --no-deploy):
+#   - minikube cluster UP  → builds keycloak-demo-<slug>-{web,bff} into minikube,
+#     applies the new manifests + ingress + tenant ConfigMap, restarts the
+#     token-handler, reconciles the realm — the domain comes up live.
+#   - cluster DOWN         → just wires the files; the next ./k8s/up.sh (which is
+#     domain-generic) builds + deploys the new domain automatically.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -36,7 +40,7 @@ SLUG="${1:-}"; shift || true
 [[ "$SLUG" =~ ^[a-z][a-z0-9]*$ ]] || die "slug must match [a-z][a-z0-9]* (no hyphens — it becomes a Java package)"
 
 WEB_PORT=""; BFF_HOST_PORT=""; OBJECT_TYPE="59"; PERMISSION="5"; TENANT_TYPE="resource"
-COOKIE=""; FORCE=0; TOUCH_HOSTS=1; FIRM_CD="1"
+COOKIE=""; FORCE=0; TOUCH_HOSTS=1; FIRM_CD="1"; DEPLOY=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --web-port)    WEB_PORT="$2"; shift 2 ;;
@@ -48,6 +52,7 @@ while [ $# -gt 0 ]; do
     --cookie)      COOKIE="$2"; shift 2 ;;
     --force)       FORCE=1; shift ;;
     --no-hosts)    TOUCH_HOSTS=0; shift ;;
+    --no-deploy)   DEPLOY=0; shift ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -351,20 +356,56 @@ else
   echo "   (skipped /etc/hosts — add:  127.0.0.1 $HOST)"
 fi
 
+# --- 12. build images + deploy live (if the minikube cluster is up) ---------
+# Cluster UP  → build the two images into minikube's docker, apply the new
+#               manifests + ingress + tenant ConfigMap, restart token-handler,
+#               and reconcile the realm so login redirects to the new host work.
+# Cluster DOWN → nothing to build now; the files are wired, and the next
+#               ./k8s/up.sh (now domain-generic) builds + deploys $SLUG.
+MK_PROFILE="${MINIKUBE_PROFILE:-geowealth}"
+DEPLOYED=0
+if [ "$DEPLOY" = 1 ] && command -v minikube >/dev/null 2>&1 && minikube -p "$MK_PROFILE" status >/dev/null 2>&1; then
+  info "Cluster '$MK_PROFILE' is up — building images + deploying $SLUG live"
+  eval "$(minikube -p "$MK_PROFILE" docker-env)"
+  ( docker build -t "keycloak-demo-$SLUG-bff:latest" -f "domains/$SLUG/bff/Dockerfile" . \
+    && docker build -t "keycloak-demo-$SLUG-web:latest" -f "domains/$SLUG/web/Dockerfile" . ) \
+    && ok "built keycloak-demo-$SLUG-{web,bff}:latest" || echo "   (image build failed — check Dockerfiles)"
+  eval "$(minikube -p "$MK_PROFILE" docker-env -u)"
+
+  kubectl -n geowealth-demo apply -f "k8s/base/web-$SLUG.yaml" -f "k8s/base/bff-$SLUG.yaml" >/dev/null && ok "applied web-$SLUG + bff-$SLUG"
+  kubectl -n geowealth-demo apply -f k8s/base/ingress-app.yaml >/dev/null 2>&1 && ok "applied ingress"
+  # Only the ConfigMap doc (first in the file) — avoid re-applying the Secrets after it.
+  awk 'BEGIN{p=1} /^---[[:space:]]*$/{p=0} p' k8s/base/token-handler-config.yaml \
+    | kubectl -n geowealth-demo apply -f - >/dev/null 2>&1 && ok "updated token-handler tenants ConfigMap"
+  kubectl -n geowealth-demo rollout restart deploy/token-handler >/dev/null 2>&1 && ok "restarted token-handler (new tenant)"
+  # Realm redirect/webOrigin/post-logout for the new host (live realm via admin API).
+  if [ -x scripts/reconcile-realm.sh ]; then
+    kubectl -n geowealth-demo port-forward svc/keycloak 18080:8080 >/dev/null 2>&1 &
+    _pf=$!; sleep 3
+    KC_ADMIN_BASE="http://localhost:18080" ./scripts/reconcile-realm.sh k8s/env/urls.dev.env >/dev/null 2>&1 \
+      && ok "reconciled realm URLs" || echo "   (realm reconcile skipped/failed — run it manually)"
+    kill "$_pf" 2>/dev/null || true
+  fi
+  kubectl -n geowealth-demo rollout status "deploy/bff-$SLUG" --timeout=150s >/dev/null 2>&1 && ok "bff-$SLUG ready" || echo "   (bff-$SLUG not ready yet — kubectl get pods)"
+  kubectl -n geowealth-demo rollout status "deploy/web-$SLUG" --timeout=120s >/dev/null 2>&1 && ok "web-$SLUG ready" || echo "   (web-$SLUG not ready yet)"
+  DEPLOYED=1
+elif [ "$DEPLOY" = 1 ]; then
+  info "Cluster '$MK_PROFILE' not running — files wired; the next ./k8s/up.sh will build & deploy $SLUG"
+fi
+
 # --- done --------------------------------------------------------------------
-info "Domain '$SLUG' scaffolded. Next:"
-cat <<NEXT
-  1. Build images:
-       docker compose build demo-$SLUG bff-$SLUG        # compose
-       # or for K8s: build keycloak-demo-$SLUG-web / -bff and load into minikube
-  2. Bring it up:
-       docker compose up -d demo-$SLUG bff-$SLUG         # compose
-       # or K8s:  ./k8s/up.sh   (applies overlay + reconcile-realm + TLS)
-  3. On a RUNNING cluster/realm, apply the realm URL change now:
-       ./scripts/reconcile-realm.sh k8s/env/urls.dev.env
-       docker compose up -d --build --force-recreate token-handler   # pick up the new tenant
-  4. Open:  https://$HOST:$WEB_PORT
-  Toggle:   ./k8s/toggle.sh $SLUG up|down   (auto-discovered)
-  Customize authz: token-handler tenant object-type=$OBJECT_TYPE / permission=$PERMISSION,
-                   and DemoAuthz.java in domains/$SLUG/bff/.
+if [ "$DEPLOYED" = 1 ]; then
+  info "Domain '$SLUG' is LIVE. Open:  https://$HOST"
+  echo "   (via ingress on the minikube IP; add '\$(minikube -p $MK_PROFILE ip) $HOST' to /etc/hosts if needed)"
+  echo "   Toggle:  ./k8s/toggle.sh $SLUG up|down"
+else
+  info "Domain '$SLUG' scaffolded. Next:"
+  cat <<NEXT
+  - K8s:      ./k8s/up.sh            # builds + deploys $SLUG (up.sh is domain-generic)
+  - Compose:  docker compose up -d --build demo-$SLUG bff-$SLUG
+              docker compose up -d --build --force-recreate token-handler   # new tenant
+              ./scripts/reconcile-realm.sh k8s/env/urls.dev.env             # realm URLs
+  - Open:     https://$HOST:$WEB_PORT      Toggle: ./k8s/toggle.sh $SLUG up|down
 NEXT
+fi
+echo "Customize authz: tenant object-type=$OBJECT_TYPE / permission=$PERMISSION (type=$TENANT_TYPE), DemoAuthz.java in domains/$SLUG/bff/."
