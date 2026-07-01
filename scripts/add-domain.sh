@@ -248,6 +248,7 @@ spec:
       containers:
         - name: bff-$SLUG
           image: keycloak-demo-$SLUG-bff:latest
+          imagePullPolicy: IfNotPresent
           ports: [{ name: http, containerPort: 8080 }]
           env:
             - name: REDIS_PASSWORD
