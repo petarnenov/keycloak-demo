@@ -35,6 +35,12 @@ const httpsConfig = (HTTPS_CERT && HTTPS_KEY)
     }
   : undefined;
 
+// Bind host. Default 0.0.0.0 (all interfaces + network HMR), but DEV_HOST lets a
+// dev run bind the vanity hostname so Vite PRINTS https://portfolio.geowealth.int:5186
+// instead of https://localhost:5186 — clicking the localhost URL breaks auth
+// (localhost is not a registered redirect_uri / token-handler tenant).
+const DEV_HOST = process.env.DEV_HOST || '0.0.0.0';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -57,7 +63,7 @@ export default defineConfig({
   },
   server: {
     port: 5186,
-    host: '0.0.0.0',
+    host: DEV_HOST,
     strictPort: true,
     https: httpsConfig,
     allowedHosts: ['localhost', '127.0.0.1', 'portfolio.geowealth.int'],
@@ -89,7 +95,7 @@ export default defineConfig({
   },
   preview: {
     port: 5186,
-    host: '0.0.0.0',
+    host: DEV_HOST,
     strictPort: true,
     https: httpsConfig,
     allowedHosts: ['localhost', '127.0.0.1', 'portfolio.geowealth.int']

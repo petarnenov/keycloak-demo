@@ -51,6 +51,7 @@ case "$TARGET" in
     free_host_port 5186
     scale_deployment web-portfolio 0
     mkcert_paths_for portfolio.geowealth.int
+    export DEV_HOST=portfolio.geowealth.int
     export DEV_FORWARD_AUTH=1
     export TOKEN_HANDLER_URL=http://127.0.0.1:9080
     export BFF_PORTFOLIO_URL=http://127.0.0.1:8086
