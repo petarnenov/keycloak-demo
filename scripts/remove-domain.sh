@@ -8,6 +8,7 @@
 #
 #   --dry-run    print what would be removed, change nothing
 #   --no-deploy  edit files only; leave the running cluster alone
+#   --no-hosts   don't touch /etc/hosts
 #   --yes        don't prompt for confirmation
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,11 +22,12 @@ SLUG="${1:-}"; shift || true
 [ -n "$SLUG" ] || die "usage: ./scripts/remove-domain.sh <slug> [--dry-run] [--no-deploy] [--yes]"
 [[ "$SLUG" =~ ^[a-z][a-z0-9]*$ ]] || die "bad slug"
 
-DRY=0; DEPLOY=1; YES=0
+DRY=0; DEPLOY=1; YES=0; TOUCH_HOSTS=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run)   DRY=1; shift ;;
     --no-deploy) DEPLOY=0; shift ;;
+    --no-hosts)  TOUCH_HOSTS=0; shift ;;
     --yes|-y)    YES=1; shift ;;
     *) die "unknown option: $1" ;;
   esac
@@ -155,5 +157,12 @@ elif [ "$DRY" = 0 ] && [ "$DEPLOY" = 1 ]; then
   skip "cluster not running — nothing live to remove"
 fi
 
+# 9. /etc/hosts line (mirror of add-domain's entry)
+if grep -qE "^[^#]*\b$HOST\b" /etc/hosts 2>/dev/null; then
+  if [ "$TOUCH_HOSTS" = 0 ]; then skip "/etc/hosts ($HOST — kept, --no-hosts)"
+  elif [ "$DRY" = 1 ]; then echo "   [dry] remove '$HOST' line from /etc/hosts"
+  elif sudo sed -i "\#\\b$HOST\\b#d" /etc/hosts 2>/dev/null; then ok "/etc/hosts line for $HOST"
+  else echo "   (could not sudo — remove '$HOST' from /etc/hosts by hand)"; fi
+else skip "/etc/hosts ($HOST absent)"; fi
+
 info "Domain '$SLUG' removed.$([ "$DRY" = 1 ] && echo ' (dry-run — no changes made)')"
-echo "   Note: /etc/hosts entry '127.0.0.1 $HOST' (if any) left untouched — remove by hand if you like."
