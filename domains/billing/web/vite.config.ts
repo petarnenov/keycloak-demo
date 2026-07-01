@@ -8,7 +8,10 @@ import {
 
 const TOKEN_HANDLER_URL = process.env.TOKEN_HANDLER_URL ?? 'http://127.0.0.1:9080';
 const BFF_URL = process.env.BFF_BILLING_URL ?? 'http://127.0.0.1:8084';
-const DEV_FORWARD_AUTH = process.env.DEV_FORWARD_AUTH === '1';
+// Forward-auth (nginx-mirroring) dev mode is the DEFAULT for `npm run dev` —
+// billing needs the token-handler /auth/verify gate + /oauth proxy to log in.
+// Opt out (plain BFF proxy, no auth) with DEV_FORWARD_AUTH=0.
+const DEV_FORWARD_AUTH = process.env.DEV_FORWARD_AUTH !== '0';
 // RAG AI-assistant backend (separate compose project, published on the host).
 // The <ai-assistant> widget calls `/assistant/api/v1/*`; we proxy that to the
 // backend's `/api/v1/*`, same-origin so there's no CORS or mixed-content block.
@@ -25,15 +28,25 @@ const ASSISTANT_FE_URL = process.env.ASSISTANT_FE_URL ?? 'http://localhost:8800'
 // http://billing.geowealth.int:5184 is NOT secure and crypto.subtle is
 // undefined there. We serve HTTPS with an mkcert-issued cert (locally
 // trusted, no browser warning) and the whole auth chain works.
-const HTTPS_CERT = process.env.HTTPS_CERT_PATH;
-const HTTPS_KEY = process.env.HTTPS_KEY_PATH;
+// Default to the mkcert dev certs at the repo root so plain `npm run dev` gets
+// HTTPS with no wrapper env. The existsSync guard keeps `vite build` (which loads
+// this config in the Docker builder, where proxy/certs/ isn't present) safe —
+// there the cert is absent → httpsConfig is undefined → no readFileSync crash.
+const HTTPS_CERT = process.env.HTTPS_CERT_PATH || '../../../proxy/certs/billing.geowealth.int.crt';
+const HTTPS_KEY = process.env.HTTPS_KEY_PATH || '../../../proxy/certs/billing.geowealth.int.key';
 
-const httpsConfig = (HTTPS_CERT && HTTPS_KEY)
+const httpsConfig = (fs.existsSync(HTTPS_CERT) && fs.existsSync(HTTPS_KEY))
   ? {
       cert: fs.readFileSync(HTTPS_CERT),
       key: fs.readFileSync(HTTPS_KEY)
     }
   : undefined;
+
+// Bind the vanity hostname by default so Vite PRINTS
+// https://billing.geowealth.int:5184 (not https://localhost:5184 — clicking
+// the localhost URL breaks auth: localhost is not a registered redirect_uri /
+// token-handler tenant). Override with DEV_HOST=0.0.0.0 for network HMR.
+const DEV_HOST = process.env.DEV_HOST || 'billing.geowealth.int';
 
 export default defineConfig({
   plugins: [
@@ -57,7 +70,7 @@ export default defineConfig({
   },
   server: {
     port: 5184,
-    host: '0.0.0.0',
+    host: DEV_HOST,
     strictPort: true,
     https: httpsConfig,
     allowedHosts: ['localhost', '127.0.0.1', 'billing.geowealth.int'],
@@ -89,7 +102,7 @@ export default defineConfig({
   },
   preview: {
     port: 5184,
-    host: '0.0.0.0',
+    host: DEV_HOST,
     strictPort: true,
     https: httpsConfig,
     allowedHosts: ['localhost', '127.0.0.1', 'billing.geowealth.int']

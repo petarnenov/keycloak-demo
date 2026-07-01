@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "predev": "node ../scripts/free-port.mjs 5173",
     "dev": "vite"
   },
   "dependencies": {
