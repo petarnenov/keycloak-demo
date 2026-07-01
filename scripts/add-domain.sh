@@ -310,6 +310,81 @@ if grep -q "base/web-$SLUG.yaml" "$K" 2>/dev/null; then ok "overlay already refe
   ok "overlay full-stack += web-$SLUG.yaml, bff-$SLUG.yaml"
 fi
 
+# --- 8b. local-dev port-forwards (k8s/portforward.sh FWDS) -------------------
+# So `./k8s/portforward.sh` forwards the new SPA (localhost:<web-port> — secure
+# context, keycloak-js works) and its data BFF. Inserted before the sentinel so
+# the two lines stay inside the FWDS array.
+P="k8s/portforward.sh"
+if grep -qE "\"web-$SLUG " "$P" 2>/dev/null; then ok "portforward.sh already forwards web-$SLUG"; else
+  sed -i "/add-domain.sh inserts new domain port-forwards/i\\  \"web-$SLUG $WEB_PORT svc/web-$SLUG geowealth-demo $WEB_PORT\"\n  \"bff-$SLUG $BFF_HOST_PORT svc/bff-$SLUG geowealth-demo 8080\"" "$P" \
+    && ok "portforward.sh += web-$SLUG:$WEB_PORT, bff-$SLUG:$BFF_HOST_PORT"
+fi
+
+# --- 8c. docker-compose.yml services (compose path) -------------------------
+# The demo-<slug> web + bff-<slug> data service, cloned from billing's shape.
+# Written to a temp file (real newlines) and inserted after the sentinel via
+# `sed r`, so the two services land just above the top-level `volumes:` key.
+C="docker-compose.yml"
+if grep -qE "^  demo-$SLUG:$" "$C" 2>/dev/null; then ok "docker-compose already has demo-$SLUG"; else
+  cbf="$(mktemp)"
+  cat > "$cbf" <<COMPOSE
+  # ---- domain: $SLUG -----------------------------------------------------
+  # Scaffolded by add-domain.sh — same shape as billing/trading.
+  demo-$SLUG:
+    build:
+      context: .
+      dockerfile: domains/$SLUG/web/Dockerfile
+    image: keycloak-demo-$SLUG-web:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "$WEB_PORT:$WEB_PORT"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./proxy/certs/$HOST.crt:/certs/$SLUG.crt:ro
+      - ./proxy/certs/$HOST.key:/certs/$SLUG.key:ro
+
+  bff-$SLUG:
+    build:
+      context: .
+      dockerfile: domains/$SLUG/bff/Dockerfile
+    image: keycloak-demo-$SLUG-bff:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      MICRONAUT_APPLICATION_NAME: $SLUG-bff
+      APP_SOURCE: $SLUG-bff
+      REDIS_URI: "\${REDIS_URI:-redis://redis:6379}"
+      APP_REQUIREMENT_TYPE: "$TENANT_TYPE"
+      APP_REQUIREMENT_OBJECT_TYPE: "$OBJECT_TYPE"
+      APP_REQUIREMENT_PERMISSION: "$PERMISSION"
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+      OAUTH_CLIENT_ID: demo-$SLUG-client
+      OAUTH_CLIENT_SECRET: "\${BILLING_OAUTH_CLIENT_SECRET}"
+      KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
+      AUTHZ_FINE_ENABLED: "\${AUTHZ_FINE_ENABLED:-true}"
+      P1_AUTHZ_URL: "\${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
+    extra_hosts:
+      - "auth.geowealth.int:host-gateway"
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
+
+COMPOSE
+  sed -i "/add-domain.sh inserts new domain services/r $cbf" "$C"
+  rm -f "$cbf"
+  ok "docker-compose.yml += demo-$SLUG + bff-$SLUG"
+fi
+
 # --- 9. ingress host rule ----------------------------------------------------
 I="k8s/base/ingress-app.yaml"
 if grep -q "name: web-$SLUG" "$I" 2>/dev/null; then ok "ingress already has web-$SLUG"; else
@@ -389,6 +464,12 @@ if [ "$DEPLOY" = 1 ] && command -v minikube >/dev/null 2>&1 && minikube -p "$MK_
   fi
   kubectl -n geowealth-demo rollout status "deploy/bff-$SLUG" --timeout=150s >/dev/null 2>&1 && ok "bff-$SLUG ready" || echo "   (bff-$SLUG not ready yet — kubectl get pods)"
   kubectl -n geowealth-demo rollout status "deploy/web-$SLUG" --timeout=120s >/dev/null 2>&1 && ok "web-$SLUG ready" || echo "   (web-$SLUG not ready yet)"
+  # Start a local port-forward so the SPA is testable NOW at https://localhost:<web-port>
+  # (browser treats localhost as a secure context → keycloak-js works; the port also
+  # matches the realm's localhost redirect URIs, unlike the ingress-on-443 host path).
+  pkill -f "port-forward.*svc/web-$SLUG " 2>/dev/null || true
+  nohup kubectl -n geowealth-demo port-forward --address 127.0.0.1 "svc/web-$SLUG" "$WEB_PORT:$WEB_PORT" >"/tmp/pf-web-$SLUG.log" 2>&1 &
+  sleep 2 && ok "port-forward web-$SLUG → https://localhost:$WEB_PORT"
   DEPLOYED=1
 elif [ "$DEPLOY" = 1 ]; then
   info "Cluster '$MK_PROFILE' not running — files wired; the next ./k8s/up.sh will build & deploy $SLUG"
@@ -396,8 +477,9 @@ fi
 
 # --- done --------------------------------------------------------------------
 if [ "$DEPLOYED" = 1 ]; then
-  info "Domain '$SLUG' is LIVE. Open:  https://$HOST"
-  echo "   (via ingress on the minikube IP; add '\$(minikube -p $MK_PROFILE ip) $HOST' to /etc/hosts if needed)"
+  info "Domain '$SLUG' is LIVE.  Open:  https://localhost:$WEB_PORT   (login via P1)"
+  echo "   (port-forward already started; restart all forwards with ./k8s/portforward.sh)"
+  echo "   Ingress alt: https://$HOST via the minikube IP (\$(minikube -p $MK_PROFILE ip) $HOST in /etc/hosts)"
   echo "   Toggle:  ./k8s/toggle.sh $SLUG up|down"
 else
   info "Domain '$SLUG' scaffolded. Next:"
