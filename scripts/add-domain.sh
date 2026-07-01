@@ -464,12 +464,14 @@ if [ "$DEPLOY" = 1 ] && command -v minikube >/dev/null 2>&1 && minikube -p "$MK_
   fi
   kubectl -n geowealth-demo rollout status "deploy/bff-$SLUG" --timeout=150s >/dev/null 2>&1 && ok "bff-$SLUG ready" || echo "   (bff-$SLUG not ready yet — kubectl get pods)"
   kubectl -n geowealth-demo rollout status "deploy/web-$SLUG" --timeout=120s >/dev/null 2>&1 && ok "web-$SLUG ready" || echo "   (web-$SLUG not ready yet)"
-  # Start a local port-forward so the SPA is testable NOW at https://localhost:<web-port>
-  # (browser treats localhost as a secure context → keycloak-js works; the port also
-  # matches the realm's localhost redirect URIs, unlike the ingress-on-443 host path).
-  pkill -f "port-forward.*svc/web-$SLUG " 2>/dev/null || true
-  nohup kubectl -n geowealth-demo port-forward --address 127.0.0.1 "svc/web-$SLUG" "$WEB_PORT:$WEB_PORT" >"/tmp/pf-web-$SLUG.log" 2>&1 &
-  sleep 2 && ok "port-forward web-$SLUG → https://localhost:$WEB_PORT"
+  # Refresh the MANAGED port-forwards (portforward.sh, idempotent) so the new
+  # domain's SPA + BFF are reachable NOW at localhost:<port> — a secure context
+  # for keycloak-js, and the port matches the realm's localhost redirect URIs.
+  # (Step 8b already appended web-<slug>/bff-<slug> to its FWDS list.)
+  if [ -x k8s/portforward.sh ]; then
+    ./k8s/portforward.sh >/dev/null 2>&1 && ok "port-forwards refreshed (web-$SLUG → localhost:$WEB_PORT)" \
+      || echo "   (run ./k8s/portforward.sh to forward web-$SLUG)"
+  fi
   DEPLOYED=1
 elif [ "$DEPLOY" = 1 ]; then
   info "Cluster '$MK_PROFILE' not running — files wired; the next ./k8s/up.sh will build & deploy $SLUG"
@@ -477,8 +479,8 @@ fi
 
 # --- done --------------------------------------------------------------------
 if [ "$DEPLOYED" = 1 ]; then
-  info "Domain '$SLUG' is LIVE.  Open:  https://localhost:$WEB_PORT   (login via P1)"
-  echo "   (port-forward already started; restart all forwards with ./k8s/portforward.sh)"
+  info "Domain '$SLUG' is LIVE.  Open:  https://localhost:$WEB_PORT"
+  echo "   (port-forwards started via ./k8s/portforward.sh — re-run it any time to refresh)"
   echo "   Ingress alt: https://$HOST via the minikube IP (\$(minikube -p $MK_PROFILE ip) $HOST in /etc/hosts)"
   echo "   Toggle:  ./k8s/toggle.sh $SLUG up|down"
 else

@@ -388,7 +388,17 @@ KC_ADMIN_BASE="http://localhost:18080" ./scripts/reconcile-realm.sh "$URLS_ENV" 
   log "WARNING: realm reconcile failed — check ${URLS_ENV} and KC admin creds"
 kill "$PF_PID" 2>/dev/null || true
 
-# --- 5. report --------------------------------------------------------------
+# --- 5. port-forwards -------------------------------------------------------
+# Start the local-dev port-forwards LAST — after every rollout/restart above,
+# so none of them get killed by a pod churn we caused. Idempotent (portforward.sh
+# kills its own stale pids first). Opt out with SKIP_PORTFORWARD=1 (e.g. headless
+# CI where nobody's driving a browser).
+if [ "${SKIP_PORTFORWARD:-0}" != 1 ] && [ -x k8s/portforward.sh ]; then
+  log "Starting local-dev port-forwards (SKIP_PORTFORWARD=1 to skip)"
+  ./k8s/portforward.sh || echo "  (some forwards failed — re-run ./k8s/portforward.sh)"
+fi
+
+# --- 6. report --------------------------------------------------------------
 IP=$(minikube -p "$PROFILE" ip)
 log "DONE. Add to /etc/hosts:"
 echo "  $IP billing.geowealth.int trading.geowealth.int auth.geowealth.int p1.geowealth.int"

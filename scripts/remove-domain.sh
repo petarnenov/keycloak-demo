@@ -164,6 +164,12 @@ if [ "$DRY" = 0 ] && [ "$DEPLOY" = 1 ] && command -v kubectl >/dev/null 2>&1 && 
   kubectl -n "$NS" delete deploy,svc "web-$SLUG" "bff-$SLUG" --ignore-not-found >/dev/null 2>&1 && ok "deleted web-$SLUG + bff-$SLUG"
   kubectl -n "$NS" delete ingress "web-$SLUG" --ignore-not-found >/dev/null 2>&1 && ok "deleted ingress web-$SLUG"
   kubectl -n "$NS" delete secret "web-$SLUG-tls" --ignore-not-found >/dev/null 2>&1 && ok "deleted Secret web-$SLUG-tls"
+  # stop the managed port-forwards for this domain (portforward.sh pidfiles);
+  # its FWDS entry was already removed above, so it won't be re-created.
+  for n in "web-$SLUG" "bff-$SLUG"; do
+    pf="/tmp/k8s-pf/$n.pid"
+    [ -f "$pf" ] && kill "$(cat "$pf")" 2>/dev/null && rm -f "$pf" && ok "stopped port-forward $n" || true
+  done
   # re-apply the (now shrunk) tenant ConfigMap + restart token-handler
   awk 'BEGIN{p=1} /^---[[:space:]]*$/{p=0} p' k8s/base/token-handler-config.yaml \
     | kubectl -n "$NS" apply -f - >/dev/null 2>&1 && ok "updated tenants ConfigMap"

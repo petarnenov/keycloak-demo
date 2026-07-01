@@ -273,6 +273,15 @@ workloads up/down without a redeploy; **run-profiles** freeze a chosen shape so
 - **HPA caveat:** `token-handler` / `user-service` / `p1-tomcat` have HPAs and
   stock K8s rejects `minReplicas: 0`, so "off" **deletes the HPA** and scales to
   0; `up.sh` re-creates it. toggle/profiles handle this for you.
+- **Port-forwards auto-start.** `k8s/portforward.sh` (idempotent, persistent
+  nohup forwards for Keycloak `:5180`, the domain SPAs/BFFs, P1, redis/oracle/ES,
+  and the monitoring UIs) is now run automatically wherever the stack is brought
+  up: at the end of `./k8s/up.sh` (incl. `--profile`), after `toggle.sh <group> up`
+  and `toggle.sh apply`, and after `add-domain.sh` deploys a domain live;
+  `remove-domain.sh` stops the removed domain's forwards. It runs **last** (after
+  every rollout/restart) so nothing kills the forwards. Opt out with
+  `SKIP_PORTFORWARD=1`. Re-run `./k8s/portforward.sh` any time a forward flakes
+  (e.g. a pod restarted out from under it).
 - **Profiles are local state** (`k8s/profiles/*.profile`, gitignored) and are
   tied to the data-tier mode they were saved under (e.g. a profile saved with
   external Oracle carries `oracle 0`; don't `apply` it after switching to

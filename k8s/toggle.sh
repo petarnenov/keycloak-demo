@@ -19,6 +19,9 @@
 # `kubectl scale --replicas=0` is reverted within ~15s. For those, `down`
 # patches HPA minReplicas=0 first; `up` restores the default minReplicas.
 #
+# After `up`/`apply` the managed port-forwards (k8s/portforward.sh) are refreshed
+# automatically so brought-up services are reachable; SKIP_PORTFORWARD=1 to skip.
+#
 # NOTE: a later `./k8s/up.sh` re-applies the full-stack overlay and resurrects
 # everything. This is a session-local lever (see k8s/README-dev-selective-bringup.md).
 set -euo pipefail
@@ -27,6 +30,15 @@ NS="${NS:-geowealth-demo}"
 PROFILE_DIR="${PROFILE_DIR:-$(cd "$(dirname "$0")" && pwd)/profiles}"
 kc() { kubectl -n "$NS" "$@"; }
 log() { printf '\033[1;36m>>> %s\033[0m\n' "$*"; }
+# After bringing workloads UP, their host port-forwards (if any) are dead — a
+# kubectl port-forward to a Service dies with its pod and does not self-heal.
+# Refresh the managed forwards (idempotent). Opt out with SKIP_PORTFORWARD=1.
+refresh_pf() {
+  [ "${SKIP_PORTFORWARD:-0}" = 1 ] && return 0
+  [ -x k8s/portforward.sh ] || return 0
+  log "refreshing port-forwards (SKIP_PORTFORWARD=1 to skip)"
+  ./k8s/portforward.sh >/dev/null 2>&1 || true
+}
 
 # --- workloads ---------------------------------------------------------------
 # P1 Akka agents (Deployments; NOT coordinator/tomcat)
@@ -108,6 +120,7 @@ cmd_toggle() { # <group> <up|down>
   [[ -n "$members" ]] || { echo "no workloads for '$group' — try: $0 groups" >&2; exit 2; }
   log "$group $dir"
   while read -r ref; do scale_one "$ref" "$reps"; done <<< "$members"
+  [ "$dir" = up ] && refresh_pf || true
 }
 
 cmd_status() {
@@ -182,6 +195,7 @@ cmd_apply() { # <name>
       && printf '   %-28s -> %s\n' "$ref" "${REP[$ref]}" \
       || printf '   %-28s (missing, skipped)\n' "$ref"
   done
+  refresh_pf
 }
 
 cmd_profiles() {
