@@ -47,6 +47,45 @@ The P1 sidebar that links into these domains lives **outside** this repo, in `~/
 
 ## Adding a new domain
 
+**Use the script — it does everything below automatically and idempotently:**
+
+```bash
+./scripts/add-domain.sh <slug> [--web-port N --bff-port N --type resource|firm \
+       --object-type N --permission N --firm-cd N --cookie X --force --no-hosts --no-deploy]
+```
+
+`add-domain.sh <slug>` clones `domains/billing/` into a thin web + thin BFF,
+renames every slug-derived token (host `<slug>.geowealth.int`, Java package
+`demo.<slug>`, `<Slug>Controller`, client `demo-<slug>-client`, service
+`bff-<slug>`, cookie, next-free `518X`/`808X` ports), and wires **every** place a
+domain must be registered: `urls.dev.env` `SPA_HOSTS`, the realm
+`demo-shared-client` (redirect/webOrigin/post-logout, via `jq`), the
+token-handler tenants in **both** `token-handler/application.yml` (compose) **and**
+`k8s/base/token-handler-config.yaml` (the K8s ConfigMap), `k8s/base/web-<slug>.yaml`
++ `bff-<slug>.yaml`, the full-stack overlay, `ingress-app.yaml`, `docker-compose.yml`
+services, `k8s/portforward.sh`, an mkcert cert, and `/etc/hosts`. Then, unless
+`--no-deploy`: if the minikube cluster is **up** it builds the two images into
+minikube and applies them live (+ TLS Secret, tenant ConfigMap, token-handler
+restart, realm reconcile); if the cluster is **down** the files are wired and the
+next `./k8s/up.sh` (now domain-generic) builds + deploys it. `--type firm` swaps
+the tenant gate to a `firm-cd` membership check instead of the P1
+object-type/permission gate.
+
+**Reverse it with `./scripts/remove-domain.sh <slug>`** — the exact inverse:
+strips all of the above (files, config edits, realm, compose, port-forwards,
+cert, `/etc/hosts`) and, if the cluster is up, deletes the live Deployments /
+Service / Ingress / TLS Secret / minikube images, re-applies the shrunk tenant
+ConfigMap, restarts the token-handler and reconciles the realm. `--dry-run`
+previews, `--no-deploy` edits files only, `--yes` skips the typed confirmation.
+
+After adding a domain, in `~/geowealth/...useIntegrationLinks.js` push a P1
+sidebar link (`kcAuthorize('demo-shared-client', 'https://<slug>.geowealth.int:<port>/', 'demo-<slug>')`)
+— that lives outside this repo and the script can't touch it.
+
+---
+
+### What the script does under the hood (manual recipe, for reference)
+
 The shape is fixed; copy `domains/billing/` (or `trading/`) and adapt. Roughly:
 
 1. Pick a slug (`reporting`), a host (`reporting.geowealth.int`), a FE port (next free `518X`), a BFF port (next free `808X`).
@@ -221,7 +260,7 @@ Pure IdP-init (P1 → Keycloak with unsolicited Response) does **not** work clea
 | `bff-core/` **auth** source (login/callback/`/auth/*`/`/auth/verify`/logout/backchannel/token-refresh/session/`SubdomainAuthorizer`) | **Token-handler ONLY** — `docker compose build --no-cache token-handler && docker compose up -d --force-recreate token-handler` (one multi-tenant instance for all domains). Forward-auth: the data BFFs run NO auth, so the fix is live the moment the token-handler restarts; **`bff-billing`/`bff-trading` are NOT rebuilt and users are not logged out** (sessions in Redis). |
 | `bff-core/` source the **data BFF still runs** (`Tier23Gate`/`P1AuthzClient` = Tier-3 `refine`, `AuthClaims`, `HeaderIdentity`) | rebuild the data BFFs too — `docker compose build --no-cache bff-billing bff-trading && docker compose up -d --force-recreate bff-billing bff-trading`. (Only the data-row `refine` mechanism lives here now.) |
 | (either of the above) | **Gotcha: the Docker `COPY bff-core/` layer can cache-hit even after you edit a `bff-core` file, so plain `--build` silently ships a stale jar.** Symptom: the running container behaves like your edit isn't there. Always use `--no-cache` for bff-core changes, or verify with `docker cp <svc>:/app/*.jar … && javap -c …`. |
-| Add a new domain | follow the recipe in "Adding a new domain" above. |
+| Add a new domain | `./scripts/add-domain.sh <slug>` (scaffolds + wires + deploys). Remove with `./scripts/remove-domain.sh <slug>`. See "Adding a new domain". |
 | Env var on a service | `podman compose up -d --force-recreate <service>` |
 | `docker-compose.yml` structural change | `podman compose up -d` (compose picks up the diff) |
 | `keycloak/realm-export.json` | takes effect on fresh DB only; otherwise patch the live realm via admin API. For env-specific URLs (IdP SAML endpoints, client redirect/web-origin/post-logout/back-channel), edit `k8s/env/urls.<env>.env` and run `./scripts/reconcile-realm.sh k8s/env/urls.<env>.env` (idempotent; `up.sh` runs it automatically). |
