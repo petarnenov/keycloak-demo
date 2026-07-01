@@ -121,6 +121,11 @@ app:
   # In K8s this block is supplied by a mounted ConfigMap, so adding a domain is a
   # config edit + rolling restart — no image rebuild, no data-BFF redeploy.
   tenants:
+    custodian:
+      host: custodian.geowealth.int
+      type: resource
+      object-type: 59
+      permission: 5
     portfolio:
       host: portfolio.geowealth.int
       type: resource

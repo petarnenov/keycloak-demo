@@ -49,6 +49,8 @@ FWDS=(
   "bff-billing   8084  svc/bff-billing                         geowealth-demo  8080"
   "bff-trading   8085  svc/bff-trading                         geowealth-demo  8080"
   "bff-portfolio 8086  svc/bff-portfolio                       geowealth-demo  8080"
+  "web-custodian 5187 svc/web-custodian geowealth-demo 5187"
+  "bff-custodian 8087 svc/bff-custodian geowealth-demo 8080"
   # >>> add-domain.sh inserts new domain port-forwards below this line <<<
 )
 

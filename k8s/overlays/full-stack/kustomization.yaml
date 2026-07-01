@@ -31,6 +31,8 @@ resources:
   - ../../base/bff-billing.yaml
   - ../../base/bff-trading.yaml
   - ../../base/web.yaml
+  - ../../base/web-custodian.yaml
+  - ../../base/bff-custodian.yaml
   - ../../base/web-portfolio.yaml
   - ../../base/bff-portfolio.yaml
   # legacy P1 tier

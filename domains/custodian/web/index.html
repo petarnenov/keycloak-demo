@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo Custodian</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- RAG AI assistant widget: standalone bundle self-registers <ai-assistant>
+         (own React + styles inside Shadow DOM). Served from public/. -->
+    <script src="/ai-assistant/ai-assistant.js" defer></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

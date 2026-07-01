@@ -1,0 +1,44 @@
+# custodian domain web (SPA) pod — cloned shape of web-billing. nginx serves the SPA
+# and forward-auths /api + /(oauth|auth)/ to token-handler / bff-custodian by Service
+# name. TLS cert from Secret web-custodian-tls (k8s/up.sh loads it from proxy/certs).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-custodian
+  labels: { app.kubernetes.io/name: web-custodian, app.kubernetes.io/component: web }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: web-custodian } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: web-custodian, app.kubernetes.io/component: web }
+    spec:
+      containers:
+        - name: web
+          image: keycloak-demo-custodian-web:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: https, containerPort: 5187 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 250m, memory: 192Mi }
+          readinessProbe:
+            tcpSocket: { port: https }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: certs, mountPath: /certs, readOnly: true }
+      volumes:
+        - name: certs
+          secret:
+            secretName: web-custodian-tls
+            items:
+              - { key: tls.crt, path: custodian.crt }
+              - { key: tls.key, path: custodian.key }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-custodian
+  labels: { app.kubernetes.io/name: web-custodian }
+spec:
+  selector: { app.kubernetes.io/name: web-custodian }
+  ports: [{ name: https, port: 5187, targetPort: https }]

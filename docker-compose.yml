@@ -375,6 +375,57 @@ services:
       - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
 
   # >>> add-domain.sh inserts new domain services (demo-<slug> + bff-<slug>) below this line <<<
+  # ---- domain: custodian -----------------------------------------------------
+  # Scaffolded by add-domain.sh — same shape as billing/trading.
+  demo-custodian:
+    build:
+      context: .
+      dockerfile: domains/custodian/web/Dockerfile
+    image: keycloak-demo-custodian-web:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "5187:5187"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./proxy/certs/custodian.geowealth.int.crt:/certs/custodian.crt:ro
+      - ./proxy/certs/custodian.geowealth.int.key:/certs/custodian.key:ro
+
+  bff-custodian:
+    build:
+      context: .
+      dockerfile: domains/custodian/bff/Dockerfile
+    image: keycloak-demo-custodian-bff:latest
+    networks:
+      - keycloak-network
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      MICRONAUT_APPLICATION_NAME: custodian-bff
+      APP_SOURCE: custodian-bff
+      REDIS_URI: "${REDIS_URI:-redis://redis:6379}"
+      APP_REQUIREMENT_TYPE: "resource"
+      APP_REQUIREMENT_OBJECT_TYPE: "59"
+      APP_REQUIREMENT_PERMISSION: "5"
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080/realms/demo-realm
+      OAUTH_CLIENT_ID: demo-custodian-client
+      OAUTH_CLIENT_SECRET: "${BILLING_OAUTH_CLIENT_SECRET}"
+      KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
+      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
+      P1_AUTHZ_URL: "${P1_AUTHZ_URL:-http://host.docker.internal:8888}"
+    extra_hosts:
+      - "auth.geowealth.int:host-gateway"
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./proxy/certs/mkcert-rootCA.pem:/certs/mkcert-rootCA.pem:ro
+
 
 volumes:
   postgres_data:

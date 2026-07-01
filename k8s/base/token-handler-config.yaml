@@ -14,6 +14,11 @@ data:
   tenants.yml: |
     app:
       tenants:
+        custodian:
+          host: custodian.geowealth.int
+          type: resource
+          object-type: 59
+          permission: 5
         portfolio:
           host: portfolio.geowealth.int
           type: resource

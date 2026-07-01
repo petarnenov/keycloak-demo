@@ -88,3 +88,18 @@ spec:
       http:
         paths:
           - { path: /, pathType: Prefix, backend: { service: { name: web-portfolio, port: { number: 5186 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-custodian
+  labels: { app.kubernetes.io/name: web-custodian }
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  tls: [{ hosts: ["custodian.geowealth.int"], secretName: web-custodian-tls }]
+  rules:
+    - host: custodian.geowealth.int
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web-custodian, port: { number: 5187 } } } }
