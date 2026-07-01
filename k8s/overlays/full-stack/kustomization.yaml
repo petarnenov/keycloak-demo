@@ -108,6 +108,17 @@ patches:
     patch: |
       - { op: replace, path: /spec/minReplicas, value: 1 }
       - { op: replace, path: /spec/maxReplicas, value: 3 }
+  - target: { kind: Deployment, name: user-service }
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+      # Dev: start with a single user-service replica; the HPA scales to 3 on demand.
+      - { op: replace, path: /spec/replicas, value: 1 }
+  - target: { kind: HorizontalPodAutoscaler, name: user-service }
+    patch: |
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+      - { op: replace, path: /spec/maxReplicas, value: 3 }
   # p1-tomcat: dev overlay runs a single replica. The OIDC RP login flow
   # parks state + PKCE verifier in HttpSession; the SSO round-trip can
   # complete in under 100 ms — faster than the Redisson-Tomcat session
