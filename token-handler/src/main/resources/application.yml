@@ -121,6 +121,11 @@ app:
   # In K8s this block is supplied by a mounted ConfigMap, so adding a domain is a
   # config edit + rolling restart — no image rebuild, no data-BFF redeploy.
   tenants:
+    portfolio:
+      host: portfolio.geowealth.int
+      type: resource
+      object-type: 59
+      permission: 5
     billing:
       host: billing.geowealth.int
       type: resource          # shared resource → Tier-2 P1 permission gate

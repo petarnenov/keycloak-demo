@@ -1,0 +1,44 @@
+# portfolio domain web (SPA) pod — cloned shape of web-billing. nginx serves the SPA
+# and forward-auths /api + /(oauth|auth)/ to token-handler / bff-portfolio by Service
+# name. TLS cert from Secret web-portfolio-tls (k8s/up.sh loads it from proxy/certs).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-portfolio
+  labels: { app.kubernetes.io/name: web-portfolio, app.kubernetes.io/component: web }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: web-portfolio } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: web-portfolio, app.kubernetes.io/component: web }
+    spec:
+      containers:
+        - name: web
+          image: keycloak-demo-portfolio-web:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: https, containerPort: 5186 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 250m, memory: 192Mi }
+          readinessProbe:
+            tcpSocket: { port: https }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: certs, mountPath: /certs, readOnly: true }
+      volumes:
+        - name: certs
+          secret:
+            secretName: web-portfolio-tls
+            items:
+              - { key: tls.crt, path: portfolio.crt }
+              - { key: tls.key, path: portfolio.key }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-portfolio
+  labels: { app.kubernetes.io/name: web-portfolio }
+spec:
+  selector: { app.kubernetes.io/name: web-portfolio }
+  ports: [{ name: https, port: 5186, targetPort: https }]

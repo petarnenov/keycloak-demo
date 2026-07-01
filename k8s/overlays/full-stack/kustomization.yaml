@@ -31,6 +31,8 @@ resources:
   - ../../base/bff-billing.yaml
   - ../../base/bff-trading.yaml
   - ../../base/web.yaml
+  - ../../base/web-portfolio.yaml
+  - ../../base/bff-portfolio.yaml
   # legacy P1 tier
   - ../../base/p1.yaml
   # routing (app model: web pods self-proxy; KC + P1 hosts)

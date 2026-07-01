@@ -14,6 +14,11 @@ data:
   tenants.yml: |
     app:
       tenants:
+        portfolio:
+          host: portfolio.geowealth.int
+          type: resource
+          object-type: 59
+          permission: 5
         billing:
           host: billing.geowealth.int
           type: resource          # shared resource → Tier-2 P1 permission gate

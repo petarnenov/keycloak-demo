@@ -1,0 +1,71 @@
+# portfolio DATA BFF — auth-unaware (forward-auth). Identity from X-Auth-* headers;
+# no session, no OIDC. OAUTH_* env is inert here (reuses billing's secret key so
+# the pod starts); the real gate is APP_REQUIREMENT_* below → token-handler /auth/verify.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bff-portfolio
+  labels: { app.kubernetes.io/name: bff-portfolio, app.kubernetes.io/component: data }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: bff-portfolio } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: bff-portfolio, app.kubernetes.io/component: data }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000 }
+      containers:
+        - name: bff-portfolio
+          image: keycloak-demo-portfolio-bff:latest
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8080 }]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom: { secretKeyRef: { name: redis-auth, key: password } }
+            - name: REDIS_URI
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379"
+            - name: OAUTH_CLIENT_ID
+              value: "demo-portfolio-client"
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: data-bff-oidc, key: billing-client-secret } }
+            - name: KEYCLOAK_ISSUER
+              value: "https://auth.geowealth.int/realms/demo-realm"
+            - name: KEYCLOAK_AUTH_SERVER_URL
+              value: "https://auth.geowealth.int/realms/demo-realm"
+            - name: P1_AUTHZ_URL
+              value: "https://p1.geowealth.int"
+            - name: AUTHZ_FINE_ENABLED
+              value: "true"
+            - name: APP_REQUIREMENT_TYPE
+              value: "resource"
+            - name: APP_REQUIREMENT_OBJECT_TYPE
+              value: "59"
+            - name: APP_REQUIREMENT_PERMISSION
+              value: "5"
+          resources:
+            requests: { cpu: 200m, memory: 384Mi }
+            limits:   { cpu: "1", memory: 768Mi }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bff-portfolio
+  labels: { app.kubernetes.io/name: bff-portfolio }
+spec:
+  selector: { app.kubernetes.io/name: bff-portfolio }
+  ports: [{ name: http, port: 8080, targetPort: http }]

@@ -231,21 +231,29 @@
       "webOrigins": [
         "http://127.0.0.1:5184",
         "http://127.0.0.1:5185",
+        "http://127.0.0.1:5186",
         "http://localhost:5184",
         "http://localhost:5185",
+        "http://localhost:5186",
         "https://billing.geowealth.int:5184",
         "https://p1.geowealth.int",
+        "https://portfolio.geowealth.int:5186",
         "https://trading.geowealth.int:5185"
       ],
       "redirectUris": [
         "http://127.0.0.1:5184/*",
         "http://127.0.0.1:5185/*",
+        "http://127.0.0.1:5186/*",
         "http://localhost:5184/*",
         "http://localhost:5185/*",
+        "http://localhost:5186/*",
         "https://billing.geowealth.int:5184",
         "https://billing.geowealth.int:5184/",
         "https://billing.geowealth.int:5184/*",
         "https://p1.geowealth.int/*",
+        "https://portfolio.geowealth.int:5186",
+        "https://portfolio.geowealth.int:5186/",
+        "https://portfolio.geowealth.int:5186/*",
         "https://trading.geowealth.int:5185",
         "https://trading.geowealth.int:5185/",
         "https://trading.geowealth.int:5185/*"
@@ -258,7 +266,7 @@
       "frontchannelLogout": false,
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##https://trading.geowealth.int:5185/*##http://localhost:5184/*##http://localhost:5185/*##http://localhost:8888/*##https://p1.geowealth.int/*",
+        "post.logout.redirect.uris": "https://billing.geowealth.int:5184/*##https://trading.geowealth.int:5185/*##http://localhost:5184/*##http://localhost:5185/*##http://localhost:8888/*##https://p1.geowealth.int/*##https://portfolio.geowealth.int:5186/*##http://localhost:5186/*",
         "backchannel.logout.url": "http://token-handler:8080/backchannel-logout",
         "backchannel.logout.session.required": "true",
         "backchannel.logout.revoke.offline.tokens": "false"

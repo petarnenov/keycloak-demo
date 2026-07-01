@@ -73,3 +73,18 @@ spec:
       http:
         paths:
           - { path: /, pathType: Prefix, backend: { service: { name: p1-tomcat, port: { number: 8080 } } } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-portfolio
+  labels: { app.kubernetes.io/name: web-portfolio }
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+spec:
+  tls: [{ hosts: ["portfolio.geowealth.int"], secretName: web-portfolio-tls }]
+  rules:
+    - host: portfolio.geowealth.int
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: web-portfolio, port: { number: 5186 } } } }
