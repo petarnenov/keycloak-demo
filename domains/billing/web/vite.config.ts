@@ -12,13 +12,6 @@ const BFF_URL = process.env.BFF_BILLING_URL ?? 'http://127.0.0.1:8084';
 // billing needs the token-handler /auth/verify gate + /oauth proxy to log in.
 // Opt out (plain BFF proxy, no auth) with DEV_FORWARD_AUTH=0.
 const DEV_FORWARD_AUTH = process.env.DEV_FORWARD_AUTH !== '0';
-// RAG AI-assistant backend (separate compose project, published on the host).
-// The <ai-assistant> widget calls `/assistant/api/v1/*`; we proxy that to the
-// backend's `/api/v1/*`, same-origin so there's no CORS or mixed-content block.
-const ASSISTANT_URL = process.env.ASSISTANT_URL ?? 'http://localhost:8801';
-// AI-assistant frontend container serves the widget bundle at /ai-assistant.js;
-// we proxy it (instead of baking it in) so a widget change needs no billing rebuild.
-const ASSISTANT_FE_URL = process.env.ASSISTANT_FE_URL ?? 'http://localhost:8800';
 
 // HTTPS is required because keycloak-js v26 uses Web Crypto API
 // (crypto.subtle + crypto.randomUUID), which the browser only exposes in
@@ -79,24 +72,6 @@ export default defineConfig({
         target: BFF_URL,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/billing/, '/api')
-      },
-      '/assistant': {
-        target: ASSISTANT_URL,
-        changeOrigin: true,
-        // SSE chat stream — don't buffer the response.
-        configure: (proxy) => {
-          proxy.on('proxyRes', (proxyRes) => {
-            if ((proxyRes.headers['content-type'] ?? '').includes('text/event-stream')) {
-              proxyRes.headers['cache-control'] = 'no-cache, no-transform';
-            }
-          });
-        },
-        rewrite: (path) => path.replace(/^\/assistant/, '')
-      },
-      '/ai-assistant/': {
-        target: ASSISTANT_FE_URL,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ai-assistant/, '')
       }
     }
   },

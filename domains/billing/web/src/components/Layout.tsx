@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { useBrand } from '../brand/BrandProvider';
-import { AiAssistant } from './AiAssistant';
 
 // Dashboard shell: a fixed sidebar with the two top-level destinations and
 // the signed-in identity / sign-out at the foot, plus a content area that
@@ -72,9 +71,6 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="main">{children}</main>
-
-      {/* Floating RAG assistant — renders a FAB + chat panel over the whole app. */}
-      <AiAssistant />
     </div>
   );
 }
