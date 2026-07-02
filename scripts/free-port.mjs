@@ -10,11 +10,29 @@
 // Usage: node scripts/free-port.mjs <port> [<port> ...]
 // No-op when the port is free. Only touches LISTEN sockets. Never kills self.
 
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 
 const ports = process.argv.slice(2).filter(Boolean);
 const self = process.pid;
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+function kubectlPortForwardPids(port) {
+  try {
+    const out = execFileSync('ps', ['-eo', 'pid=,args='], {
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).toString();
+    const hostPortMapping = new RegExp(`(?:^|\\s)${port}:[0-9]+(?:\\s|$)`);
+
+    return out.split('\n').flatMap((line) => {
+      const match = line.match(/^\s*(\d+)\s+(.*)$/);
+      if (!match) return [];
+      const [, pid, args] = match;
+      if (!args.includes('kubectl') || !args.includes('port-forward')) return [];
+      return hostPortMapping.test(args) ? [pid] : [];
+    });
+  } catch { /* ps absent or restricted */ }
+  return [];
+}
 
 function pidsOnPort(port) {
   // lsof: macOS + most Linux. Restrict to LISTEN so we don't kill clients.
@@ -31,7 +49,9 @@ function pidsOnPort(port) {
     }).toString().trim();
     if (out) return out.split(/\s+/);
   } catch { /* fuser absent or no match */ }
-  return [];
+  // Some Linux setups show kubectl port-forwards in `ss` but hide them from
+  // lsof/fuser. Reclaim only the exact host-port mapping kubectl owns.
+  return kubectlPortForwardPids(port);
 }
 
 function holders(port) {
