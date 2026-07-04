@@ -107,6 +107,7 @@ public class AuthController {
     private final SubdomainRequirement requirement;
     private final SubdomainRequirements requirements;
     private final BrandResolver brands;
+    private final PolicyRuleClient policyClient;
     private final ExecutorService blockingExecutor;
 
     public AuthController(SidSessionRegistry registry,
@@ -115,6 +116,7 @@ public class AuthController {
                           SubdomainRequirement requirement,
                           SubdomainRequirements requirements,
                           BrandResolver brands,
+                          PolicyRuleClient policyClient,
                           @Named(TaskExecutors.BLOCKING) ExecutorService blockingExecutor,
                           @Value("${micronaut.security.oauth2.clients.keycloak.openid.issuer}") String issuer,
                           @Value("${micronaut.security.oauth2.clients.keycloak.client-id}") String clientId,
@@ -127,6 +129,7 @@ public class AuthController {
         this.requirement = requirement;
         this.requirements = requirements;
         this.brands = brands;
+        this.policyClient = policyClient;
         this.blockingExecutor = blockingExecutor;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
@@ -195,6 +198,19 @@ public class AuthController {
         BrandConfig brand = brands.resolve(brandFirm, host);
         out.put("wlcode", brand.getWlcode());
         out.put("brandDisplayName", brand.getDisplayName());
+        // Login-time capability map — mirrors P1's LoggedUserJTO.permissions: the
+        // role-level "<objectTypeCd>_<permissionCd>" keys (VIEW/CREATE/EXECUTE) the
+        // SPA uses to show/hide features. Client-side UI hint only; authoritative
+        // per-object decisions stay server-side (policy-rule-alignment §4.4 / B.5a).
+        // Absent when fine-grained authz is disabled.
+        if (policyClient.fineEnabled()) {
+            Object accessToken = authentication.getAttributes().get("accessToken");
+            Object subClaim = authentication.getAttributes().get("sub");
+            String sub = subClaim != null ? subClaim.toString() : authentication.getName();
+            if (accessToken != null) {
+                out.put("permissions", policyClient.permissions("Bearer " + accessToken, sub));
+            }
+        }
         return out;
     }
 

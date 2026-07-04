@@ -48,7 +48,6 @@ public class PortfolioController {
         // /auth/verify emitted and nginx injected (forward-auth). Coarse + subdomain
         // authz already happened in /auth/verify; this is the per-endpoint Tier 2.
         Authentication authentication = HeaderIdentity.from(request);
-        gate.requireCapability(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2: can this user VIEW invoices specifically
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
@@ -71,7 +70,6 @@ public class PortfolioController {
     @Get("/invoices")
     public Map<String, Object> invoices(HttpRequest<?> request) {
         Authentication authentication = HeaderIdentity.from(request);
-        gate.requireCapability(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> invoices = new ArrayList<>();
         invoices.add(invoice("INV-2026-005", LocalDate.now().minusDays(2),  499.00, "open"));

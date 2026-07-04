@@ -43,7 +43,7 @@ class AuthControllerTest {
         BrandResolver brands = mock(BrandResolver.class);
         when(brands.resolve(any(), any())).thenReturn(new BrandConfig("geowealth"));
         return new AuthController(reg, store, kc, req, new SubdomainRequirements(List.of()),
-                brands, directExecutor(), "https://auth/realms/demo",
+                brands, mock(PolicyRuleClient.class), directExecutor(), "https://auth/realms/demo",
                 "demo-client", "secret", SLO, false);
     }
 

@@ -90,6 +90,13 @@ public class UserController {
                     attrs.put("firstName", enriched.firstName());
                     attrs.put("lastName", enriched.lastName());
                     attrs.put("mfaRequiredFlag", Boolean.TRUE.equals(enriched.mfaRequiredFlag()));
+                    // loginRoles feeds the realm `roles-claim` protocol mapper
+                    // (oidc-usermodel-attribute-mapper, user.attribute=loginRoles),
+                    // so the SPI-federated user gets a top-level `roles` claim the
+                    // token-handler reads. Mirrors the /roles endpoint.
+                    List<String> loginRoles = new java.util.ArrayList<>(roles.findRoleNamesByEntityId(id));
+                    if (enriched.gwAdminFlag()) loginRoles.add("gwAdmin");
+                    attrs.put("loginRoles", loginRoles);
                     return HttpResponse.ok(attrs);
                 })
                 .orElse(HttpResponse.notFound());

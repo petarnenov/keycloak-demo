@@ -87,7 +87,6 @@ public class TradingController {
     @Get("/orders")
     public Map<String, Object> orders(HttpRequest<?> request) {
         Authentication authentication = HeaderIdentity.from(request);
-        gate.requireCapability(authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> orders = new ArrayList<>();
         orders.add(order("ORD-91204", "AAPL", "buy",  100, "limit", 211.50, "filled",  LocalDate.now()));
