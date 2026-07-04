@@ -13,16 +13,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Tier 2 / Tier 3 authorisation client (p1-auth-flow.md §2.2 / §2.9). The coarse
+ * PolicyRule (capability + refine) authorisation client (p1-auth-flow.md §2.2 / §2.9). The coarse
  * gate ({@code @Secured} on canonical capabilities) answers "can this user reach
  * the domain"; this client answers the finer questions by calling P1:
  *
  * <ul>
- *   <li><b>Tier 2</b> — {@code GET /saml/idp/p1-authz-me.do} returns the user's
+ *   <li><b>capability check</b> — {@code GET /saml/idp/p1-authz-me.do} returns the user's
  *       permission map ({@code "<objectTypeCd>_<permissionCd>"} keys). Cached
  *       per {@code sub} for {@code ttl} (≤60s, §2.3): the only network hit on the
  *       hot path.</li>
- *   <li><b>Tier 3</b> — {@code POST .../p1-authz-can.do} (single object) and
+ *   <li><b>refine</b> — {@code POST .../p1-authz-can.do} (single object) and
  *       {@code .../p1-authz-refine.do} (a page of ids → the allowed subset, the
  *       monolith's {@code refineUUIDs} pattern, §2.9).</li>
  * </ul>
@@ -60,13 +60,13 @@ public class PolicyRuleClient {
         this.ttlMillis = ttlMillis;
     }
 
-    /** Whether controllers should enforce the fine (Tier 2/3) checks at all. */
+    /** Whether controllers should enforce the fine (PolicyRule capability/refine) checks at all. */
     public boolean fineEnabled() {
         return fineEnabled;
     }
 
     /**
-     * Tier 2 — does the user hold {@code (objectType, permission)}? Served from the
+     * capability check — does the user hold {@code (objectType, permission)}? Served from the
      * cached {@code /me} permission map. Fail-closed: {@code false} when P1 is
      * unavailable.
      */
@@ -76,7 +76,7 @@ public class PolicyRuleClient {
         return Boolean.TRUE.equals(v) || "true".equals(String.valueOf(v));
     }
 
-    /** Tier 2 — the user's full permission map (cached). Empty map on failure. */
+    /** capability check — the user's full permission map (cached). Empty map on failure. */
     @SuppressWarnings("unchecked")
     public Map<String, Object> permissions(String authorizationHeader, String sub) {
         Cached cached = meCache.get(sub);
@@ -98,7 +98,7 @@ public class PolicyRuleClient {
         return permissions;
     }
 
-    /** Tier 3 (single object) — {@code canLoggedUserExecuteAccount} analogue. Fail-closed false. */
+    /** single-object check — {@code canLoggedUserExecuteAccount} analogue. Fail-closed false. */
     public boolean can(String authorizationHeader, int objectType, int permission, String objectId) {
         try {
             Map<String, Object> body = Map.of(
@@ -111,7 +111,7 @@ public class PolicyRuleClient {
     }
 
     /**
-     * Tier 3 (lists) — send the page of candidate ids, get back the subset the user
+     * list refine — send the page of candidate ids, get back the subset the user
      * may act on (the monolith's refine, done P1-side). Fail-closed: empty subset.
      */
     @SuppressWarnings("unchecked")

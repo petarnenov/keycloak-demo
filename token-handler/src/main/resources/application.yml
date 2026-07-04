@@ -133,7 +133,7 @@ app:
       permission: 5
     billing:
       host: billing.geowealth.int
-      type: resource          # shared resource → Tier-2 P1 permission gate
+      type: resource          # shared resource → capability gate (authz-service)
       object-type: 59         # BILLING_CENTER
       permission: 5           # EXECUTE
     trading:

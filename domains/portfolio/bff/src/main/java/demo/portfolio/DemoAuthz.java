@@ -1,7 +1,7 @@
 package demo.portfolio;
 
 /**
- * Demo object-type / permission codes for the portfolio domain's Tier 2/3 checks.
+ * Demo object-type / permission codes for the portfolio domain's PolicyRule capability/refine checks.
  *
  * <p>Permission codes mirror P1's {@code Permission} enum
  * ({@code VIEW=1, MODIFY=2, CREATE=3, DELETE=4, EXECUTE=5}). The {@code INVOICE}

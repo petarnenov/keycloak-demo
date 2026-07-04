@@ -25,15 +25,15 @@ import java.util.Map;
  *   <li>no valid session → {@code 401} (the {@code @Secured} rule), so nginx
  *       returns 401 to the SPA;</li>
  *   <li>session valid but the subdomain requirement denies (firm membership /
- *       Tier 2 permission) → {@code 403};</li>
+ *       capability check permission) → {@code 403};</li>
  *   <li>allowed → {@code 200} with the user's identity as {@code X-Auth-*}
  *       response headers, which nginx copies onto the upstream request.</li>
  * </ul>
  *
  * <p>This moves ALL of session validation, token refresh (the
- * {@link TokenRefreshFilter} runs here on {@code /auth/**}), coarse + Tier 2
+ * {@link TokenRefreshFilter} runs here on {@code /auth/**}), coarse + capability check
  * authorization into the Token Handler — so the domain BFF runs no auth at all.
- * The access token is forwarded too, because the domain BFF's Tier 3 list
+ * The access token is forwarded too, because the domain BFF's refine list
  * {@code refine} (data-row filtering, intrinsically next to the data) still needs
  * to call P1.</p>
  */

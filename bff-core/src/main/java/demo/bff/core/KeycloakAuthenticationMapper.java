@@ -30,7 +30,7 @@ import java.util.Map;
  * the BFF.</p>
  *
  * <p>The OAuth tokens are stashed in the authentication attributes so the
- * controller can forward the user's own access token to P1 (Tier 2/3 authz,
+ * controller can forward the user's own access token to P1 (PolicyRule capability/refine authz,
  * §2.6) and so logout can present an {@code id_token_hint}. The OIDC {@code sid}
  * is kept too, to correlate KC's back-channel logout token to this session.</p>
  */
@@ -62,7 +62,7 @@ public class KeycloakAuthenticationMapper implements OpenIdAuthenticationMapper 
         // from the raw JWT payload. The id_token passed to this mapper is not always
         // populated by micronaut-security at the code-exchange step, so fall back to
         // the access token (always present here — it carries the same claim and is
-        // forwarded to P1 for Tier 2/3 authz).
+        // forwarded to P1 for PolicyRule capability/refine authz).
         List<String> memberships = membershipsFromJwt(tokenResponse.getIdToken());
         String source = "id_token";
         if (memberships.isEmpty()) {

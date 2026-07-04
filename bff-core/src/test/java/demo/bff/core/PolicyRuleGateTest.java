@@ -30,7 +30,7 @@ class PolicyRuleGateTest {
 
     private static final Function<String, String> ID = s -> s;
 
-    // ---- require (Tier 2) ----
+    // ---- require (capability check) ----
 
     @Test
     void require_noOpWhenFineDisabled() {
@@ -81,7 +81,7 @@ class PolicyRuleGateTest {
                 () -> gate.requireCapability(auth(Set.of(), Map.of()), 12, 1));
     }
 
-    // ---- refine (Tier 3) ----
+    // ---- refine (refine) ----
 
     @Test
     void refine_returnsAllWhenFineDisabled() {

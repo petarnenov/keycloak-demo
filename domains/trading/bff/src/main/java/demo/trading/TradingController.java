@@ -26,7 +26,7 @@ import java.util.Map;
  *
  * Authorization model (see sso-role-mapping.md):
  *   - Tier 1 (coarse role): the {@code @Secured} lists below.
- *   - Tier 2/3 (fine, opt-in): {@link PolicyRuleGate}, keyed by this domain's
+ *   - PolicyRule capability/refine (fine, opt-in): {@link PolicyRuleGate}, keyed by this domain's
  *     {@link DemoAuthz} ObjectType codes.
  * `firmCd` is read from the JWT and echoed back so the FE / downstream can
  * verify the tenant scoping that any real service would enforce.
@@ -96,7 +96,7 @@ public class TradingController {
         orders.add(order("ORD-91202", "AMZN", "sell",  25, "market",   null, "filled",  LocalDate.now().minusDays(1)));
         orders.add(order("ORD-91198", "GOOG", "buy",   60, "limit", 168.00, "cancelled", LocalDate.now().minusDays(3)));
 
-        // tier 3 (lists): refine to the orders this user may EXECUTE — P1's refine
+        // list refine: refine to the orders this user may EXECUTE — P1's refine
         // pattern. Rows are keyed by "id".
         orders = gate.refineUUIDs(authentication, orders,
                 o -> { Object id = o.get("id"); return id == null ? null : id.toString(); },

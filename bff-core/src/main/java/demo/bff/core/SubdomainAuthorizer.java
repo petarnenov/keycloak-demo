@@ -10,7 +10,7 @@ import jakarta.inject.Singleton;
 import java.util.List;
 
 /**
- * The per-subdomain authorization decision (firm membership OR the Tier 2 P1
+ * The per-subdomain authorization decision (firm membership OR the capability check P1
  * permission gate), extracted from {@link SubdomainRequirementFilter} so it can
  * be applied both as a filter on {@code /api/**} (the classic in-BFF model) AND
  * by the Token Handler's {@code /auth/verify} forward-auth endpoint (so the data

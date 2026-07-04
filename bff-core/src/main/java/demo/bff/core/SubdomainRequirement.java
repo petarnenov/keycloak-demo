@@ -14,7 +14,7 @@ import io.micronaut.core.annotation.Nullable;
  *   <li>{@code type=resource} — the subdomain is a shared, multi-firm resource.
  *       Access requires the CURRENT logged-in user to hold
  *       ({@link #getObjectType()}, {@link #getPermission()}) — checked via the
- *       existing Tier 2/3 authz ({@link PolicyRuleGate}/{@link PolicyRuleClient}).</li>
+ *       existing PolicyRule capability/refine authz ({@link PolicyRuleGate}/{@link PolicyRuleClient}).</li>
  *   <li>unset/blank {@code type} — no per-subdomain gate (any authenticated person).</li>
  * </ul>
  *

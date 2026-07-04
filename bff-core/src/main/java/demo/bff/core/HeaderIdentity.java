@@ -13,7 +13,7 @@ import java.util.Map;
  * Rebuilds an {@link Authentication} from the {@code X-Auth-*} request headers that
  * the Token Handler's {@code /auth/verify} emits and nginx injects (forward-auth).
  * Lets an auth-UNAWARE data BFF keep using {@link PolicyRuleGate} / {@link AuthClaims}
- * for its per-endpoint Tier 2/3 checks without resolving a session itself — the
+ * for its per-endpoint PolicyRule capability/refine checks without resolving a session itself — the
  * session, refresh and coarse/subdomain authz all happened in the Token Handler.
  *
  * <p>The data BFF receives these requests only via nginx (which gates them on a

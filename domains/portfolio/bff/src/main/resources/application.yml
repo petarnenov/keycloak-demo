@@ -131,8 +131,8 @@ app:
   # What this subdomain requires of a federated person (subdomain-agnostic SSO;
   # see person-identity-via-existing-linkdelink.md). portfolio = a SHARED RESOURCE:
   # access is decided by the CURRENT logged-in user's fine permission, not by
-  # firm membership. The gate checks (object-type, permission) via Tier 2/3
-  # (P1AuthzClient -> p1-authz-me.do). Default = PORTFOLIO_CENTER (59) + EXECUTE (5).
+  # firm membership. The gate checks (object-type, permission) via PolicyRule capability/refine
+  # (PolicyRuleClient -> authz-service /policy/capabilities). Default = PORTFOLIO_CENTER (59) + EXECUTE (5).
   # For a firm-bound subdomain set type=firm + firm-cd instead (see trading).
   requirement:
     type: ${APP_REQUIREMENT_TYPE:resource}
@@ -148,7 +148,7 @@ app:
     # be used here: Micronaut mis-parses the colons in an http://host:port default).
     initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
   authz:
-    # Tier 2/3 fine checks (p1-auth-flow.md §2.2/§2.9). Opt-in: off keeps the
+    # PolicyRule capability/refine fine checks (p1-auth-flow.md §2.2/§2.9). Opt-in: off keeps the
     # coarse-only @Secured behaviour until P1's authz endpoints are reachable.
     fine-enabled: ${AUTHZ_FINE_ENABLED:false}
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}

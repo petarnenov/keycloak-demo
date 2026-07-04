@@ -170,7 +170,7 @@ class ForwardAuthTest {
         assertEquals(HttpStatus.FORBIDDEN, denied.getStatus());
         a.authorize(authWith("5:john"), "trading.geowealth.int"); // member → allowed
 
-        // billing host: delegates to the Tier-2 gate with that host's (objType,perm)
+        // billing host: delegates to the capability gate with that host's (objType,perm)
         a.authorize(authWith(""), "billing.geowealth.int");
         org.mockito.Mockito.verify(gate).requireCapability(any(), org.mockito.ArgumentMatchers.eq(59),
                 org.mockito.ArgumentMatchers.eq(5));

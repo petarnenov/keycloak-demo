@@ -12,10 +12,10 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Shared Tier 2/3 authorization gate (p1-auth-flow.md §2.2/§2.9). Wraps
+ * Shared PolicyRule capability/refine authorization gate (p1-auth-flow.md §2.2/§2.9). Wraps
  * {@link PolicyRuleClient} so every domain BFF applies the fine-grained checks
- * identically: a single-object permission check (Tier 2) and a list refine
- * (Tier 3). No-op when fine checks are disabled or the caller is {@code gwAdmin}.
+ * identically: a single-object permission check (capability check) and a list refine
+ * (refine). No-op when fine checks are disabled or the caller is {@code gwAdmin}.
  *
  * <p>The coarse role gate stays in each controller's {@code @Secured} (Tier 1 —
  * domain policy); this bean carries only the firm-agnostic mechanics that were
@@ -31,7 +31,7 @@ public class PolicyRuleGate {
         this.authz = authz;
     }
 
-    /** Tier 2: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gwAdmin. */
+    /** capability check: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gwAdmin. */
     public void requireCapability(Authentication authentication, int objectType, int permission) {
         if (!authz.fineEnabled() || isGwAdmin(authentication)) {
             return; // opt-in; coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
@@ -43,7 +43,7 @@ public class PolicyRuleGate {
     }
 
     /**
-     * Tier 3: keep only the items the user may act on, via P1's refine. Each
+     * refine: keep only the items the user may act on, via P1's refine. Each
      * item's id is extracted with {@code idOf} because domains key their rows
      * differently (e.g. billing "number" vs trading "id"). No-op when fine
      * checks are off or gwAdmin; fails closed (empty list) when there is no

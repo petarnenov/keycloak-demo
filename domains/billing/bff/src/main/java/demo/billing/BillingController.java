@@ -25,7 +25,7 @@ import java.util.Map;
  *
  * Authorization model (see sso-role-mapping.md):
  *   - Tier 1 (coarse role): the {@code @Secured} lists below.
- *   - Tier 2/3 (fine, opt-in): {@link PolicyRuleGate}, keyed by this domain's
+ *   - PolicyRule capability/refine (fine, opt-in): {@link PolicyRuleGate}, keyed by this domain's
  *     {@link DemoAuthz} ObjectType codes.
  * `firmCd` is read from the JWT and echoed back so the FE / downstream can
  * verify the tenant scoping that any real service would enforce.
@@ -46,7 +46,7 @@ public class BillingController {
     public Map<String, Object> summary(HttpRequest<?> request) {
         // Auth-unaware: identity comes from the X-Auth-* headers the Token Handler's
         // /auth/verify emitted and nginx injected (forward-auth). Coarse + subdomain
-        // authz already happened in /auth/verify; this is the per-endpoint Tier 2.
+        // authz already happened in /auth/verify; this is the per-endpoint capability check.
         Authentication authentication = HeaderIdentity.from(request);
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
@@ -78,7 +78,7 @@ public class BillingController {
         invoices.add(invoice("INV-2026-002", LocalDate.now().minusDays(92), 449.00, "paid"));
         invoices.add(invoice("INV-2026-001", LocalDate.now().minusDays(120), 449.00, "paid"));
 
-        // tier 3 (lists): refine the page to the invoices this user may VIEW — P1's
+        // list refine: refine the page to the invoices this user may VIEW — P1's
         // refine pattern (one call, P1 intersects). Rows are keyed by "number".
         invoices = gate.refineUUIDs(authentication, invoices,
                 inv -> { Object id = inv.get("number"); return id == null ? null : id.toString(); },
