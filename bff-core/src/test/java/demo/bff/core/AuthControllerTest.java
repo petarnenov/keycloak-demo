@@ -40,8 +40,11 @@ class AuthControllerTest {
         // Empty tenants list → single-tenant mode → effectiveFor() uses `req`.
         // A same-thread executor runs the fire-and-forget KC end-session inline,
         // so logout assertions on the KC call stay deterministic.
+        BrandResolver brands = mock(BrandResolver.class);
+        when(brands.resolve(any(), any())).thenReturn(new BrandConfig("geowealth"));
         return new AuthController(reg, store, kc, req, new SubdomainRequirements(List.of()),
-                directExecutor(), "https://auth/realms/demo", "demo-client", "secret", SLO);
+                brands, directExecutor(), "https://auth/realms/demo",
+                "demo-client", "secret", SLO, false);
     }
 
     /** Runs submitted tasks synchronously on the calling thread (test determinism). */
@@ -188,7 +191,7 @@ class AuthControllerTest {
         Session session = mock(Session.class);
         when(session.getId()).thenReturn("bff-sess");
 
-        HttpResponse<?> resp = c.logout(a, session);
+        HttpResponse<?> resp = c.logout(a, session, meRequest());
 
         assertEquals(HttpStatus.SEE_OTHER, resp.getStatus());
         assertEquals(SLO, resp.getHeaders().get(HttpHeaders.LOCATION));
@@ -203,7 +206,7 @@ class AuthControllerTest {
         AuthController c = controller(mock(SidSessionRegistry.class),
                 mock(SessionStore.class), kc, new SubdomainRequirement());
 
-        HttpResponse<?> resp = c.logout(null, null);
+        HttpResponse<?> resp = c.logout(null, null, meRequest());
 
         assertEquals(HttpStatus.SEE_OTHER, resp.getStatus());
         assertEquals(SLO, resp.getHeaders().get(HttpHeaders.LOCATION));
@@ -222,7 +225,7 @@ class AuthControllerTest {
                 mock(SessionStore.class), kc, new SubdomainRequirement());
 
         Authentication a = auth(Set.of(), Map.of("refreshToken", "r-token"), "u");
-        HttpResponse<?> resp = c.logout(a, null);
+        HttpResponse<?> resp = c.logout(a, null, meRequest());
 
         assertEquals(HttpStatus.SEE_OTHER, resp.getStatus());
         assertEquals(SLO, resp.getHeaders().get(HttpHeaders.LOCATION));

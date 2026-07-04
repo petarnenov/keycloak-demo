@@ -1,0 +1,38 @@
+micronaut:
+  application:
+    name: authz-service
+  server:
+    port: 8080
+  security:
+    enabled: true
+    # Resource server only: validate the caller's forwarded Keycloak access token
+    # against the realm JWKS (signature + expiry). No login flow, no audience
+    # check (the same token from any demo client is accepted, mirroring the P1
+    # authz endpoints' open-audience trust model). Authority stays user-bound:
+    # the entity is resolved from the verified `sub`.
+    token:
+      jwt:
+        signatures:
+          jwks:
+            keycloak:
+              url: ${KEYCLOAK_JWKS_URL:`http://keycloak:8080/realms/demo-realm/protocol/openid-connect/certs`}
+    intercept-url-map:
+      - pattern: /health
+        access:
+          - isAnonymous()
+datasources:
+  default:
+    url: ${JDBC_URL:`jdbc:oracle:thin:@//oracle:1521/FREEPDB1`}
+    username: ${ORACLE_USER:gp}
+    password: ${ORACLE_PASSWORD:gp123}
+    driver-class-name: oracle.jdbc.OracleDriver
+    maximum-pool-size: 10
+    connection-timeout: 2000
+    minimum-idle: 1
+    pool-name: authz-service-oracle
+endpoints:
+  health:
+    enabled: true
+    sensitive: false
+  all:
+    sensitive: false

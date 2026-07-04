@@ -30,7 +30,7 @@ import java.util.Map;
  *       firm, i.e. {@code "<firmCd>:"} appears in the {@code memberships} claim
  *       (from the {@code LINKED_GW_USER} graph). Otherwise 403.</li>
  *   <li>{@code type=resource} → the CURRENT logged-in user must hold the
- *       configured {@code (objectType, permission)}, via {@link Tier23Gate}
+ *       configured {@code (objectType, permission)}, via {@link PolicyRuleGate}
  *       (the existing Tier 2/3 P1 authz). Otherwise 403.</li>
  *   <li>unset → no gate (any authenticated person reaches the controller).</li>
  * </ul>

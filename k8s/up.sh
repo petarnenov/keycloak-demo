@@ -188,6 +188,7 @@ docker build -t keycloak-demo-db:seeded -f db/Dockerfile db
 # Domain images (compose builds them; here we build directly).
 docker build -t keycloak-demo-token-handler:latest -f token-handler/Dockerfile .
 docker build -t keycloak-demo-user-service:latest  -f user-service/Dockerfile .
+docker build -t keycloak-demo-authz-service:latest -f authz-service/Dockerfile .
 docker build -t keycloak-demo-keycloak:latest      -f Dockerfile.keycloak .
 # Every domain under domains/* with a bff+web Dockerfile pair (billing, trading,
 # and anything scaffolded by scripts/add-domain.sh) — no per-domain edit needed.

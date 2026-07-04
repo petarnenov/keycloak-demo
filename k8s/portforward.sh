@@ -46,6 +46,7 @@ FWDS=(
   "web-trading   5185  svc/web-trading                         geowealth-demo  5185"
   "web-portfolio 5186  svc/web-portfolio                       geowealth-demo  5186"
   "token-handler 9080  svc/token-handler                       geowealth-demo  8080"
+  "authz-service 8090  svc/authz-service                       geowealth-demo  8080"
   "bff-billing   8084  svc/bff-billing                         geowealth-demo  8080"
   "bff-trading   8085  svc/bff-trading                         geowealth-demo  8080"
   "bff-portfolio 8086  svc/bff-portfolio                       geowealth-demo  8080"

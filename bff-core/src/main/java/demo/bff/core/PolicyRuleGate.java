@@ -13,7 +13,7 @@ import java.util.function.Function;
 
 /**
  * Shared Tier 2/3 authorization gate (p1-auth-flow.md §2.2/§2.9). Wraps
- * {@link P1AuthzClient} so every domain BFF applies the fine-grained checks
+ * {@link PolicyRuleClient} so every domain BFF applies the fine-grained checks
  * identically: a single-object permission check (Tier 2) and a list refine
  * (Tier 3). No-op when fine checks are disabled or the caller is {@code gwAdmin}.
  *
@@ -23,16 +23,16 @@ import java.util.function.Function;
  * {@code refineByObjectAccess}.</p>
  */
 @Singleton
-public class Tier23Gate {
+public class PolicyRuleGate {
 
-    private final P1AuthzClient authz;
+    private final PolicyRuleClient authz;
 
-    public Tier23Gate(P1AuthzClient authz) {
+    public PolicyRuleGate(PolicyRuleClient authz) {
         this.authz = authz;
     }
 
     /** Tier 2: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gwAdmin. */
-    public void require(Authentication authentication, int objectType, int permission) {
+    public void requireCapability(Authentication authentication, int objectType, int permission) {
         if (!authz.fineEnabled() || isGwAdmin(authentication)) {
             return; // opt-in; coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
         }
@@ -49,7 +49,7 @@ public class Tier23Gate {
      * checks are off or gwAdmin; fails closed (empty list) when there is no
      * bearer.
      */
-    public <T> List<T> refine(Authentication authentication, List<T> items,
+    public <T> List<T> refineUUIDs(Authentication authentication, List<T> items,
                               Function<? super T, String> idOf, int objectType, int permission) {
         if (!authz.fineEnabled() || isGwAdmin(authentication)) {
             return items; // gwAdmin sees every row (gwAdmin || canX)

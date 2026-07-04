@@ -15,8 +15,8 @@ micronaut:
       ssl:
         insecure-trust-all-certs: true
     services:
-      p1authz:
-        url: ${P1_AUTHZ_URL:http://localhost:8888}
+      authz:
+        url: ${AUTHZ_URL:http://localhost:8090}
         read-timeout: 2s
       # Keycloak token endpoint, used by TokenRefreshFilter for the
       # refresh_token grant (BFF / Token Handler keeps tokens fresh server-side).

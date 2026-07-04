@@ -1,0 +1,12 @@
+# H2 in-memory datasource for DAO tests (Oracle-compatibility mode so CHAR
+# blank-padded comparisons and the JOIN/IN SQL behave like the demo Oracle).
+datasources:
+  default:
+    url: jdbc:h2:mem:authztest;MODE=Oracle;DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=true
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+    dialect: H2
+micronaut:
+  security:
+    enabled: false

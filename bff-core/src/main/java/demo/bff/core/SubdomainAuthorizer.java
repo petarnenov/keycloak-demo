@@ -28,19 +28,19 @@ public class SubdomainAuthorizer {
 
     private final SubdomainRequirement requirement;
     private final SubdomainRequirements tenants;
-    private final Tier23Gate gate;
+    private final PolicyRuleGate gate;
 
     @Inject
     public SubdomainAuthorizer(SubdomainRequirement requirement,
                                SubdomainRequirements tenants,
-                               Tier23Gate gate) {
+                               PolicyRuleGate gate) {
         this.requirement = requirement;
         this.tenants = tenants;
         this.gate = gate;
     }
 
     /** Single-tenant convenience constructor (tests / per-domain mode). */
-    public SubdomainAuthorizer(SubdomainRequirement requirement, Tier23Gate gate) {
+    public SubdomainAuthorizer(SubdomainRequirement requirement, PolicyRuleGate gate) {
         this(requirement, new SubdomainRequirements(List.of()), gate);
     }
 
@@ -68,7 +68,7 @@ public class SubdomainAuthorizer {
             }
         } else if (isResource(g.type) && g.objectType != null && g.permission != null) {
             // Throws HttpStatusException(FORBIDDEN) when the current login lacks the permission.
-            gate.require(auth, g.objectType, g.permission);
+            gate.requireCapability(auth, g.objectType, g.permission);
         }
     }
 

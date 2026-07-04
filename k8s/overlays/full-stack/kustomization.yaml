@@ -163,9 +163,9 @@ patches:
                   - name: KEYCLOAK_AUTH_SERVER_URL
                     value: null
                     valueFrom: { configMapKeyRef: { name: app-urls, key: KEYCLOAK_AUTH_SERVER_URL } }
-                  - name: P1_AUTHZ_URL
+                  - name: AUTHZ_URL
                     value: null
-                    valueFrom: { configMapKeyRef: { name: app-urls, key: P1_AUTHZ_URL } }
+                    valueFrom: { configMapKeyRef: { name: app-urls, key: AUTHZ_URL } }
                   - name: APP_P1_INITIATE_SLO_URL
                     valueFrom: { configMapKeyRef: { name: app-urls, key: APP_P1_INITIATE_SLO_URL } }
                   # Dev-safe logout fallback: with no id_token to hint KC, land the
@@ -201,7 +201,7 @@ patches:
                 env:
                   - { name: KEYCLOAK_ISSUER, value: "https://auth.geowealth.int/realms/demo-realm" }
                   - { name: KEYCLOAK_AUTH_SERVER_URL, value: "http://keycloak:8080/realms/demo-realm" }
-                  - { name: P1_AUTHZ_URL, value: "http://p1-tomcat:8080" }
+                  - { name: AUTHZ_URL, value: "http://authz-service:8080" }
   - patch: |
       apiVersion: apps/v1
       kind: Deployment
@@ -215,4 +215,4 @@ patches:
                 env:
                   - { name: KEYCLOAK_ISSUER, value: "https://auth.geowealth.int/realms/demo-realm" }
                   - { name: KEYCLOAK_AUTH_SERVER_URL, value: "http://keycloak:8080/realms/demo-realm" }
-                  - { name: P1_AUTHZ_URL, value: "http://p1-tomcat:8080" }
+                  - { name: AUTHZ_URL, value: "http://authz-service:8080" }

@@ -21,8 +21,8 @@ micronaut:
         # mkcert-signed KC cert in dev (B3 — prod removes this and trusts a real CA).
         insecure-trust-all-certs: true
     services:
-      p1authz:
-        url: ${P1_AUTHZ_URL:http://localhost:8888}
+      authz:
+        url: ${AUTHZ_URL:http://localhost:8090}
         read-timeout: 2s
       kc:
         url: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}

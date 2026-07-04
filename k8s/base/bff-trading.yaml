@@ -47,8 +47,8 @@ spec:
               value: "https://auth.geowealth.int/realms/demo-realm"
             - name: KEYCLOAK_AUTH_SERVER_URL
               value: "https://auth.geowealth.int/realms/demo-realm"
-            - name: P1_AUTHZ_URL
-              value: "https://p1.geowealth.int"
+            - name: AUTHZ_URL
+              value: "http://authz-service:8080"
             - name: AUTHZ_FINE_ENABLED
               value: "true"
             - name: APP_REQUIREMENT_TYPE

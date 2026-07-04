@@ -19,7 +19,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
-class P1AuthzClientTest {
+class PolicyRuleClientTest {
 
     private static final long TTL = 60_000L;
 
@@ -37,15 +37,15 @@ class P1AuthzClientTest {
 
     @Test
     void fineEnabled_reflectsConfig() {
-        assertTrue(new P1AuthzClient(mock(HttpClient.class), true, TTL).fineEnabled());
-        assertFalse(new P1AuthzClient(mock(HttpClient.class), false, TTL).fineEnabled());
+        assertTrue(new PolicyRuleClient(mock(HttpClient.class), true, TTL).fineEnabled());
+        assertFalse(new PolicyRuleClient(mock(HttpClient.class), false, TTL).fineEnabled());
     }
 
     @Test
     void permissions_returnsMapAndCachesPerSub() {
         BlockingHttpClient blocking = blockingReturning(
                 Map.of("permissions", Map.of("12_1", true)));
-        P1AuthzClient c = new P1AuthzClient(clientWith(blocking), true, TTL);
+        PolicyRuleClient c = new PolicyRuleClient(clientWith(blocking), true, TTL);
 
         Map<String, Object> first = c.permissions("Bearer t", "u");
         Map<String, Object> second = c.permissions("Bearer t", "u");
@@ -61,7 +61,7 @@ class P1AuthzClientTest {
         BlockingHttpClient blocking = mock(BlockingHttpClient.class);
         when(blocking.retrieve(any(HttpRequest.class), any(Argument.class)))
                 .thenThrow(new RuntimeException("P1 down"));
-        P1AuthzClient c = new P1AuthzClient(clientWith(blocking), true, TTL);
+        PolicyRuleClient c = new PolicyRuleClient(clientWith(blocking), true, TTL);
 
         assertTrue(c.permissions("Bearer t", "u").isEmpty());
     }
@@ -70,7 +70,7 @@ class P1AuthzClientTest {
     void hasPermission_trueOnlyWhenKeyPresentAndTrue() {
         BlockingHttpClient blocking = blockingReturning(
                 Map.of("permissions", Map.of("12_1", true, "12_2", "false")));
-        P1AuthzClient c = new P1AuthzClient(clientWith(blocking), true, TTL);
+        PolicyRuleClient c = new PolicyRuleClient(clientWith(blocking), true, TTL);
 
         assertTrue(c.hasPermission("Bearer t", "u", 12, 1));
         assertFalse(c.hasPermission("Bearer t", "u", 12, 2));
@@ -79,21 +79,21 @@ class P1AuthzClientTest {
 
     @Test
     void can_trueWhenAllowed_falseOnError() {
-        P1AuthzClient ok = new P1AuthzClient(
+        PolicyRuleClient ok = new PolicyRuleClient(
                 clientWith(blockingReturning(Map.of("allowed", true))), true, TTL);
         assertTrue(ok.can("Bearer t", 12, 1, "obj-1"));
 
         BlockingHttpClient boom = mock(BlockingHttpClient.class);
         when(boom.retrieve(any(HttpRequest.class), any(Argument.class)))
                 .thenThrow(new RuntimeException("down"));
-        P1AuthzClient err = new P1AuthzClient(clientWith(boom), true, TTL);
+        PolicyRuleClient err = new PolicyRuleClient(clientWith(boom), true, TTL);
         assertFalse(err.can("Bearer t", 12, 1, "obj-1"));
     }
 
     @Test
     void refine_emptyInputShortCircuits() {
         HttpClient http = mock(HttpClient.class);
-        P1AuthzClient c = new P1AuthzClient(http, true, TTL);
+        PolicyRuleClient c = new PolicyRuleClient(http, true, TTL);
 
         assertTrue(c.refine("Bearer t", 12, 1, List.of()).isEmpty());
         assertTrue(c.refine("Bearer t", 12, 1, null).isEmpty());
@@ -105,7 +105,7 @@ class P1AuthzClientTest {
     void refine_returnsAllowedSubset() {
         BlockingHttpClient blocking = blockingReturning(
                 Map.of("allowed", List.of("a", "c")));
-        P1AuthzClient c = new P1AuthzClient(clientWith(blocking), true, TTL);
+        PolicyRuleClient c = new PolicyRuleClient(clientWith(blocking), true, TTL);
 
         assertEquals(List.of("a", "c"), c.refine("Bearer t", 12, 1, List.of("a", "b", "c")));
     }
@@ -115,7 +115,7 @@ class P1AuthzClientTest {
         BlockingHttpClient blocking = mock(BlockingHttpClient.class);
         when(blocking.retrieve(any(HttpRequest.class), any(Argument.class)))
                 .thenThrow(new RuntimeException("down"));
-        P1AuthzClient c = new P1AuthzClient(clientWith(blocking), true, TTL);
+        PolicyRuleClient c = new PolicyRuleClient(clientWith(blocking), true, TTL);
 
         assertTrue(c.refine("Bearer t", 12, 1, List.of("a")).isEmpty());
     }

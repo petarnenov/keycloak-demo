@@ -2,7 +2,7 @@ package demo.billing;
 
 import demo.bff.core.AuthClaims;
 import demo.bff.core.HeaderIdentity;
-import demo.bff.core.Tier23Gate;
+import demo.bff.core.PolicyRuleGate;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.MediaType;
@@ -25,7 +25,7 @@ import java.util.Map;
  *
  * Authorization model (see sso-role-mapping.md):
  *   - Tier 1 (coarse role): the {@code @Secured} lists below.
- *   - Tier 2/3 (fine, opt-in): {@link Tier23Gate}, keyed by this domain's
+ *   - Tier 2/3 (fine, opt-in): {@link PolicyRuleGate}, keyed by this domain's
  *     {@link DemoAuthz} ObjectType codes.
  * `firmCd` is read from the JWT and echoed back so the FE / downstream can
  * verify the tenant scoping that any real service would enforce.
@@ -35,9 +35,9 @@ import java.util.Map;
 public class BillingController {
 
     private final String source;
-    private final Tier23Gate gate;
+    private final PolicyRuleGate gate;
 
-    public BillingController(@Value("${app.source:billing-bff}") String source, Tier23Gate gate) {
+    public BillingController(@Value("${app.source:billing-bff}") String source, PolicyRuleGate gate) {
         this.source = source;
         this.gate = gate;
     }
@@ -48,7 +48,7 @@ public class BillingController {
         // /auth/verify emitted and nginx injected (forward-auth). Coarse + subdomain
         // authz already happened in /auth/verify; this is the per-endpoint Tier 2.
         Authentication authentication = HeaderIdentity.from(request);
-        gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2: can this user VIEW invoices specifically
+        gate.requireCapability(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2: can this user VIEW invoices specifically
         Map<String, Object> body = new HashMap<>();
         body.put("source", source);
         body.put("username", authentication.getName());
@@ -71,7 +71,7 @@ public class BillingController {
     @Get("/invoices")
     public Map<String, Object> invoices(HttpRequest<?> request) {
         Authentication authentication = HeaderIdentity.from(request);
-        gate.require(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
+        gate.requireCapability(authentication, DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> invoices = new ArrayList<>();
         invoices.add(invoice("INV-2026-005", LocalDate.now().minusDays(2),  499.00, "open"));
@@ -82,7 +82,7 @@ public class BillingController {
 
         // tier 3 (lists): refine the page to the invoices this user may VIEW — P1's
         // refine pattern (one call, P1 intersects). Rows are keyed by "number".
-        invoices = gate.refine(authentication, invoices,
+        invoices = gate.refineUUIDs(authentication, invoices,
                 inv -> { Object id = inv.get("number"); return id == null ? null : id.toString(); },
                 DemoAuthz.INVOICE, DemoAuthz.PERM_VIEW);
 

@@ -37,11 +37,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * authz endpoints are deployed and reachable.</p>
  */
 @Singleton
-public class P1AuthzClient {
+public class PolicyRuleClient {
 
-    private static final String ME_PATH = "/saml/idp/p1-authz-me.do";
-    private static final String CAN_PATH = "/saml/idp/p1-authz-can.do";
-    private static final String REFINE_PATH = "/saml/idp/p1-authz-refine.do";
+    // PolicyRule decision endpoints on authz-service (alignment Phase A0). These
+    // replace P1's p1-authz-*.do — P1 is off the runtime authz path. The response
+    // shapes are unchanged ({permissions:{...}} / {allowed:bool} / {allowed:[...]}).
+    private static final String ME_PATH = "/policy/capabilities";
+    private static final String CAN_PATH = "/policy/can";
+    private static final String REFINE_PATH = "/policy/refine";
 
     private final HttpClient http;
     private final boolean fineEnabled;
@@ -49,7 +52,7 @@ public class P1AuthzClient {
 
     private final ConcurrentHashMap<String, Cached> meCache = new ConcurrentHashMap<>();
 
-    public P1AuthzClient(@Client(id = "p1authz") HttpClient http,
+    public PolicyRuleClient(@Client(id = "authz") HttpClient http,
                          @Value("${app.authz.fine-enabled:false}") boolean fineEnabled,
                          @Value("${app.authz.cache-ttl-millis:60000}") long ttlMillis) {
         this.http = http;

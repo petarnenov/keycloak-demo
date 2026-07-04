@@ -70,7 +70,7 @@ class ForwardAuthTest {
     @Test
     void authorizer_untyped_allows() {
         SubdomainRequirement r = new SubdomainRequirement(); // type null
-        new SubdomainAuthorizer(r, mock(Tier23Gate.class)).authorize(authWith("")); // no throw
+        new SubdomainAuthorizer(r, mock(PolicyRuleGate.class)).authorize(authWith("")); // no throw
     }
 
     @Test
@@ -78,7 +78,7 @@ class ForwardAuthTest {
         SubdomainRequirement r = new SubdomainRequirement();
         r.setType("firm");
         r.setFirmCd(5);
-        SubdomainAuthorizer a = new SubdomainAuthorizer(r, mock(Tier23Gate.class));
+        SubdomainAuthorizer a = new SubdomainAuthorizer(r, mock(PolicyRuleGate.class));
         HttpStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
                 HttpStatusException.class, () -> a.authorize(authWith("7:jane")));
         assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
@@ -90,9 +90,9 @@ class ForwardAuthTest {
         r.setType("resource");
         r.setObjectType(59);
         r.setPermission(5);
-        Tier23Gate gate = mock(Tier23Gate.class);
+        PolicyRuleGate gate = mock(PolicyRuleGate.class);
         doThrow(new HttpStatusException(HttpStatus.FORBIDDEN, "denied"))
-                .when(gate).require(any(), anyInt(), anyInt());
+                .when(gate).requireCapability(any(), anyInt(), anyInt());
         SubdomainAuthorizer a = new SubdomainAuthorizer(r, gate);
         org.junit.jupiter.api.Assertions.assertThrows(HttpStatusException.class,
                 () -> a.authorize(authWith("")));
@@ -160,7 +160,7 @@ class ForwardAuthTest {
         SubdomainRequirements reqs = new SubdomainRequirements(List.of(
                 tenant("billing", "billing.geowealth.int", "resource", null, 59, 5),
                 tenant("trading", "trading.geowealth.int", "firm", 5, null, null)));
-        Tier23Gate gate = mock(Tier23Gate.class);
+        PolicyRuleGate gate = mock(PolicyRuleGate.class);
         SubdomainAuthorizer a = new SubdomainAuthorizer(new SubdomainRequirement(), reqs, gate);
 
         // trading host: needs a firm-5 membership
@@ -172,7 +172,7 @@ class ForwardAuthTest {
 
         // billing host: delegates to the Tier-2 gate with that host's (objType,perm)
         a.authorize(authWith(""), "billing.geowealth.int");
-        org.mockito.Mockito.verify(gate).require(any(), org.mockito.ArgumentMatchers.eq(59),
+        org.mockito.Mockito.verify(gate).requireCapability(any(), org.mockito.ArgumentMatchers.eq(59),
                 org.mockito.ArgumentMatchers.eq(5));
     }
 
@@ -181,7 +181,7 @@ class ForwardAuthTest {
         SubdomainRequirements reqs = new SubdomainRequirements(List.of(
                 tenant("billing", "billing.geowealth.int", "resource", null, 59, 5)));
         SubdomainAuthorizer a = new SubdomainAuthorizer(
-                new SubdomainRequirement(), reqs, mock(Tier23Gate.class));
+                new SubdomainRequirement(), reqs, mock(PolicyRuleGate.class));
         HttpStatusException ex = org.junit.jupiter.api.Assertions.assertThrows(
                 HttpStatusException.class, () -> a.authorize(authWith("5:john"), "unknown.host"));
         assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());

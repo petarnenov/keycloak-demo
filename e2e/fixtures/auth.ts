@@ -35,18 +35,22 @@ export async function loginViaP1(page: Page, tenant: TenantSlug): Promise<MeResp
   await page.goto(URLS.domains[tenant]);
   await page.waitForLoadState('domcontentloaded');
 
+  // Login is a DIRECT authentication against Keycloak's own login form (the
+  // `geowealth` theme), delegated to the User Storage SPI → user-service — no
+  // SAML, no P1 login screen (docs/solution-architect/v2/03-login-flows.md).
+  // Match Keycloak's stable form ids rather than P1's old React SAML page.
   const loggedInMarker = page.locator('text=personId:');
-  const loginHeading = page.locator('text="Sign in"').first();
+  const kcUsername = page.locator('#username');
 
   await Promise.race([
     loggedInMarker.waitFor({ state: 'visible', timeout: 90_000 }),
-    loginHeading.waitFor({ state: 'visible', timeout: 90_000 }),
+    kcUsername.waitFor({ state: 'visible', timeout: 90_000 }),
   ]);
 
-  if (await loginHeading.isVisible().catch(() => false)) {
-    await page.getByRole('textbox', { name: 'username' }).fill(P1_CREDENTIALS.username);
-    await page.getByRole('textbox', { name: 'password' }).fill(P1_CREDENTIALS.password);
-    await page.getByRole('button', { name: 'Login' }).click();
+  if (await kcUsername.isVisible().catch(() => false)) {
+    await kcUsername.fill(P1_CREDENTIALS.username);
+    await page.locator('#password').fill(P1_CREDENTIALS.password);
+    await page.locator('#kc-login').click();
     await loggedInMarker.waitFor({ state: 'visible', timeout: 90_000 });
   }
 

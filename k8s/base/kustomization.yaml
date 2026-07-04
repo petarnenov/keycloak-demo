@@ -15,6 +15,7 @@ resources:
   - redis.yaml
   - redis-alerts.yaml
   - user-service.yaml
+  - authz-service.yaml
   - token-handler-config.yaml
   - token-handler.yaml
   - data-bff-config.yaml

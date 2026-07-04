@@ -2,7 +2,7 @@ package demo.trading;
 
 import demo.bff.core.AuthClaims;
 import demo.bff.core.HeaderIdentity;
-import demo.bff.core.Tier23Gate;
+import demo.bff.core.PolicyRuleGate;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Controller;
@@ -26,7 +26,7 @@ import java.util.Map;
  *
  * Authorization model (see sso-role-mapping.md):
  *   - Tier 1 (coarse role): the {@code @Secured} lists below.
- *   - Tier 2/3 (fine, opt-in): {@link Tier23Gate}, keyed by this domain's
+ *   - Tier 2/3 (fine, opt-in): {@link PolicyRuleGate}, keyed by this domain's
  *     {@link DemoAuthz} ObjectType codes.
  * `firmCd` is read from the JWT and echoed back so the FE / downstream can
  * verify the tenant scoping that any real service would enforce.
@@ -36,9 +36,9 @@ import java.util.Map;
 public class TradingController {
 
     private final String source;
-    private final Tier23Gate gate;
+    private final PolicyRuleGate gate;
 
-    public TradingController(@Value("${app.source:trading-bff}") String source, Tier23Gate gate) {
+    public TradingController(@Value("${app.source:trading-bff}") String source, PolicyRuleGate gate) {
         this.source = source;
         this.gate = gate;
     }
@@ -87,7 +87,7 @@ public class TradingController {
     @Get("/orders")
     public Map<String, Object> orders(HttpRequest<?> request) {
         Authentication authentication = HeaderIdentity.from(request);
-        gate.require(authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
+        gate.requireCapability(authentication, DemoAuthz.ORDER, DemoAuthz.PERM_VIEW);   // tier 2
 
         List<Map<String, Object>> orders = new ArrayList<>();
         orders.add(order("ORD-91204", "AAPL", "buy",  100, "limit", 211.50, "filled",  LocalDate.now()));
@@ -99,7 +99,7 @@ public class TradingController {
 
         // tier 3 (lists): refine to the orders this user may EXECUTE — P1's refine
         // pattern. Rows are keyed by "id".
-        orders = gate.refine(authentication, orders,
+        orders = gate.refineUUIDs(authentication, orders,
                 o -> { Object id = o.get("id"); return id == null ? null : id.toString(); },
                 DemoAuthz.ORDER, DemoAuthz.PERM_EXECUTE);
 
