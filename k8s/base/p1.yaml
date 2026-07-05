@@ -588,6 +588,9 @@ spec:
             # realm-export.json and re-asserted by scripts/reconcile-realm.sh.
             - { name: P1_OIDC_BROWSER_ISSUER, value: "https://auth.geowealth.int:5180/realms/demo-realm" }
             - { name: P1_OIDC_SERVER_ISSUER, value: "http://keycloak:8080/realms/demo-realm" }
+            # Dev: shorten the KcSessionProbe interval so cross-host global logout
+            # tears down sibling tabs within the e2e window (prod default 30s).
+            - { name: P1_KC_PROBE_INTERVAL_MS, value: "5000" }
             - { name: P1_OIDC_CLIENT_ID, value: "p1-client" }
             - { name: P1_OIDC_CLIENT_SECRET, value: "p1-dev-secret" }
             - { name: P1_OIDC_REDIRECT_URI, value: "http://localhost:8080/oidc/callback.do" }

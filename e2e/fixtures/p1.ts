@@ -65,8 +65,16 @@ export async function p1LoginState(reqCtx: APIRequestContext, host: string): Pro
   const res = await reqCtx.get(`${host}/react/isUserLoggedIn.do?reactRequest=true`, {
     timeout: P1_REQUEST_TIMEOUT,
   });
-  const body = (await res.json()) as { objectType?: string };
-  return body.objectType ?? '(none)';
+  const text = await res.text();
+  try {
+    const body = JSON.parse(text) as { objectType?: string };
+    return body.objectType ?? '(none)';
+  } catch {
+    // Once KcSessionProbe tears the session down, a follow-up isUserLoggedIn on
+    // the stale cookie can get P1's SPA/login HTML instead of the JSON envelope.
+    // Not the logged-in JSON state → treat as logged out ('redirect').
+    return 'redirect';
+  }
 }
 
 /** Session firm context for the current cookie jar on a host (logged-in view). */
