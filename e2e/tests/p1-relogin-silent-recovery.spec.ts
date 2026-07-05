@@ -47,10 +47,12 @@ async function loginAsTim1OnP1(page: Page): Promise<void> {
   } catch (e) {
     if (!String(e).includes('interrupted by another navigation')) throw e;
   }
-  await page.locator('text="Sign in"').first().waitFor({ state: 'visible', timeout: 90_000 });
-  await page.getByRole('textbox', { name: 'username' }).fill(P1_CREDENTIALS.username);
-  await page.getByRole('textbox', { name: 'password' }).fill(P1_CREDENTIALS.password);
-  await page.getByRole('button', { name: 'Login' }).click();
+  // Keycloak's own SPI-backed login form (no SAML/P1 login screen anymore).
+  await page.locator('#username').waitFor({ state: 'visible', timeout: 90_000 });
+  await page.locator('#username').fill(P1_CREDENTIALS.username);
+  const pw = page.locator('#password');
+  await pw.fill(P1_CREDENTIALS.password);
+  await pw.press('Enter');
 }
 
 async function waitForKcSession(timeoutMs = 90_000): Promise<void> {
