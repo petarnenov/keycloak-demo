@@ -356,7 +356,7 @@
         "https://p1.geowealth.int"
       ],
       "attributes": {
-        "backchannel.logout.url": "http://p1-tomcat.geowealth-demo.svc.cluster.local:8080/oidc/back-channel-logout",
+        "backchannel.logout.url": "http://p1-tomcat.geowealth-demo.svc.cluster.local:8080/oidc/back-channel-logout.do",
         "backchannel.logout.session.required": "true",
         "post.logout.redirect.uris": "https://p1.geowealth.int/*",
         "pkce.code.challenge.method": "S256"
