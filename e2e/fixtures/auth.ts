@@ -50,7 +50,11 @@ export async function loginViaP1(page: Page, tenant: TenantSlug): Promise<MeResp
   if (await kcUsername.isVisible().catch(() => false)) {
     await kcUsername.fill(P1_CREDENTIALS.username);
     await page.locator('#password').fill(P1_CREDENTIALS.password);
-    await page.locator('#kc-login').click();
+    // The submit navigates away; a plain click() waits for post-click stability
+    // that never settles because the page unloads → intermittent 10s timeouts on
+    // the multi-cycle logout specs. noWaitAfter returns as soon as the click is
+    // dispatched; the subsequent waitFor(personId:) is the real settle point.
+    await page.locator('#kc-login').click({ noWaitAfter: true });
     await loggedInMarker.waitFor({ state: 'visible', timeout: 90_000 });
   }
 
