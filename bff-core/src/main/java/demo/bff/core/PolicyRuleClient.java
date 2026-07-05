@@ -15,33 +15,34 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * PolicyRule (capability + refine) authorisation client (p1-auth-flow.md §2.2 / §2.9). The coarse
  * gate ({@code @Secured} on canonical capabilities) answers "can this user reach
- * the domain"; this client answers the finer questions by calling P1:
+ * the domain"; this client answers the finer questions by calling the
+ * standalone authz-service (alignment Phase A0 — P1 is off the runtime authz path):
  *
  * <ul>
- *   <li><b>capability check</b> — {@code GET /saml/idp/p1-authz-me.do} returns the user's
+ *   <li><b>capability check</b> — {@code GET /policy/capabilities} returns the user's
  *       permission map ({@code "<objectTypeCd>_<permissionCd>"} keys). Cached
  *       per {@code sub} for {@code ttl} (≤60s, §2.3): the only network hit on the
  *       hot path.</li>
- *   <li><b>refine</b> — {@code POST .../p1-authz-can.do} (single object) and
- *       {@code .../p1-authz-refine.do} (a page of ids → the allowed subset, the
+ *   <li><b>refine</b> — {@code POST /policy/can} (single object) and
+ *       {@code /policy/refine} (a page of ids → the allowed subset, the
  *       monolith's {@code refineUUIDs} pattern, §2.9).</li>
  * </ul>
  *
  * <p>The user's own bearer token is forwarded so authority stays user-bound
  * (§2.6 — never an admin token). Every call <b>fails closed</b>: a timeout, a
- * non-2xx, or an unreachable P1 yields "deny" (empty permissions / empty subset /
- * {@code can=false}), never an exception to the request thread (§2.7).</p>
+ * non-2xx, or an unreachable authz-service yields "deny" (empty permissions /
+ * empty subset / {@code can=false}), never an exception to the request thread (§2.7).</p>
  *
  * <p>Fine enforcement is opt-in via {@code app.authz.fine-enabled} (default
- * {@code false}) so the coarse-only demo keeps its verified behaviour until P1's
- * authz endpoints are deployed and reachable.</p>
+ * {@code false}) so the coarse-only demo keeps its verified behaviour until the
+ * authz-service is deployed and reachable.</p>
  */
 @Singleton
 public class PolicyRuleClient {
 
     // PolicyRule decision endpoints on authz-service (alignment Phase A0). These
-    // replace P1's p1-authz-*.do — P1 is off the runtime authz path. The response
-    // shapes are unchanged ({permissions:{...}} / {allowed:bool} / {allowed:[...]}).
+    // supersede the legacy in-monolith authz actions — P1 is off the runtime authz
+    // path. Response shapes: {permissions:{...}} / {allowed:bool} / {allowed:[...]}.
     private static final String ME_PATH = "/policy/capabilities";
     private static final String CAN_PATH = "/policy/can";
     private static final String REFINE_PATH = "/policy/refine";

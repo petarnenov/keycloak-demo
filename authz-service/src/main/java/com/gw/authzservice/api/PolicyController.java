@@ -21,7 +21,8 @@ import java.util.Map;
 /**
  * The PolicyRule decision endpoints — the demo's {@code PolicyRuleManager} read
  * surface exposed over HTTP (alignment Phase A0). Owns the {@code /policy/*}
- * contract that P1's {@code p1-authz-*.do} actions used to serve.
+ * contract that supersedes the legacy in-monolith authz actions (P1 is off the
+ * runtime authz path).
  *
  * <ul>
  *   <li>{@code GET  /policy/capabilities} — the role-level {@code <objType>_<perm>}

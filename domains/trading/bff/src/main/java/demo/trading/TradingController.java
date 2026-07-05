@@ -25,7 +25,7 @@ import java.util.Map;
  * mock and pinned per-call.
  *
  * Authorization model (see sso-role-mapping.md):
- *   - Tier 1 (coarse role): the {@code @Secured} lists below.
+ *   - Coarse role gate: the {@code @Secured} lists below.
  *   - PolicyRule capability/refine (fine, opt-in): {@link PolicyRuleGate}, keyed by this domain's
  *     {@link DemoAuthz} ObjectType codes.
  * `firmCd` is read from the JWT and echoed back so the FE / downstream can

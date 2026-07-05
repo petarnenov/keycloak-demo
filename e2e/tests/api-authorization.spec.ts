@@ -3,7 +3,7 @@ import { URLS, PERSON } from '../fixtures/config.js';
 import { deleteDemoKcUser, loginViaP1 } from '../fixtures/auth.js';
 
 /**
- * BFF Tier-1 role gate. The {@code @Secured} list on each controller is the
+ * BFF coarse role gate. The {@code @Secured} list on each controller is the
  * coarse "can this user reach this domain" check; the per-tenant role
  * registry hands {@code P-tim} the right capability per subdomain
  * ({@code billing-admin} / {@code trading-trader}),

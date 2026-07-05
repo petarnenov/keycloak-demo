@@ -17,7 +17,7 @@ import java.util.function.Function;
  * identically: a single-object permission check (capability check) and a list refine
  * (refine). No-op when fine checks are disabled or the caller is {@code gwAdmin}.
  *
- * <p>The coarse role gate stays in each controller's {@code @Secured} (Tier 1 —
+ * <p>The coarse role gate stays in each controller's {@code @Secured} (the
  * domain policy); this bean carries only the firm-agnostic mechanics that were
  * previously copy-pasted into every controller as {@code requirePermission} /
  * {@code refineByObjectAccess}.</p>
