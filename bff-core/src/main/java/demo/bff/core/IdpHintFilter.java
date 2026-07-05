@@ -12,28 +12,36 @@ import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
 
 /**
- * Forces a fixed {@code kc_idp_hint} onto the Keycloak authorize URL the BFF
- * builds when a SPA starts login via {@code /oauth/login/keycloak}.
+ * Rewrites the Keycloak authorize URL the BFF builds when a SPA starts login
+ * via {@code /oauth/login/keycloak}. Its live job is the <em>silent-first</em>
+ * {@code prompt=none} rewrite; the {@code kc_idp_hint} append is now off by
+ * default and kept only as a config seam.
  *
- * <p>This demo realm has no native users — every login MUST be brokered through
- * the {@code p1} SAML IdP. Without this hint Keycloak shows its own login screen
- * with a "Sign in with P1" button, which is dead-end UX. Pre-BFF, the SPA called
- * {@code keycloak.login({ idpHint: 'p1' })} via keycloak-js and the hint was
- * supplied there; in the BFF / Token Handler model the BFF builds the authorize
- * URL itself, so the hint has to be added on the BFF side.</p>
+ * <p><b>Post-auth-extraction (Phase 5): no {@code kc_idp_hint}.</b> The demo
+ * realm no longer federates to a {@code p1} SAML IdP — {@code identityProviders}
+ * is empty. Users are loaded from {@code user-service} via the User Storage SPI,
+ * and Keycloak renders <em>its own</em> login form (the {@code geowealth} theme)
+ * which delegates the credential check to that SPI. So the intended login UI IS
+ * the KC form; there is nothing to hint at. Forcing {@code kc_idp_hint=p1} here
+ * was a SAML-era behaviour that only "worked" because KC silently ignores an
+ * unknown hint — but if a {@code p1} IdP ever reappears (a stale realm import or
+ * drift) the hint would broker every login, including the silent {@code
+ * prompt=none} probe, into a dead SAML flow and the user lands on a login splash
+ * instead of a silent SSO. {@code app.kc-idp-hint} therefore defaults to empty
+ * and the append is skipped.</p>
  *
  * <p>The filter is a thin Location-rewriter: micronaut-security returns
- * {@code 302 Location: https://auth.geowealth.int:.../auth?...} and we append
- * {@code &kc_idp_hint=p1}. Idempotent — if the hint is already present (e.g.
- * because P1's own sidebar built the URL with it) we leave the response
- * untouched.</p>
+ * {@code 302 Location: https://auth.geowealth.int:.../auth?...} and, for a
+ * silent attempt, we append {@code &prompt=none}. If {@code app.kc-idp-hint} is
+ * set to a non-blank value the (legacy) {@code kc_idp_hint} append is still
+ * available. Idempotent — an already-present param is left untouched.</p>
  */
 @Filter("/oauth/login/keycloak")
 public class IdpHintFilter implements HttpServerFilter {
 
     private final String idpHint;
 
-    public IdpHintFilter(@Value("${app.kc-idp-hint:p1}") String idpHint) {
+    public IdpHintFilter(@Value("${app.kc-idp-hint:}") String idpHint) {
         this.idpHint = idpHint;
     }
 

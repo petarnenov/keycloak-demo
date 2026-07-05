@@ -49,7 +49,7 @@ test.describe('silent-first SSO redirect chain', () => {
     await context.close();
   });
 
-  test('KC authorize URL on silent attempt carries prompt=none + kc_idp_hint=p1', async ({ browser }) => {
+  test('KC authorize URL on silent attempt carries prompt=none and NO kc_idp_hint', async ({ browser }) => {
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
     const page = await context.newPage();
     const net = recordNetwork(page);
@@ -66,7 +66,10 @@ test.describe('silent-first SSO redirect chain', () => {
     const url = new URL(authorize!.slice(authorize!.indexOf('https://')));
 
     expect(url.searchParams.get('prompt'), 'silent attempts must include prompt=none').toBe('none');
-    expect(url.searchParams.get('kc_idp_hint'), 'IdpHintFilter must force kc_idp_hint=p1').toBe('p1');
+    // Phase 5: no SAML IdP to hint at. KC renders its own SPI-backed login form,
+    // so the authorize URL must carry NO kc_idp_hint — a lingering hint would
+    // broker the silent probe into a dead SAML flow if a p1 IdP ever reappeared.
+    expect(url.searchParams.get('kc_idp_hint'), 'no kc_idp_hint post-auth-extraction').toBeNull();
     expect(url.searchParams.get('client_id'), 'multi-tenant Token Handler uses the shared client').toBe('demo-shared-client');
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('scope'), 'OIDC scope must include openid').toMatch(/\bopenid\b/);
@@ -77,11 +80,12 @@ test.describe('silent-first SSO redirect chain', () => {
     await context.close();
   });
 
-  test('non-silent /oauth/login/keycloak STILL gets kc_idp_hint=p1 (IdpHintFilter)', async () => {
+  test('non-silent /oauth/login/keycloak redirects to KC with NO kc_idp_hint', async () => {
     // No browser context needed — a direct GET shows what the BFF would
-    // redirect the user to in any interactive login. Asserts the demo's
-    // "no native KC users" invariant: nobody can ever reach the KC login
-    // screen, because there's nothing to log into.
+    // redirect the user to in any interactive login. Post-auth-extraction the
+    // KC login form (geowealth theme, User Storage SPI) IS the intended login
+    // UI, so the authorize redirect must NOT carry a kc_idp_hint and must NOT
+    // be silent (no prompt=none on an interactive login).
     const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
     try {
       const res = await api.get(`${URLS.domains.billing}/oauth/login/keycloak`, {
@@ -90,7 +94,8 @@ test.describe('silent-first SSO redirect chain', () => {
       expect(res.status()).toBe(302);
       const location = res.headers()['location'];
       expect(location).toBeDefined();
-      expect(location).toContain('kc_idp_hint=p1');
+      expect(location).toContain('/protocol/openid-connect/auth');
+      expect(location).not.toContain('kc_idp_hint');
       expect(location).not.toContain('prompt=');
     } finally {
       await api.dispose();
