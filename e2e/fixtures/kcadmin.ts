@@ -48,6 +48,27 @@ export async function clientSessionCount(client: DemoClient): Promise<number> {
 }
 
 /**
+ * A single client attribute (e.g. `backchannel.logout.url`) from the realm.
+ * Lets a spec contract-test the p1-client back-channel URL directly, so the
+ * exact "missing `.do` Struts suffix" regression fails deterministically rather
+ * than only through the timing-sensitive behavioural teardown.
+ */
+export async function clientAttribute(client: DemoClient, attr: string): Promise<string | null> {
+  const token = await adminToken();
+  const api = await playwrightRequest.newContext({ ignoreHTTPSErrors: true });
+  try {
+    const lookup = await api.get(
+      `${URLS.kcBase}/admin/realms/${URLS.realm}/clients?clientId=${client}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const clients = (await lookup.json()) as Array<{ attributes?: Record<string, string> }>;
+    return clients[0]?.attributes?.[attr] ?? null;
+  } finally {
+    await api.dispose();
+  }
+}
+
+/**
  * Force-logout every session in demo-realm. Used in `beforeEach` so a global
  * logout test starts from a known-zero baseline — the browser context
  * otherwise accumulates several KC SSO sessions across separate interactive

@@ -1,5 +1,5 @@
 import { request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test';
-import { P1_PORT } from './config.js';
+import { P1_PORT, P1_CREDENTIALS } from './config.js';
 
 /**
  * Helpers for the P1 whitelabel hosts. Unlike the BFF domains (billing/trading)
@@ -97,6 +97,35 @@ export async function silentSsoP1(page: Page, host: string): Promise<void> {
   // immediately when an SSO session already exists, and the callback
   // resolves the whitelabel firm switch.
   await page.goto(`${host}/oidc/login.do`, { waitUntil: 'domcontentloaded' });
+  await expectLoggedIn(page, host);
+}
+
+/**
+ * Establish a fresh P1 (`p1-client`) KC SSO session on a host by driving P1's
+ * own OIDC RP login. Unlike {@link silentSsoP1} this handles the cold-start
+ * case where Keycloak renders its geowealth login form (`#username`/`#password`,
+ * User Storage SPI). Resolves once P1 reports `loggedUser` on the host.
+ *
+ * Used by the P1→domain and domain→P1 SLO specs, which must create the KC SSO
+ * session on the P1 surface FIRST (not via a domain), to exercise the
+ * BFF-domain ↔ P1 direction the rest of the suite doesn't.
+ */
+export async function loginP1Interactive(page: Page, host: string): Promise<void> {
+  await page.goto(`${host}/oidc/login.do`, { waitUntil: 'domcontentloaded' });
+  const kcUsername = page.locator('#username');
+  // Cold: KC's form appears. Warm: P1 already has a session and bounces back to
+  // its React app. Race both so the helper is idempotent.
+  await Promise.race([
+    kcUsername.waitFor({ state: 'visible', timeout: 90_000 }),
+    page.waitForURL(/\/react\//, { timeout: 90_000 }).catch(() => {}),
+  ]);
+  if (await kcUsername.isVisible().catch(() => false)) {
+    await kcUsername.fill(P1_CREDENTIALS.username);
+    const password = page.locator('#password');
+    await password.fill(P1_CREDENTIALS.password);
+    // Enter for a clean native submit (see auth.ts loginViaP1 for why not click).
+    await password.press('Enter');
+  }
   await expectLoggedIn(page, host);
 }
 
