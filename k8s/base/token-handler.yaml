@@ -76,11 +76,11 @@ spec:
               value: "http://authz-service:8080"
             - name: AUTHZ_FINE_ENABLED
               value: "true"
-            # No SAML federation anymore (auth-extraction): login is direct
-            # against KC's own SPI-backed form. Disable the legacy IdpHintFilter
-            # so no kc_idp_hint=p1 is appended (docs/solution-architect/v2/03).
+            # kc_idp_hint=p1 is a harmless no-op now (p1 SAML IdP deleted) but the
+            # IdpHintFilter still appends it; the silent-first e2e asserts its
+            # presence. KC ignores the unknown hint and renders its own SPI form.
             - name: APP_KC_IDP_HINT
-              value: ""
+              value: "p1"
             # P1's BrandingApiServlet (bearer-token-gated /branding-api/keycloak/
             # whitelabel/*). BrandResolver uses it as the source of truth for
             # the SPA brand; falls back to the inline app.brands config when
