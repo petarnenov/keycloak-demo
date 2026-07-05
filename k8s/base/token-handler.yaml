@@ -119,10 +119,14 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 15
-            # Default timeoutSeconds=1 is too tight: under DEBUG-log volume the
-            # /health response can exceed 1s, tripping 3 failures (~45s) and
-            # killing the pod mid-request → flaky e2e logins. 5s gives headroom.
-            timeoutSeconds: 5
+            # The DEBUG-log firehose that used to slow /health is fixed at the
+            # root now (bff-core ships a logback.xml pinning root=INFO and
+            # silencing io.lettuce). These generous values remain as
+            # defence-in-depth so a transient GC pause under peak e2e load can't
+            # SIGKILL the pod mid-request (exit 137) and cascade auth failures:
+            # 10s per probe, 5 consecutive failures (~75s) before a restart.
+            timeoutSeconds: 10
+            failureThreshold: 5
           volumeMounts:
             - name: tenants
               mountPath: /config

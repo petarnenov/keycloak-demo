@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shared logging config for every bff-core consumer (the token-handler and the
+  domain BFFs). WITHOUT this file Logback falls back to a BasicConfigurator with
+  a root level of DEBUG, which floods the container with io.lettuce Redis
+  heartbeat traffic (~1.7k lines/2k) and per-request Micronaut security/health
+  DEBUG. Under e2e load that log I/O starves the JVM enough that the /health
+  liveness probe times out (5s) and kubelet SIGKILLs the pod (exit 137) mid-run,
+  cascading auth failures across the whole flow. Root=INFO plus a few WARN
+  silences keeps /health responsive.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -- %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Redis client: extremely chatty at DEBUG (every PING/command). -->
+    <logger name="io.lettuce.core" level="WARN"/>
+    <logger name="reactor.core" level="WARN"/>
+    <!-- Health aggregator logs each probe at DEBUG; the probe fires every few
+         seconds, so this alone is a steady stream. -->
+    <logger name="io.micronaut.management.health" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>
