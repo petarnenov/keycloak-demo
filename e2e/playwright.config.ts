@@ -16,7 +16,11 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false, // SSO tests share KC/P1 server state; serialize.
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // The cross-host SSO / global-logout specs depend on async KC session
+  // propagation + P1's throttled liveness probe; on a loaded local/dev stack a
+  // single 20s poll window occasionally loses the race even though every spec
+  // passes on its own. Retry twice so a timing blip doesn't red the suite.
+  retries: process.env.CI ? 1 : 2,
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
