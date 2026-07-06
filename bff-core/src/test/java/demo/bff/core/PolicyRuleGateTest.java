@@ -33,18 +33,8 @@ class PolicyRuleGateTest {
     // ---- require (capability check) ----
 
     @Test
-    void require_noOpWhenFineDisabled() {
-        PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(false);
-        PolicyRuleGate gate = new PolicyRuleGate(authz);
-
-        gate.requireCapability(auth(Set.of(), Map.of()), 12, 1); // no throw — absence of exception is the contract
-    }
-
-    @Test
     void require_noOpForGwAdmin() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         PolicyRuleGate gate = new PolicyRuleGate(authz);
 
         gate.requireCapability(auth(Set.of("gwAdmin"), Map.of("accessToken", "t")), 12, 1); // no throw
@@ -53,7 +43,6 @@ class PolicyRuleGateTest {
     @Test
     void require_passesWhenPermissionHeld() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         when(authz.hasPermission(eq("Bearer t"), anyString(), eq(12), eq(1))).thenReturn(true);
         PolicyRuleGate gate = new PolicyRuleGate(authz);
 
@@ -63,7 +52,6 @@ class PolicyRuleGateTest {
     @Test
     void require_forbiddenWhenPermissionMissing() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         when(authz.hasPermission(anyString(), anyString(), anyInt(), anyInt())).thenReturn(false);
         PolicyRuleGate gate = new PolicyRuleGate(authz);
 
@@ -74,7 +62,6 @@ class PolicyRuleGateTest {
     @Test
     void require_forbiddenWhenNoBearer() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         PolicyRuleGate gate = new PolicyRuleGate(authz);
 
         assertThrows(HttpStatusException.class,
@@ -84,19 +71,8 @@ class PolicyRuleGateTest {
     // ---- refine (refine) ----
 
     @Test
-    void refine_returnsAllWhenFineDisabled() {
-        PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(false);
-        PolicyRuleGate gate = new PolicyRuleGate(authz);
-
-        List<String> items = List.of("a", "b");
-        assertSame(items, gate.refineUUIDs(auth(Set.of(), Map.of()), items, ID, 12, 1));
-    }
-
-    @Test
     void refine_returnsAllForGwAdmin() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         PolicyRuleGate gate = new PolicyRuleGate(authz);
 
         List<String> items = List.of("a", "b");
@@ -106,7 +82,6 @@ class PolicyRuleGateTest {
     @Test
     void refine_failsClosedWhenNoBearer() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         PolicyRuleGate gate = new PolicyRuleGate(authz);
 
         assertEquals(List.of(),
@@ -116,7 +91,6 @@ class PolicyRuleGateTest {
     @Test
     void refine_keepsOnlyAllowedIds() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         when(authz.refine(eq("Bearer t"), eq(12), eq(1), any()))
                 .thenReturn(List.of("a", "c"));
         PolicyRuleGate gate = new PolicyRuleGate(authz);
@@ -131,7 +105,6 @@ class PolicyRuleGateTest {
     @Test
     void refine_dropsItemsWithNullId() {
         PolicyRuleClient authz = mock(PolicyRuleClient.class);
-        when(authz.fineEnabled()).thenReturn(true);
         when(authz.refine(anyString(), anyInt(), anyInt(), any()))
                 .thenReturn(List.of("a"));
         PolicyRuleGate gate = new PolicyRuleGate(authz);

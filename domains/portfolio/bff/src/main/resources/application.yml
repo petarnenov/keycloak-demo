@@ -148,7 +148,6 @@ app:
     # be used here: Micronaut mis-parses the colons in an http://host:port default).
     initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do
   authz:
-    # PolicyRule capability/refine fine checks (p1-auth-flow.md §2.2/§2.9). Opt-in: off keeps the
-    # coarse-only @Secured behaviour until P1's authz endpoints are reachable.
-    fine-enabled: ${AUTHZ_FINE_ENABLED:false}
+    # PolicyRule capability/refine fine checks (p1-auth-flow.md §2.2/§2.9) — always
+    # on, matching P1 (PolicyRuleManager gates on nothing). gwAdmin still bypasses.
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}

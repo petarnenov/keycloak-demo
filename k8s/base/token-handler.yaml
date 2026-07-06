@@ -74,8 +74,6 @@ spec:
               value: "https://auth.geowealth.int/realms/demo-realm"
             - name: AUTHZ_URL
               value: "http://authz-service:8080"
-            - name: AUTHZ_FINE_ENABLED
-              value: "true"
             # No kc_idp_hint (Phase 5): the realm has no p1 SAML IdP, users come
             # from the User Storage SPI, and KC renders its own geowealth login
             # form. Forcing kc_idp_hint=p1 would broker login (incl. the silent

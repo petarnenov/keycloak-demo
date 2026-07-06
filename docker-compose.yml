@@ -186,7 +186,6 @@ services:
       # call P1 to check the logged-in user's (object-type, permission). P1_AUTHZ_URL
       # points at the host geowealth Tomcat (P1 on :8888); host.docker.internal
       # resolves to the host via the extra_hosts host-gateway mapping below.
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
       AUTHZ_URL: "${AUTHZ_URL:-http://authz-service:8080}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
@@ -276,7 +275,6 @@ services:
       # forward-auth: /auth/verify runs each domain's Tier-2 gate, resolved by Host
       # from app.tenants.* (billing resource:59:5, trading resource:5:5). Fine authz
       # on + a path to P1 for the permission check.
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
       AUTHZ_URL: "${AUTHZ_URL:-http://authz-service:8080}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
@@ -339,7 +337,6 @@ services:
       # Tier 2/3 fine authz — ON because trading is now a shared-resource subdomain
       # (the SubdomainRequirementFilter calls P1 to check the logged-in user's
       # (object-type, permission)). P1 on :8888 via the host-gateway extra_host.
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
       AUTHZ_URL: "${AUTHZ_URL:-http://authz-service:8080}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
@@ -390,7 +387,6 @@ services:
       OAUTH_CLIENT_ID: demo-portfolio-client
       OAUTH_CLIENT_SECRET: "${BILLING_OAUTH_CLIENT_SECRET}"
       KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
       AUTHZ_URL: "${AUTHZ_URL:-http://authz-service:8080}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"
@@ -442,7 +438,6 @@ services:
       OAUTH_CLIENT_ID: demo-custodian-client
       OAUTH_CLIENT_SECRET: "${BILLING_OAUTH_CLIENT_SECRET}"
       KEYCLOAK_ISSUER: https://auth.geowealth.int:5180/realms/demo-realm
-      AUTHZ_FINE_ENABLED: "${AUTHZ_FINE_ENABLED:-true}"
       AUTHZ_URL: "${AUTHZ_URL:-http://authz-service:8080}"
     extra_hosts:
       - "auth.geowealth.int:host-gateway"

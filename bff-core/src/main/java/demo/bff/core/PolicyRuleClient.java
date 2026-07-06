@@ -33,9 +33,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * non-2xx, or an unreachable authz-service yields "deny" (empty permissions /
  * empty subset / {@code can=false}), never an exception to the request thread (§2.7).</p>
  *
- * <p>Fine enforcement is opt-in via {@code app.authz.fine-enabled} (default
- * {@code false}) so the coarse-only demo keeps its verified behaviour until the
- * authz-service is deployed and reachable.</p>
+ * <p>PolicyRule enforcement is always on — matching P1, whose PolicyRuleManager
+ * gates on nothing. (The former {@code app.authz.fine-enabled} opt-in switch was
+ * a rollout net for the authz-service extraction; it was retired once the service
+ * was proven in sync — see {@code docs/plans/2026-07-06-authz-service-p1-sync.md}.)</p>
  */
 @Singleton
 public class PolicyRuleClient {
@@ -48,22 +49,14 @@ public class PolicyRuleClient {
     private static final String REFINE_PATH = "/policy/refine";
 
     private final HttpClient http;
-    private final boolean fineEnabled;
     private final long ttlMillis;
 
     private final ConcurrentHashMap<String, Cached> meCache = new ConcurrentHashMap<>();
 
     public PolicyRuleClient(@Client(id = "authz") HttpClient http,
-                         @Value("${app.authz.fine-enabled:false}") boolean fineEnabled,
                          @Value("${app.authz.cache-ttl-millis:60000}") long ttlMillis) {
         this.http = http;
-        this.fineEnabled = fineEnabled;
         this.ttlMillis = ttlMillis;
-    }
-
-    /** Whether controllers should enforce the fine (PolicyRule capability/refine) checks at all. */
-    public boolean fineEnabled() {
-        return fineEnabled;
     }
 
     /**

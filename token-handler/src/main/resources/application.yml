@@ -191,5 +191,4 @@ app:
     # mis-parses the colons in an http://host:port default.)
     initiate-slo-url: http://localhost:8888/oidc/logout.do
   authz:
-    fine-enabled: ${AUTHZ_FINE_ENABLED:false}
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}

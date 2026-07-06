@@ -14,8 +14,8 @@ import { logoutAllRealmSessions } from '../fixtures/kcadmin.js';
  * tenant gate already enforces — so `permissions["59_5"]` must be present. This
  * is a client-side UI hint; the authoritative object decision stays server-side.
  *
- * Requires `AUTHZ_FINE_ENABLED=true` on the token-handler (the demo default is
- * off, in which case `permissions` is absent/empty and this spec is skipped).
+ * PolicyRule fine checks are always on (matching P1), so `/auth/me` always
+ * carries the capability map.
  */
 test.describe('PolicyRule capability map to the SPA (/auth/me permissions)', () => {
   test.setTimeout(180_000);
@@ -35,8 +35,8 @@ test.describe('PolicyRule capability map to the SPA (/auth/me permissions)', () 
     console.log('billing /auth/me permissions =', JSON.stringify(me.permissions ?? null, null, 2));
 
     const permissions = me.permissions ?? {};
-    test.skip(Object.keys(permissions).length === 0,
-      'fine-grained authz disabled (AUTHZ_FINE_ENABLED != true) — no capability map to assert');
+    expect(Object.keys(permissions).length, 'fine checks always on → capability map present')
+      .toBeGreaterThan(0);
 
     // The role-level BILLING_CENTER EXECUTE capability, wire key "<objType>_<perm>".
     expect(permissions['59_5'], 'tim1 has BILLING_CENTER EXECUTE (59_5)').toBe(true);

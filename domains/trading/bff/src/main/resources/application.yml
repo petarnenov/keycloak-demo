@@ -115,7 +115,6 @@ app:
     object-type: ${APP_REQUIREMENT_OBJECT_TYPE:5}
     permission: ${APP_REQUIREMENT_PERMISSION:5}
   authz:
-    fine-enabled: ${AUTHZ_FINE_ENABLED:false}
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}
   p1:
     # P1's IdP-initiated SLO endpoint — see billing's twin for the rationale.

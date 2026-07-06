@@ -202,14 +202,11 @@ public class AuthController {
         // role-level "<objectTypeCd>_<permissionCd>" keys (VIEW/CREATE/EXECUTE) the
         // SPA uses to show/hide features. Client-side UI hint only; authoritative
         // per-object decisions stay server-side (policy-rule-alignment §4.4 / B.5a).
-        // Absent when fine-grained authz is disabled.
-        if (policyClient.fineEnabled()) {
-            Object accessToken = authentication.getAttributes().get("accessToken");
-            Object subClaim = authentication.getAttributes().get("sub");
-            String sub = subClaim != null ? subClaim.toString() : authentication.getName();
-            if (accessToken != null) {
-                out.put("permissions", policyClient.permissions("Bearer " + accessToken, sub));
-            }
+        Object accessToken = authentication.getAttributes().get("accessToken");
+        Object subClaim = authentication.getAttributes().get("sub");
+        String sub = subClaim != null ? subClaim.toString() : authentication.getName();
+        if (accessToken != null) {
+            out.put("permissions", policyClient.permissions("Bearer " + accessToken, sub));
         }
         return out;
     }

@@ -31,10 +31,10 @@ public class PolicyRuleGate {
         this.authz = authz;
     }
 
-    /** capability check: 403 unless the user holds (objectType, permission) in P1. No-op when fine checks are off or gwAdmin. */
+    /** capability check: 403 unless the user holds (objectType, permission) in P1. No-op for gwAdmin. */
     public void requireCapability(Authentication authentication, int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
-            return; // opt-in; coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
+        if (isGwAdmin(authentication)) {
+            return; // coarse @Secured already applied; gwAdmin overrides (gwAdmin || canX)
         }
         String bearer = bearer(authentication);
         if (bearer == null || !authz.hasPermission(bearer, sub(authentication), objectType, permission)) {
@@ -45,13 +45,12 @@ public class PolicyRuleGate {
     /**
      * refine: keep only the items the user may act on, via P1's refine. Each
      * item's id is extracted with {@code idOf} because domains key their rows
-     * differently (e.g. billing "number" vs trading "id"). No-op when fine
-     * checks are off or gwAdmin; fails closed (empty list) when there is no
-     * bearer.
+     * differently (e.g. billing "number" vs trading "id"). No-op for gwAdmin;
+     * fails closed (empty list) when there is no bearer.
      */
     public <T> List<T> refineUUIDs(Authentication authentication, List<T> items,
                               Function<? super T, String> idOf, int objectType, int permission) {
-        if (!authz.fineEnabled() || isGwAdmin(authentication)) {
+        if (isGwAdmin(authentication)) {
             return items; // gwAdmin sees every row (gwAdmin || canX)
         }
         String bearer = bearer(authentication);

@@ -49,8 +49,6 @@ spec:
               value: "https://auth.geowealth.int/realms/demo-realm"
             - name: AUTHZ_URL
               value: "http://authz-service:8080"
-            - name: AUTHZ_FINE_ENABLED
-              value: "true"
             - name: APP_REQUIREMENT_TYPE
               value: "resource"
             - name: APP_REQUIREMENT_OBJECT_TYPE
@@ -70,6 +68,7 @@ spec:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 5
+            timeoutSeconds: 10
             failureThreshold: 6
           livenessProbe:
             httpGet:
@@ -77,6 +76,11 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 15
+            # /health can exceed the default 1s timeout under peak e2e load on a
+            # freshly-restarted cold-JVM pod → SIGKILL (exit 137) + restart flap.
+            # Generous values as defence-in-depth (mirrors token-handler).
+            timeoutSeconds: 10
+            failureThreshold: 5
           volumeMounts:
             - name: tmp
               mountPath: /tmp

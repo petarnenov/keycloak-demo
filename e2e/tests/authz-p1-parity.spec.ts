@@ -47,11 +47,7 @@ test.describe('authz-service capability map == P1/Oracle ground truth', () => {
     expect(meResp.status(), '/auth/me must be authenticated').toBe(200);
     const me = (await meResp.json()) as { permissions?: Record<string, boolean> };
     const authzKeys = new Set(Object.keys(me.permissions ?? {}));
-
-    test.skip(
-      authzKeys.size === 0,
-      'AUTHZ_FINE_ENABLED != true — token-handler serves no capability map to compare'
-    );
+    expect(authzKeys.size, 'fine checks always on → capability map present').toBeGreaterThan(0);
 
     // Sanity anchor: the BILLING_CENTER EXECUTE capability the billing tenant
     // gate enforces must be present in BOTH.
