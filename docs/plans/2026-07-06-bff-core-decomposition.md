@@ -1,9 +1,37 @@
 # Plan: decompose `bff-core` — eliminate the shared library for a repo-per-domain world
 
 Date: 2026-07-06
-Status: analysis complete; ready to scope (no code changed yet)
+Status: **executed** (thin-SDK option) — `bff-core` deleted; full e2e green in K8s.
+See "Execution outcome" below.
 Basis: the repo-per-domain direction (each domain ships as its own repo with `web/` +
 `bff/`). Answers: **can we have NO `bff-core`?** — yes, and it is the cleaner target.
+
+## Execution outcome (2026-07-06)
+
+Executed with the thin-SDK option (B2). Result: `bff-core` is gone; all eight final
+acceptance checks pass.
+
+- **domain-sdk/** (new thin library): the four shared classes (HeaderIdentity,
+  AuthClaims, PolicyRuleClient, PolicyRuleGate) + the shared `logback.xml`. Thin deps
+  only (http-client, `micronaut-security` base for the `Authentication` type, serde,
+  reactor) — no oauth2/session/redis. Package kept `demo.bff.core` (split-package with
+  the token-handler is fine on a non-JPMS classpath) → **zero import churn** in consumers.
+- **token-handler/**: owns the ~1570-line auth half as its own `src/main/java`; depends
+  on `domain-sdk` for AuthClaims + PolicyRuleClient; declares the heavy runtime bff-core
+  used to hand down. `mainClass` still `demo.bff.core.Bff`.
+- **data BFFs**: depend on `domain-sdk` only, each with its own `demo.<domain>.Application`
+  main. `application.yml` stripped to a forward-auth data service (`security.enabled:
+  false`, no oauth2/session/redis). Verified: billing shadow jar bundles the 4 SDK
+  classes + its own controller and **0 auth-half classes**; boots in ~0.6s serving
+  `/health`. Data-BFF image 308 MB vs token-handler 332 MB.
+- **bff-core/** deleted; Dockerfiles COPY `domain-sdk`; composite `includeBuild` →
+  `../domain-sdk`; dev scripts + comments updated.
+- **e2e**: full suite green in K8s — 36 passed, 2 skipped (pre-existing guards), 0 failed;
+  pod restarts = 0.
+
+Net: the ~354-line thin SDK is the only shared code (the X-Auth-* + /policy/* contract
+surface); the auth half is single-homed to the token-handler; a domain BFF now builds
+from just `domain-sdk` + a plain server runtime — ready to move to its own repo.
 
 Suggested branch: `petarnenov/bff-core-decomposition`.
 
