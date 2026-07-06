@@ -76,7 +76,7 @@ case "$CHECK" in
     ;;
   be-th)
     MARKER="dev-verify-${RANDOM}"
-    FILE="$REPO_ROOT/bff-core/src/main/java/demo/bff/core/AuthController.java"
+    FILE="$REPO_ROOT/token-handler/src/main/java/demo/bff/core/AuthController.java"
     [ -f "$FILE" ] || fail "missing $FILE"
     wait_tcp 9080 || fail "token-handler not on :9080 — run ./scripts/dev-be.sh token-handler"
     cp "$FILE" "${FILE}.bak"

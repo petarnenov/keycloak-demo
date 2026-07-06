@@ -104,7 +104,7 @@ patches:
       # blocked the request thread waiting on KC, which synchronously
       # back-channel-POSTed this same handler → /health starved → liveness kill →
       # 502) is gone now that AuthController fires the KC end-session on a
-      # background thread (see bff-core AuthController#logout), so a single
+      # background thread (see token-handler AuthController#logout), so a single
       # replica serves both the logout request and the self-directed
       # back-channel POST without deadlocking.
       - { op: replace, path: /spec/replicas, value: 1 }

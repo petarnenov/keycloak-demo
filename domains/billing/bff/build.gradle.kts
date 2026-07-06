@@ -11,32 +11,25 @@ repositories {
     mavenCentral()
 }
 
+// Forward-auth data BFF: auth-UNAWARE. It only reads the X-Auth-* headers
+// (HeaderIdentity) and runs the Tier-3 list refine (PolicyRuleGate ->
+// authz-service). All session/login/logout/token-refresh happens in the
+// token-handler, so this module depends ONLY on the thin `demo.bff:domain-sdk`
+// and a plain server runtime — no oauth2 / session / redis / security-jwt.
 dependencies {
     annotationProcessor("io.micronaut:micronaut-http-validation")
-    annotationProcessor("io.micronaut.security:micronaut-security-annotations")
 
-    // Shared BFF infra (filters, auth/logout controllers, P1 clients, Tier23Gate).
-    // Substituted from the sibling source via includeBuild (settings.gradle) today;
-    // from a registry after the repo split. Its Micronaut deps arrive transitively.
-    implementation("demo.bff:bff-core:1.0.0")
-
-    implementation("io.micronaut:micronaut-http-client")
-    implementation("io.micronaut.reactor:micronaut-reactor")
-    implementation("io.micronaut.security:micronaut-security-jwt")
-    implementation("io.micronaut.security:micronaut-security-oauth2")
-    implementation("io.micronaut.security:micronaut-security-session")
-    implementation("io.micronaut.session:micronaut-session")
+    implementation("demo.bff:domain-sdk:1.0.0")
     implementation("io.micronaut:micronaut-runtime")
-    implementation("io.micronaut.validation:micronaut-validation")
-    implementation("io.micronaut.serde:micronaut-serde-jackson")
-    implementation("jakarta.validation:jakarta.validation-api")
+    // /health for K8s probes.
+    implementation("io.micronaut:micronaut-management")
 
     runtimeOnly("ch.qos.logback:logback-classic")
     runtimeOnly("org.yaml:snakeyaml")
 }
 
 application {
-    mainClass.set("demo.bff.core.Bff")
+    mainClass.set("demo.billing.Application")
 }
 
 java {

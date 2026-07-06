@@ -1,9 +1,9 @@
 # Build context is the repo root (see docker-compose.yml) so the composite
-# build can reach the sibling bff-core source: domains/custodian/bff/settings.gradle
-# does includeBuild('../../../bff-core'), which resolves to /build/bff-core below.
+# build can reach the sibling domain-sdk source: domains/custodian/bff/settings.gradle
+# does includeBuild('../../../bff-core'), which resolves to /build/domain-sdk below.
 FROM gradle:8.5-jdk17 AS builder
 WORKDIR /build
-COPY bff-core/ bff-core/
+COPY domain-sdk/ domain-sdk/
 COPY domains/custodian/bff/ domains/custodian/bff/
 WORKDIR /build/domains/custodian/bff
 RUN gradle --no-daemon shadowJar -x test

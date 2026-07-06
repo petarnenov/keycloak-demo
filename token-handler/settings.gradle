@@ -1,9 +1,9 @@
 rootProject.name = 'token-handler'
 
-// Composite build: pull the shared BFF infra (demo.bff:bff-core) from the sibling
-// source tree — same mechanism the domain BFFs use. The token-handler is "a BFF
-// with no domain controller": it runs ONLY bff-core (the OIDC/session/logout/
-// token-refresh infra), so a shared-auth fix is deployed by rebuilding this image
-// alone, with the domain data apps untouched. At repo-split this line becomes a
-// registry dependency; the coordinate (demo.bff:bff-core) stays the same.
-includeBuild('../bff-core')
+// Composite build: pull the thin `demo.bff:domain-sdk` (AuthClaims + the
+// PolicyRule client the auth code calls) from the sibling source tree — same
+// mechanism the domain BFFs use. The auth/session/logout code itself now lives in
+// this module's own src (it was the only consumer of that half). At repo-split
+// this line becomes a registry dependency; the coordinate (demo.bff:domain-sdk)
+// stays the same.
+includeBuild('../domain-sdk')

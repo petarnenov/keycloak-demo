@@ -1,6 +1,6 @@
 # Token Handler — the shared OIDC/session/logout/token-refresh service, extracted
 # from the domain BFFs so an auth fix redeploys THIS alone (domain data apps
-# untouched). It is pure bff-core.
+# untouched). It owns the auth code (formerly bff-core).
 #
 # MULTI-TENANT: ONE instance fronts EVERY demo domain. It uses ONE shared OIDC
 # client (demo-shared-client; redirect_uri derived per-host from the proxied

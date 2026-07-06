@@ -1,6 +1,3 @@
-# B2: shared session + sid store — see billing's twin for rationale.
-redis:
-  uri: ${REDIS_URI:redis://localhost:6379}
 micronaut:
   application:
     name: ${MICRONAUT_APPLICATION_NAME:trading-bff}
@@ -9,93 +6,16 @@ micronaut:
       ssl:
         insecure-trust-all-certs: true
     services:
+      # authz-service: PolicyRuleClient calls /policy/* for the Tier-3 list refine.
       authz:
         url: ${AUTHZ_URL:http://localhost:8090}
         read-timeout: 2s
-      # Keycloak token endpoint, used by TokenRefreshFilter for the
-      # refresh_token grant (BFF / Token Handler keeps tokens fresh server-side).
-      kc:
-        url: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
-        read-timeout: 5s
-  session:
-    http:
-      cookie: true
-      header: false
-      cookie-name: TSESSION
-      cookie-path: /
-      cookie-secure: true
-      cookie-same-site: Lax
-      # B2: store sessions in Redis (not in-JVM) — see billing's twin.
-      redis:
-        enabled: true
+  # Forward-auth data BFF: auth-UNAWARE. nginx runs the auth_request against the
+  # token-handler and injects X-Auth-* identity headers; this service trusts them
+  # (HeaderIdentity) and never resolves a session. The Micronaut security filter
+  # is off — /api is already gated upstream, and identity is header-borne.
   security:
-    enabled: true
-    # Backend-for-Frontend / Token Handler: the BFF holds the OAuth tokens in a
-    # server-side session and hands the browser only an httpOnly session cookie.
-    authentication: session
-    endpoints:
-      logout:
-        # POST-only (M1, logout-CSRF defence) — see billing's twin for rationale.
-        get-allowed: false
-    oauth2:
-      clients:
-        keycloak:
-          client-id: ${OAUTH_CLIENT_ID:demo-trading-client}
-          client-secret: ${OAUTH_CLIENT_SECRET}
-          openid:
-            issuer: ${KEYCLOAK_ISSUER:https://auth.geowealth.int:5180/realms/demo-realm}
-      nonce:
-        persistence: session
-      # State persistence MUST be cookie for the Redis session store (B2) — the
-      # State object isn't serializable; see billing's twin for the full rationale.
-      state:
-        persistence: cookie
-    token:
-      roles-name: roles
-      jwt:
-        signatures:
-          jwks:
-            keycloak:
-              url: ${KEYCLOAK_AUTH_SERVER_URL:http://keycloak:8080/realms/demo-realm}/protocol/openid-connect/certs
-    redirect:
-      login-success: /
-      # Silent-first SSO: bff-core's AuthController#loginFailed inspects the
-      # session marker set by SilentLoginController and either upgrades to an
-      # interactive login (when the silent attempt produced
-      # `error=login_required`) or falls back to the SPA error page.
-      login-failure: /auth/login-failed
-      logout: /
-      unauthorized:
-        enabled: false
-      forbidden:
-        enabled: false
-    intercept-url-map:
-      - pattern: /**
-        http-method: OPTIONS
-        access:
-          - isAnonymous()
-      - pattern: /health
-        access:
-          - isAnonymous()
-      - pattern: /oauth/**
-        access:
-          - isAnonymous()
-      - pattern: /backchannel-logout
-        http-method: POST
-        access:
-          - isAnonymous()
-      # Silent-first SSO recovery hook — see bff-core SilentLoginController.
-      - pattern: /auth/login-failed
-        access:
-          - isAnonymous()
-      - pattern: /auth/me
-        access:
-          - isAuthenticated()
-      # Forward-auth: /api/** is gated by nginx (auth_request -> token-handler
-      # /auth/verify); the request arrives with X-Auth-* headers and no cookie.
-      - pattern: /api/**
-        access:
-          - isAnonymous()
+    enabled: false
 
 endpoints:
   health:
@@ -104,20 +24,12 @@ endpoints:
 
 app:
   source: ${APP_SOURCE:trading-bff}
-  # trading = a SHARED RESOURCE (like billing): access is decided by the CURRENT
-  # logged-in user's fine permission, not firm membership. The gate checks
-  # (object-type, permission) via PolicyRule capability/refine (PolicyRuleClient -> authz-service /policy/capabilities).
-  # Default = TRADE (5) + EXECUTE (5) ("can execute trades"). For a firm-bound
-  # subdomain set type=firm + firm-cd instead. See person-identity-via-existing-linkdelink.md.
   requirement:
     type: ${APP_REQUIREMENT_TYPE:resource}
     firm-cd: ${APP_REQUIREMENT_FIRM_CD:}
     object-type: ${APP_REQUIREMENT_OBJECT_TYPE:5}
     permission: ${APP_REQUIREMENT_PERMISSION:5}
   authz:
+    # PolicyRule capability/refine fine checks — always on, matching P1
+    # (PolicyRuleManager gates on nothing). gwAdmin still bypasses.
     cache-ttl-millis: ${AUTHZ_CACHE_TTL_MILLIS:60000}
-  p1:
-    # P1's IdP-initiated SLO endpoint — see billing's twin for the rationale.
-    # Override at deploy time via the APP_P1_INITIATE_SLO_URL env var (Micronaut
-    # binds it automatically); a ${...:default} placeholder mis-parses the colons.
-    initiate-slo-url: http://localhost:8888/saml/idp/initiate-slo.do

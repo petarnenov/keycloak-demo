@@ -149,7 +149,7 @@ services:
   # bff-billing:8080 via the docker network; no host port mapping.
   bff-billing:
     build:
-      # Context is the repo root so the Dockerfile can COPY the shared bff-core
+      # Context is the repo root so the Dockerfile can COPY the shared domain-sdk
       # source alongside this domain (composite build). See the Dockerfile.
       context: .
       dockerfile: domains/billing/bff/Dockerfile
@@ -242,7 +242,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   # ---- Token Handler (MULTI-TENANT) -----------------------------------------
-  # ONE instance fronts EVERY domain (billing, trading, ...). Pure bff-core, no
+  # ONE instance fronts EVERY domain (billing, trading, ...). Pure token-handler auth code, no
   # domain controller. nginx in BOTH web containers routes /(oauth|auth)/ +
   # /logout + the /api auth_request here. It uses ONE shared OIDC client
   # (demo-shared-client) and ONE session cookie (GWSESSION, host-scoped so each
@@ -305,7 +305,7 @@ services:
 
   bff-trading:
     build:
-      # Context is the repo root so the Dockerfile can COPY the shared bff-core
+      # Context is the repo root so the Dockerfile can COPY the shared domain-sdk
       # source alongside this domain (composite build). See the Dockerfile.
       context: .
       dockerfile: domains/trading/bff/Dockerfile

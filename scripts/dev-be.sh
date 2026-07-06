@@ -23,14 +23,14 @@ require_cmd java
 
 watch_bff_core() {
   local port="$1"
-  dev_log "Watching bff-core/src — recompile + restart on save"
+  dev_log "Watching token-handler/src — recompile + restart on save"
   exec bash -c '
     APP_PID=""
     STAMP=$(mktemp)
     touch "$STAMP"
     start() {
       [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null && wait "$APP_PID" 2>/dev/null || true
-      ./gradlew :bff-core:compileJava run --no-daemon -q \
+      ./gradlew :token-handler:compileJava run --no-daemon -q \
         -Dmicronaut.server.port="'"$port"'" &
       APP_PID=$!
     }
@@ -38,14 +38,14 @@ watch_bff_core() {
     start
     if command -v inotifywait >/dev/null; then
       while inotifywait -r -e modify,create,delete \
-          ../bff-core/src/main/java ../bff-core/src/main/resources 2>/dev/null; do
+          ../token-handler/src/main/java ../token-handler/src/main/resources 2>/dev/null; do
         echo "[dev-be] change detected $(date +%H:%M:%S) — rebuilding..."
         start
       done
     else
       echo "[dev-be] inotifywait not found — polling every 2s (install inotify-tools)"
       while sleep 2; do
-        if find ../bff-core/src/main/java ../bff-core/src/main/resources -type f -newer "$STAMP" -print -quit | grep -q .; then
+        if find ../token-handler/src/main/java ../token-handler/src/main/resources -type f -newer "$STAMP" -print -quit | grep -q .; then
           touch "$STAMP"
           echo "[dev-be] change detected $(date +%H:%M:%S) — rebuilding..."
           start

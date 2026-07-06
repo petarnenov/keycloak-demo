@@ -1,5 +1,5 @@
 # Per-domain OIDC client secrets for the data BFFs' (inert in forward-auth, but
-# still bound) bundled bff-core OIDC config. PLACEHOLDER — prod injects via a
+# still bound) bundled OIDC config. PLACEHOLDER — prod injects via a
 # secret manager. The data BFFs run NO login flow (the Token Handler does); these
 # only satisfy config binding. Values match the live realm / .envrc dev secrets.
 apiVersion: v1
