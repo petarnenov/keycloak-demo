@@ -1,7 +1,8 @@
 # Plan: synchronize `authz-service` with P1's live PolicyRule authorization
 
 Date: 2026-07-06
-Status: analysis complete; ready to scope (no code changed yet)
+Status: **executed** — the demo was found already in sync; the differential parity
+harness is in place and green (see "Execution outcome" below).
 Basis: builds on [`2026-07-04-authz-policyrule-master-alignment.md`](2026-07-04-authz-policyrule-master-alignment.md)
 and [`2026-07-04-authz-policyrule-implementation.md`](2026-07-04-authz-policyrule-implementation.md)
 (which extracted `authz-service` and aligned the vocabulary). This document answers a
@@ -32,6 +33,35 @@ PolicyRule layer; it is a demo-only rollout net. (P1's per-firm `PERMISSION_VERS
 `AdviserModelPermissionService.isLatestPermissionVersion` toggles a *different, narrower*
 subsystem — adviser-model / strategy visibility — not the PolicyRule model. It is out of scope
 for PolicyRule sync.)
+
+## Execution outcome (2026-07-06)
+
+Executing the plan against the demo K8s stack showed it is **already in sync**; the
+work reduced to verifying that and adding the parity instrument.
+
+- **Phase 1 — data-source parity: SATISFIED.** authz-service (`jdbc:oracle:thin:@//oracle:1521/FREEPDB1`,
+  user `gp`) and P1 (`data-tier.dev.env`: `ORACLE_HOST=oracle`, `ORACLE_PDB=FREEPDB1`)
+  read the **same in-cluster Oracle / same `POLICY_RULE_TBL`**. Same table, one writer
+  (P1 materialization), one reader (authz-service) — synchronized by construction.
+- **Phase 2 — query parity: NO GAP.** Schema audit: `ROLE_PERMISSION_TBL` has **no
+  deny/NOT/override column** (only `ROLE_CD`, `OBJECTTYPE_PERMISSION_CD`, audit cols), so
+  the plain ENTITY_ROLE × ROLE_PERMISSION × OBJECTTYPE_PERMISSION join authz-service uses
+  is the correct capability computation — no precedence subtlety to diverge on (confirms
+  decision D6 "permissionOverride absent"). `refine`/`canDo` read the materialized
+  `POLICY_RULE_TBL` exactly as P1's `refineUUIDs`/`canUserDoObject` do.
+- **Phase 3 — flag: ALREADY always-on.** `k8s/base/token-handler.yaml` ships
+  `AUTHZ_FINE_ENABLED="true"`; the env override remains the safety net. Flag removal stays
+  a follow-up (S4).
+- **P0 / P4 — differential harness: BUILT & GREEN.** `e2e/tests/authz-p1-parity.spec.ts`
+  (+ `e2e/fixtures/oracle.ts`) pins authz-service's computed capability map (surfaced via
+  the authenticated `/auth/me`) to the DB ground truth — the same join P1's
+  AuthorizationManager uses — asserting exact set equality (tim1: ~140 `<objType>_<perm>`
+  keys incl. `59_5`). No user token minted, no realm change; the spec skips when the
+  in-cluster Oracle isn't reachable. This is the objective "in sync" instrument.
+
+Net: no product-code change was required — the extraction (Phase A0) already reads the
+same materialized table P1 maintains. The remaining plan items (full P1-endpoint-vs-authz
+differential with a minted user token, per-firm rollout) stay as documented follow-ups.
 
 ## 0. Decisions to lock before executing
 
