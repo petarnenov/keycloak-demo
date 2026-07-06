@@ -11,8 +11,11 @@ Split the current monorepo so that (1) **each domain lives in its own mono-repo 
 `web/` + `bff/`**, (2) **everything logically related to SSO/SLO lives in one separate
 identity repo**, and (3) the platform **leaves the demo phase**: the term "demo"
 disappears from every identifier, config, doc and code path, replaced by
-production-grade, industry-standard names. Verify the split with the checklist at the
-end — full e2e green across the physically separated repos.
+production-grade, industry-standard names. **The whole split is staged LOCALLY on this
+machine under `~/geowealth-repos/` (decision N0); `~/keycloak-demo` must remain
+untouched throughout** — it is the read-only source and keeps serving the running
+stack. Verify the split with the checklist at the end — full e2e green across the
+physically separated repos, with the source monorepo provably unmodified.
 
 ## Current-state inventory (measured 2026-07-06)
 
@@ -76,7 +79,8 @@ External touchpoints to update at cut-over: P1 sidebar `useIntegrationLinks.js`
 
 | # | Decision | Choice | Rationale |
 |---|---|---|---|
-| N1 | Rename first or split first | **Rename in place FIRST, then split** | One atomic, e2e-verifiable change in one repo; new repos are born clean (no "demo" in their history tip). |
+| N0 | Where the split happens | **Locally first, on this machine, under `~/geowealth-repos/`** — a dedicated workspace holding a staging clone + the new repos. **`~/keycloak-demo` is NOT touched** (read-only source; it keeps serving the running stack). Nothing is pushed to hosting until the checklist passes. | Zero-risk rehearsal: the whole topology is built and verified locally; the live monorepo and the deployed stack stay intact throughout. |
+| N1 | Rename first or split first | **Rename in the STAGING CLONE first, then split** | One atomic, e2e-verifiable change in one repo; new repos are born clean (no "demo" in their history tip). |
 | N2 | History preservation | **`git filter-repo` per target path set** | Industry standard; each new repo keeps the relevant history. |
 | N3 | `domain-sdk` distribution | **Published Maven artifact from `identity-platform`** (GitHub Packages or org registry) | Contract owned by the platform team; domains consume a version, not a path. `includeBuild` dies at split. |
 | N4 | Cross-domain e2e home | **`identity-platform`** (runs against a composed stack) | The suite asserts platform invariants; domains keep only their own smoke tests. |
@@ -86,11 +90,16 @@ External touchpoints to update at cut-over: P1 sidebar `useIntegrationLinks.js`
 
 ## Execution phases
 
-### Phase 0 — freeze + baseline
-Tag the monorepo; record green: full e2e (36 passed baseline), all unit tests, image builds.
-**Gate G0:** baseline green, tag pushed.
+### Phase 0 — workspace + freeze + baseline
+1. Create the local workspace: `~/geowealth-repos/` with a full staging clone —
+   `git clone ~/keycloak-demo ~/geowealth-repos/staging` (local clone; `~/keycloak-demo`
+   itself is never modified from this point on and keeps serving the running stack).
+2. Tag the baseline in the staging clone; record green: full e2e (36 passed baseline),
+   all unit tests, image builds.
+**Gate G0:** `~/geowealth-repos/staging` exists and builds; baseline green; the
+`~/keycloak-demo` working tree untouched (hash recorded for checklist #12).
 
-### Phase 1 — productionize IN PLACE (the "demo" purge)
+### Phase 1 — productionize the STAGING CLONE (the "demo" purge)
 1. Realm: transform `realm-export.json` → realm `geowealth`, client `token-handler`,
    drop vestigial clients; stand up the new realm alongside, repoint `urls.*.env` +
    token-handler + P1 RP + user-service; retire `demo-realm`.
@@ -99,21 +108,29 @@ Tag the monorepo; record green: full e2e (36 passed baseline), all unit tests, i
 3. Text: docs/README/CLAUDE.md/e2e titles/comments — "demo" wording out.
 4. Update P1 sidebar + P1 RP env (external touchpoint).
 **Gate G1:** full e2e green on the renamed stack;
-`grep -ri --include=* "demo"` in the repo returns ZERO functional hits (allowed:
-historical plan docs under `docs/plans/`, which record the old names).
+`grep -ri --include=* "demo"` in the staging clone returns ZERO functional hits
+(allowed: historical plan docs under `docs/plans/`, which record the old names).
+The renamed stack is verified by rebuilding images FROM THE STAGING CLONE and
+deploying them; `~/keycloak-demo` stays untouched.
 
-### Phase 2 — physical split
-1. `git filter-repo` the monorepo into: `identity-platform`, `billing`, `trading`,
-   `portfolio`, `custodian`, `platform-infra`, `domain-template` (each with its path
-   set + shared root files as applicable).
-2. Publish `com.geowealth.platform:domain-sdk` to the org Maven registry from
-   `identity-platform`; switch every consumer from `includeBuild` to the registry
-   coordinate; delete composite-build wiring.
-3. Each domain repo gets its own CI (build + test + image); `identity-platform` CI
-   builds its four services + publishes the SDK; `platform-infra` composes.
-**Gate G2:** every repo builds standalone from a FRESH clone with no sibling checkout
-(`grep -rn "includeBuild\|\.\./\.\." */settings.gradle*` → zero cross-repo paths);
-SDK resolves from the registry.
+### Phase 2 — physical split (local)
+1. `git filter-repo` the STAGING clone into the new local repos, side by side under the
+   workspace: `~/geowealth-repos/identity-platform`, `~/geowealth-repos/billing`,
+   `~/geowealth-repos/trading`, `~/geowealth-repos/portfolio`,
+   `~/geowealth-repos/custodian`, `~/geowealth-repos/platform-infra`,
+   `~/geowealth-repos/domain-template` (each with its path set + shared root files as
+   applicable). No hosting push yet — everything stays local until the checklist passes.
+2. Publish `com.geowealth.platform:domain-sdk` from `identity-platform` — locally first
+   (`mavenLocal` / a file-based Maven repo inside the workspace) so the split is fully
+   verifiable offline; the org registry publish happens only at hosting cut-over.
+   Switch every consumer from `includeBuild` to the registry coordinate; delete
+   composite-build wiring.
+3. Each domain repo gets its own CI definition (build + test + image);
+   `identity-platform` CI builds its four services + publishes the SDK;
+   `platform-infra` composes. (CI files land now; they activate at hosting cut-over.)
+**Gate G2:** every repo builds standalone from a FRESH local clone with no sibling
+checkout (`grep -rn "includeBuild\|\.\./\.\." */settings.gradle*` → zero cross-repo
+paths); SDK resolves from the (local) registry.
 
 ### Phase 3 — deployment composition
 1. `platform-infra` overlays reference the split repos' manifests (remote bases or
@@ -129,7 +146,7 @@ Run the cross-domain e2e suite from `identity-platform` against the Phase-3 stac
 
 | # | Check | How | Pass condition |
 |---|---|---|---|
-| 1 | Repo topology | list org repos | `identity-platform`, 4 domain repos (web+bff each), `platform-infra`, `domain-template` exist; monorepo archived |
+| 1 | Repo topology | list `~/geowealth-repos/` | `identity-platform`, 4 domain repos (web+bff each), `platform-infra`, `domain-template` exist locally; hosting push/monorepo archival happen only AFTER this checklist passes |
 | 2 | Standalone builds | fresh clone of EACH repo on a clean machine/dir, build | all green with no sibling checkouts |
 | 3 | SDK from registry | domain BFF dependency resolution | `com.geowealth.platform:domain-sdk` resolves from the registry; zero `includeBuild` |
 | 4 | "demo" purge | `grep -ri "demo"` in every new repo (code, config, manifests, docs) | zero functional hits (historical plan docs exempt) |
@@ -140,6 +157,7 @@ Run the cross-domain e2e suite from `identity-platform` against the Phase-3 stac
 | 9 | Contract guard | header + `/policy/*` contract tests in `identity-platform` | green; a deliberate header rename fails them |
 | 10 | External touchpoints | P1 sidebar + P1 RP env | point at realm `geowealth` / client `token-handler`; P1 login green |
 | 11 | Scaffold | instantiate `domain-template` into a throwaway repo | it builds + deploys against the platform, then is deleted cleanly |
+| 12 | Source monorepo untouched | `git -C ~/keycloak-demo status` + HEAD hash vs the one recorded at G0 | working tree clean, HEAD unchanged — the entire split happened in `~/geowealth-repos/` only |
 
 ## Out of scope
 
@@ -149,6 +167,9 @@ Run the cross-domain e2e suite from `identity-platform` against the Phase-3 stac
 
 ## Rollback
 
-- Phase 1 is one revertable commit series on the monorepo (tag from G0).
-- Phases 2–3 create NEW repos without destroying the monorepo; the monorepo is archived
-  only after the checklist passes, so rollback = keep using the monorepo.
+- The ENTIRE split is staged locally under `~/geowealth-repos/` and `~/keycloak-demo`
+  is never modified (checklist #12 enforces it), so rollback at ANY point =
+  `rm -rf ~/geowealth-repos` — the live monorepo and the running stack are unaffected.
+- Phase 1 is additionally a revertable commit series inside the staging clone (tag from G0).
+- Hosting push / monorepo archival happen only after the checklist passes; until then
+  nothing outside `~/geowealth-repos/` has changed.
